@@ -1,260 +1,203 @@
 
 
-# Comprehensive Teleprompter Enhancement Plan
+# Improved Layout for Visual Editing
 
-## Overview
+## Problem Analysis
 
-This plan addresses the critical issues with image/PDF segment handling, adds region selection for creating multiple segments from a single image, implements proper audio synchronization, and creates separate editing interfaces for visual vs text content.
-
----
-
-## Current Issues Identified
-
-1. **No Region Selection for Images**: Cannot select multiple areas within an image to create separate segments
-2. **Image Display Bug**: Images stored as base64 but rendering may show incorrectly
-3. **Single Editor for All Types**: Text editor shown even for image/PDF segments
-4. **Audio Sync Missing**: Audio manager exists but isn't connected to segments
-5. **Missing Duration-based Playback**: Image/PDF segments need timed playback
+The current layout divides the screen into 3 fixed horizontal panels, resulting in only ~35% of screen width for the editor. The VisualSegmentEditor then further splits this with a 256px regions sidebar, leaving an extremely cramped canvas area for drawing regions.
 
 ---
 
-## Architecture Changes
+## Solution: Context-Aware Layout System
 
-### New Component Structure
+Implement a dynamic layout that adapts based on the current editing mode:
+
+### Layout Modes
+
+| Mode | When Active | Layout |
+|------|------------|--------|
+| **Text Mode** | Text segment selected | Current 3-panel horizontal layout |
+| **Visual Mode** | Image/PDF segment selected | 2-panel layout with collapsible segment list |
+| **Fullscreen Editor** | User clicks "Expand" | Editor takes full workspace, preview in floating panel |
+
+---
+
+## Visual Mode Layout Design
+
+When editing images/PDFs, use this optimized layout:
 
 ```text
-src/components/Teleprompter/
-├── editors/
-│   ├── TextSegmentEditor.tsx     (current ContentEditor, renamed)
-│   ├── VisualSegmentEditor.tsx   (NEW - for images/PDFs with region selection)
-│   └── RegionSelector.tsx        (NEW - canvas-based region drawing tool)
-├── SegmentList.tsx               (enhanced with visual indicators)
-├── TeleprompterDisplay.tsx       (enhanced for timed playback)
-└── AudioManager.tsx              (enhanced with segment binding)
++------------------------------------------+
+| Header                                    |
++------+-----------------------------------+
+|      |                                   |
+| Seg  |     LARGE IMAGE CANVAS            |
+| List |     (Region Selection Area)       |
+| (col |                                   |
+| lap- |                                   |
+| si-  +-----------------------------------+
+| ble) | Regions Strip (horizontal)        |
+|      | [Reg1] [Reg2] [Reg3] [+Add]       |
++------+-----------------------------------+
+| Mini Preview | Playback Controls         |
++------------------------------------------+
 ```
+
+### Key Changes
+
+1. **Collapsible Segment List**: Toggle button to collapse to icons-only (48px) or hide completely
+2. **Horizontal Regions Strip**: Move regions panel from right side to bottom as a horizontal strip
+3. **Bottom Mini Preview**: Small teleprompter preview at bottom (collapsible)
+4. **Maximize Button**: Expand canvas to near-fullscreen for detailed region work
 
 ---
 
 ## Implementation Details
 
-### Phase 1: Extended Data Types
+### Phase 1: Add Layout Mode State
 
-**Update `teleprompter.types.ts`:**
+**Update `src/store/teleprompterStore.ts`:**
 
-- Add `imageRegion` type for segments created from image regions
-- Add region coordinates (x, y, width, height) to Segment interface
-- Add `audioId` field to Segment for audio sync
-- Add `sourceImageId` to track which image a region came from
+Add new state for layout preferences:
 
 ```text
-New Segment Type:
-- type: 'text' | 'image' | 'image-region' | 'pdf-page'
-- region?: { x, y, width, height } (percentage-based for responsiveness)
-- audioId?: string (reference to audio file)
-- sourceAssetId?: string (for regions, reference to source image)
+editor: {
+  selectedSegmentId: string | null;
+  layoutMode: 'default' | 'visual-expanded' | 'fullscreen-editor';
+  segmentListCollapsed: boolean;
+  previewCollapsed: boolean;
+}
 ```
 
-### Phase 2: Visual Segment Editor with Region Selection
+### Phase 2: Refactor Index.tsx Layout
 
-**New `VisualSegmentEditor.tsx`:**
+**Modify `src/pages/Index.tsx`:**
 
-A dedicated editor for images and PDFs that includes:
-
-1. **Canvas-based image display** with zoom and pan
-2. **Region selection tool** - draw rectangles on the image
-3. **Region list** showing all selected regions as potential segments
-4. **Per-region settings:**
-   - Name
-   - Duration (how long to display)
-   - Audio assignment
-5. **Batch operations:**
-   - "Create All Segments" from selected regions
-   - Reorder regions before creating
-   - Preview individual regions
-
-**Region Selection Flow:**
-
-```text
-1. Upload Image → Image displays on canvas
-2. Click "Add Region" → Draw rectangle on image
-3. Region appears in list → Set name, duration
-4. Repeat for multiple regions
-5. Click "Create Segments" → Creates one segment per region
-6. Segments play sequentially with set durations
-```
-
-### Phase 3: Dynamic Editor Switching in Index.tsx
-
-**Modify main layout:**
-
-- Detect selected segment type
-- Show `TextSegmentEditor` for text segments
-- Show `VisualSegmentEditor` for image/pdf segments
-- Pass relevant props to each editor
+- Detect when visual segment is selected
+- Switch to visual-optimized layout automatically
+- Add collapse/expand buttons for panels
+- Move preview to bottom in visual mode
 
 ```text
 Layout Logic:
-IF selectedSegment.type === 'text'
-   SHOW TextSegmentEditor (current ContentEditor)
-ELSE IF selectedSegment.type === 'image' OR 'image-region' OR 'pdf-page'
-   SHOW VisualSegmentEditor (new component)
+IF selectedSegment is visual type:
+  - Collapse segment list to 48px (icons only)
+  - Hide teleprompter preview OR move to bottom as mini-preview
+  - Give editor maximum horizontal space
+ELSE:
+  - Use current 3-panel layout
 ```
 
-### Phase 4: Enhanced Teleprompter Display
+### Phase 3: Redesign VisualSegmentEditor
 
-**Update `TeleprompterDisplay.tsx`:**
+**Modify `src/components/Teleprompter/editors/VisualSegmentEditor.tsx`:**
 
-1. **Duration-based playback** for image/region segments
-2. **Progress indicator** showing time remaining
-3. **Auto-advance** when duration completes
-4. **Region cropping** - display only the selected region from source image
-
-**Playback Logic for Visual Segments:**
-
+Current internal layout:
 ```text
-1. Start segment → Start timer based on duration
-2. Display image (or cropped region)
-3. Progress bar shows elapsed/total time
-4. When timer completes → Auto-advance to next segment
-5. If audio attached → Play audio, optionally sync duration to audio length
+[Header]
+[Settings Bar]
+[Image Canvas (flex-1)] | [Regions Panel (256px fixed)]
 ```
 
-### Phase 5: Audio Synchronization
+New internal layout:
+```text
+[Compact Header with inline settings]
+[Image Canvas (full width, maximum height)]
+[Horizontal Region Strip (80px height)]
+```
 
-**Enhance `AudioManager.tsx`:**
+### Phase 4: Create CollapsiblePanel Component
 
-1. Add audio assignment per segment (store audioId in segment)
-2. Play audio when segment starts
-3. Option: "Match duration to audio length"
-4. Stop audio when segment changes
+**Create `src/components/ui/collapsible-panel.tsx`:**
 
-**Update `teleprompterStore.ts`:**
+A wrapper that smoothly collapses panels with:
+- Animated width/height transitions
+- Icon-only collapsed state
+- Expand button
 
-- Add `setSegmentAudio(segmentId, audioId)` action
-- Add audio playback state tracking
+### Phase 5: Add Bottom Mini Preview
+
+**Create `src/components/Teleprompter/MiniPreview.tsx`:**
+
+A compact teleprompter preview (150px height) that:
+- Shows current segment preview
+- Has play/pause button
+- Can be expanded to full preview
+- Can be completely hidden
 
 ---
 
-## User Interface Design
-
-### Visual Segment Editor Layout
+## UI Mockup: Visual Mode
 
 ```text
-┌─────────────────────────────────────────────────────────┐
-│ [Image Name]                          [Zoom: 100%] [⚙]│
-├─────────────────────────────────────────────────────────┤
-│                                                          │
-│     ┌─────────────────────────────────────────────┐     │
-│     │                                              │     │
-│     │          IMAGE CANVAS                        │     │
-│     │     (with drawn region rectangles)           │     │
-│     │                                              │     │
-│     │   ┌──────────┐                              │     │
-│     │   │ Region 1 │     ┌──────────┐             │     │
-│     │   └──────────┘     │ Region 2 │             │     │
-│     │                    └──────────┘             │     │
-│     └─────────────────────────────────────────────┘     │
-│                                                          │
-├─────────────────────────────────────────────────────────┤
-│ REGIONS                                    [+ Add Region]│
-│ ├─ Region 1: Intro (5s)              [🔊] [⚙] [🗑]     │
-│ ├─ Region 2: Main Point (10s)        [🔊] [⚙] [🗑]     │
-│ └─ Region 3: Conclusion (5s)         [🔊] [⚙] [🗑]     │
-├─────────────────────────────────────────────────────────┤
-│ [Preview Selected] [Create All Segments]                 │
-└─────────────────────────────────────────────────────────┘
++----------------------------------------------------------------+
+| [=] ProTeleprompter | Image Segment | [Collapse] [Expand] [X]  |
++----+-----------------------------------------------------------+
+| S  |                                                            |
+| E  |                                                            |
+| G  |           LARGE IMAGE CANVAS                               |
+| M  |           (Draw regions here)                              |
+| E  |                                                            |
+| N  |                                                            |
+| T  |                                                            |
+| S  +-----------------------------------------------------------+
+|    | Regions: [Intro 5s] [Main 10s] [End 5s] [+ Draw] [Create] |
++----+-----------------------------------------------------------+
+| [>] Mini Preview: Intro slide...     | [Play] Speed: 100px/s  |
++----------------------------------------------------------------+
 ```
 
-### Region Settings Panel
+### Collapsed Segment List (48px)
 
 ```text
-┌──────────────────────────────────┐
-│ Region Settings                   │
-├──────────────────────────────────┤
-│ Name: [Introduction Slide      ] │
-│ Duration: [5] seconds            │
-│                                  │
-│ Audio: [None selected    ▼]      │
-│ □ Match duration to audio        │
-│                                  │
-│ [Save]                           │
-└──────────────────────────────────┘
++--+
+|+ |  <- Add segment
+|T |  <- Text segment icon
+|I |  <- Image segment (selected)
+|T |  <- Another text
++--+
 ```
 
 ---
 
 ## File Changes Summary
 
-### New Files to Create
-
-| File | Purpose |
-|------|---------|
-| `src/components/Teleprompter/editors/VisualSegmentEditor.tsx` | Main editor for images/PDFs with region selection |
-| `src/components/Teleprompter/editors/RegionSelector.tsx` | Canvas component for drawing selection regions |
-| `src/components/Teleprompter/editors/TextSegmentEditor.tsx` | Renamed from ContentEditor |
-
 ### Files to Modify
 
 | File | Changes |
 |------|---------|
-| `src/types/teleprompter.types.ts` | Add region coordinates, audioId, new segment types |
-| `src/store/teleprompterStore.ts` | Add audio sync actions, region management |
-| `src/pages/Index.tsx` | Dynamic editor switching based on segment type |
-| `src/components/Teleprompter/TeleprompterDisplay.tsx` | Duration-based playback, region cropping |
-| `src/components/Teleprompter/SegmentList.tsx` | Visual indicators for segment types, region thumbnails |
-| `src/components/Teleprompter/AudioManager.tsx` | Segment binding, enhanced playback |
-| `src/core/engine/RenderEngine.ts` | Region cropping support for images |
-| `src/components/Teleprompter/index.ts` | Export new components |
+| `src/store/teleprompterStore.ts` | Add layout mode state, collapse toggles |
+| `src/pages/Index.tsx` | Context-aware layout switching, collapse buttons |
+| `src/components/Teleprompter/editors/VisualSegmentEditor.tsx` | Horizontal regions strip, maximize button |
+| `src/components/Teleprompter/SegmentList.tsx` | Collapsed icon-only mode |
+
+### New Files to Create
+
+| File | Purpose |
+|------|---------|
+| `src/components/Teleprompter/MiniPreview.tsx` | Compact bottom preview for visual mode |
 
 ---
 
-## Technical Implementation Notes
+## User Benefits
 
-### Region Selection Algorithm
-
-```text
-1. Store regions as percentage coordinates (0-100) for responsiveness
-2. Convert to pixel coordinates based on current canvas size for drawing
-3. Support snap-to-edge with 10px tolerance
-4. Minimum region size: 10% of image dimensions
-5. Allow overlapping regions (same area can be multiple segments)
-```
-
-### Image Cropping for Regions
-
-```text
-When rendering a region segment:
-1. Load source image from cache
-2. Calculate crop coordinates from region percentages
-3. Use ctx.drawImage(img, sx, sy, sw, sh, dx, dy, dw, dh)
-4. Scale cropped region to fill display
-```
-
-### Audio Synchronization
-
-```text
-When segment starts:
-1. Check if segment has audioId
-2. If yes, load audio from localStorage cache
-3. Play audio
-4. If "match duration" enabled, use audio.duration as segment duration
-5. On segment end, stop audio
-```
+1. **4x more canvas space**: Image canvas gets ~80% of screen vs current ~25%
+2. **Better region precision**: More room to draw accurate regions
+3. **Quick toggle**: Easy to switch between full layout and editing focus
+4. **Persistent preview**: Can still see preview while editing (just smaller)
+5. **Smooth transitions**: Animated collapse/expand for professional feel
 
 ---
 
 ## Testing Checklist
 
-After implementation, verify:
+After implementation:
 
-- [ ] Upload image and see it displayed (not as a link)
-- [ ] Draw multiple regions on single image
-- [ ] Create segments from regions
-- [ ] Segments play with correct duration timing
-- [ ] Region segments show cropped portion only
-- [ ] Audio plays when segment with audio starts
-- [ ] Audio stops when switching segments
-- [ ] Text editor shows for text segments only
-- [ ] Visual editor shows for image/PDF segments only
-- [ ] All existing functionality still works
+- [ ] Segment list collapses to icon-only mode
+- [ ] Visual segments trigger expanded layout automatically
+- [ ] Can draw regions with more precision
+- [ ] Regions strip shows all regions horizontally
+- [ ] Mini preview shows current segment
+- [ ] Can expand back to full 3-panel layout
+- [ ] Layout preferences persist between segments
 
