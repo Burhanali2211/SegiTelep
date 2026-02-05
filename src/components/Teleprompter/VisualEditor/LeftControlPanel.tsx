@@ -1,29 +1,30 @@
-import React, { memo, useCallback, useRef, useState } from 'react';
+import React, { memo, useCallback, useRef } from 'react';
 import { useVisualEditorState, formatTime, VisualSegment } from './useVisualEditorState';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { Separator } from '@/components/ui/separator';
 import { 
   Plus, 
   Trash2,
-  ImageIcon,
+  ImagePlus,
   Play,
   Eye,
   EyeOff,
   Copy,
   MousePointer2,
-  Pencil,
-  Link,
-  Unlink,
+  PenTool,
+  Link2,
+  Link2Off,
   ZoomIn,
   ZoomOut,
-  Maximize,
-  Undo,
-  Redo,
-  ChevronDown,
-  Layers,
-  Wrench,
+  Maximize2,
+  Undo2,
+  Redo2,
+  Layers3,
+  Clock,
+  GripVertical,
+  Upload,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useUndoRedo } from './useUndoRedo';
@@ -33,10 +34,6 @@ interface LeftControlPanelProps {
 }
 
 export const LeftControlPanel = memo<LeftControlPanelProps>(({ className }) => {
-  const [toolsOpen, setToolsOpen] = useState(true);
-  const [imagesOpen, setImagesOpen] = useState(true);
-  const [segmentsOpen, setSegmentsOpen] = useState(true);
-  
   const pages = useVisualEditorState((s) => s.pages);
   const currentPageIndex = useVisualEditorState((s) => s.currentPageIndex);
   const selectedSegmentIds = useVisualEditorState((s) => s.selectedSegmentIds);
@@ -114,8 +111,56 @@ export const LeftControlPanel = memo<LeftControlPanelProps>(({ className }) => {
   const currentPage = pages[currentPageIndex];
   const totalSegments = pages.reduce((acc, p) => acc + p.segments.length, 0);
   
+  // Tool button component for consistency
+  const ToolButton = ({ 
+    active, 
+    onClick, 
+    icon: Icon, 
+    tooltip,
+    shortcut,
+    variant = 'default'
+  }: { 
+    active?: boolean; 
+    onClick: () => void; 
+    icon: React.ElementType; 
+    tooltip: string;
+    shortcut?: string;
+    variant?: 'default' | 'accent';
+  }) => (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          onClick={onClick}
+          className={cn(
+            'relative flex items-center justify-center w-9 h-9 rounded-lg transition-all duration-200',
+            'hover:scale-105 active:scale-95',
+            active 
+              ? variant === 'accent'
+                ? 'bg-accent text-accent-foreground shadow-md shadow-accent/25'
+                : 'bg-primary text-primary-foreground shadow-md shadow-primary/25'
+              : 'bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground'
+          )}
+        >
+          <Icon size={16} strokeWidth={1.5} />
+        </button>
+      </TooltipTrigger>
+      <TooltipContent side="right" className="flex items-center gap-2">
+        {tooltip}
+        {shortcut && (
+          <kbd className="px-1.5 py-0.5 text-[10px] bg-muted rounded font-mono">
+            {shortcut}
+          </kbd>
+        )}
+      </TooltipContent>
+    </Tooltip>
+  );
+  
   return (
-    <div className={cn('flex flex-col h-full bg-card border-r border-border', className)}>
+    <div className={cn(
+      'flex flex-col h-full bg-gradient-to-b from-card to-card/95',
+      'border-r border-border/50 shadow-xl shadow-black/5',
+      className
+    )}>
       <input
         ref={fileInputRef}
         type="file"
@@ -125,360 +170,398 @@ export const LeftControlPanel = memo<LeftControlPanelProps>(({ className }) => {
         onChange={handleFileChange}
       />
       
-      <ScrollArea className="flex-1">
-        <div className="p-2 space-y-1">
-          {/* Tools Section */}
-          <Collapsible open={toolsOpen} onOpenChange={setToolsOpen}>
-            <CollapsibleTrigger className="flex items-center justify-between w-full px-2 py-1.5 rounded hover:bg-muted/50 transition-colors">
-              <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                <Wrench size={12} />
-                Tools
-              </div>
-              <ChevronDown size={14} className={cn('text-muted-foreground transition-transform', toolsOpen && 'rotate-180')} />
-            </CollapsibleTrigger>
-            
-            <CollapsibleContent className="space-y-2 pt-2">
-              {/* Tool buttons */}
-              <div className="grid grid-cols-3 gap-1 px-1">
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant={!isDrawing ? 'default' : 'ghost'}
-                      size="sm"
-                      className="h-8"
-                      onClick={() => setDrawing(false)}
-                    >
-                      <MousePointer2 size={14} />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom">Select (Esc)</TooltipContent>
-                </Tooltip>
-                
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant={isDrawing ? 'default' : 'ghost'}
-                      size="sm"
-                      className="h-8"
-                      onClick={() => setDrawing(true)}
-                    >
-                      <Pencil size={14} />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom">Draw (N)</TooltipContent>
-                </Tooltip>
-                
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant={chainTimesMode ? 'default' : 'ghost'}
-                      size="sm"
-                      className="h-8"
-                      onClick={toggleChainMode}
-                    >
-                      {chainTimesMode ? <Link size={14} /> : <Unlink size={14} />}
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom">
-                    {chainTimesMode ? 'Chain ON' : 'Chain OFF'}
-                  </TooltipContent>
-                </Tooltip>
-              </div>
-              
-              {/* Zoom controls */}
-              <div className="flex items-center gap-1 px-1 py-1 bg-muted/30 rounded">
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-6 w-6"
-                      onClick={() => setZoom(zoom - 0.25)}
-                      disabled={zoom <= 0.5}
-                    >
-                      <ZoomOut size={12} />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>Zoom out</TooltipContent>
-                </Tooltip>
-                
-                <span className="text-[10px] font-mono flex-1 text-center text-muted-foreground">
-                  {Math.round(zoom * 100)}%
-                </span>
-                
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-6 w-6"
-                      onClick={() => setZoom(zoom + 0.25)}
-                      disabled={zoom >= 4}
-                    >
-                      <ZoomIn size={12} />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>Zoom in</TooltipContent>
-                </Tooltip>
-                
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-6 w-6"
-                      onClick={resetView}
-                    >
-                      <Maximize size={12} />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>Reset</TooltipContent>
-                </Tooltip>
-              </div>
-              
-              {/* Undo/Redo */}
-              <div className="flex items-center gap-1 px-1">
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-7 flex-1 text-xs"
-                      onClick={undo}
-                      disabled={!canUndo}
-                    >
-                      <Undo size={12} className="mr-1" />
-                      Undo
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>Ctrl+Z</TooltipContent>
-                </Tooltip>
-                
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-7 flex-1 text-xs"
-                      onClick={redo}
-                      disabled={!canRedo}
-                    >
-                      <Redo size={12} className="mr-1" />
-                      Redo
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>Ctrl+Shift+Z</TooltipContent>
-                </Tooltip>
-              </div>
-              
-              {/* Selection actions */}
-              {selectedSegmentIds.size > 0 && (
-                <div className="flex items-center gap-1 px-1 py-1 bg-primary/10 rounded">
-                  <span className="text-[10px] text-primary flex-1 px-1">
-                    {selectedSegmentIds.size} selected
-                  </span>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-6 w-6"
-                        onClick={() => copySelected()}
-                      >
-                        <Copy size={12} />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>Copy</TooltipContent>
-                  </Tooltip>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-6 w-6 text-destructive hover:text-destructive"
-                        onClick={handleDeleteSelected}
-                      >
-                        <Trash2 size={12} />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>Delete</TooltipContent>
-                  </Tooltip>
-                </div>
-              )}
-            </CollapsibleContent>
-          </Collapsible>
+      {/* Tools Section - Fixed */}
+      <div className="p-3 space-y-3">
+        {/* Primary Tools */}
+        <div className="flex items-center justify-center gap-1.5">
+          <ToolButton
+            active={!isDrawing}
+            onClick={() => setDrawing(false)}
+            icon={MousePointer2}
+            tooltip="Select"
+            shortcut="Esc"
+          />
+          <ToolButton
+            active={isDrawing}
+            onClick={() => setDrawing(true)}
+            icon={PenTool}
+            tooltip="Draw Region"
+            shortcut="N"
+          />
+          <ToolButton
+            active={chainTimesMode}
+            onClick={toggleChainMode}
+            icon={chainTimesMode ? Link2 : Link2Off}
+            tooltip={chainTimesMode ? 'Chain Mode ON' : 'Chain Mode OFF'}
+            variant="accent"
+          />
+        </div>
+        
+        {/* Zoom Controls */}
+        <div className="flex items-center gap-1 p-1.5 bg-muted/30 rounded-lg">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={() => setZoom(zoom - 0.25)}
+                disabled={zoom <= 0.5}
+                className="flex items-center justify-center w-7 h-7 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/50 disabled:opacity-30 transition-colors"
+              >
+                <ZoomOut size={14} />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>Zoom Out (-)</TooltipContent>
+          </Tooltip>
           
-          {/* Images Section */}
-          <Collapsible open={imagesOpen} onOpenChange={setImagesOpen}>
-            <CollapsibleTrigger className="flex items-center justify-between w-full px-2 py-1.5 rounded hover:bg-muted/50 transition-colors">
-              <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                <ImageIcon size={12} />
-                Images
-                {pages.length > 0 && (
-                  <span className="text-[10px] bg-muted px-1.5 py-0.5 rounded-full">{pages.length}</span>
+          <div className="flex-1 text-center">
+            <span className="text-xs font-medium tabular-nums">
+              {Math.round(zoom * 100)}%
+            </span>
+          </div>
+          
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={() => setZoom(zoom + 0.25)}
+                disabled={zoom >= 4}
+                className="flex items-center justify-center w-7 h-7 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/50 disabled:opacity-30 transition-colors"
+              >
+                <ZoomIn size={14} />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>Zoom In (+)</TooltipContent>
+          </Tooltip>
+          
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={resetView}
+                className="flex items-center justify-center w-7 h-7 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
+              >
+                <Maximize2 size={14} />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>Fit to View</TooltipContent>
+          </Tooltip>
+        </div>
+        
+        {/* Undo/Redo */}
+        <div className="flex items-center gap-1">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={undo}
+                disabled={!canUndo}
+                className={cn(
+                  'flex-1 flex items-center justify-center gap-1.5 h-8 rounded-md text-xs font-medium transition-all',
+                  canUndo 
+                    ? 'text-muted-foreground hover:text-foreground hover:bg-muted/50' 
+                    : 'text-muted-foreground/30'
                 )}
-              </div>
-              <ChevronDown size={14} className={cn('text-muted-foreground transition-transform', imagesOpen && 'rotate-180')} />
-            </CollapsibleTrigger>
-            
-            <CollapsibleContent className="pt-2 px-1">
-              {pages.length === 0 ? (
-                <Button
-                  variant="outline"
-                  className="w-full h-14 border-dashed flex-col gap-1"
-                  onClick={handleAddImage}
+              >
+                <Undo2 size={14} />
+                Undo
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>Ctrl+Z</TooltipContent>
+          </Tooltip>
+          
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={redo}
+                disabled={!canRedo}
+                className={cn(
+                  'flex-1 flex items-center justify-center gap-1.5 h-8 rounded-md text-xs font-medium transition-all',
+                  canRedo 
+                    ? 'text-muted-foreground hover:text-foreground hover:bg-muted/50' 
+                    : 'text-muted-foreground/30'
+                )}
+              >
+                <Redo2 size={14} />
+                Redo
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>Ctrl+Shift+Z</TooltipContent>
+          </Tooltip>
+        </div>
+        
+        {/* Selection Actions */}
+        {selectedSegmentIds.size > 0 && (
+          <div className="flex items-center gap-2 p-2 bg-primary/10 border border-primary/20 rounded-lg animate-in fade-in slide-in-from-top-1 duration-200">
+            <span className="flex-1 text-xs font-medium text-primary">
+              {selectedSegmentIds.size} selected
+            </span>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={() => copySelected()}
+                  className="flex items-center justify-center w-7 h-7 rounded-md text-primary hover:bg-primary/20 transition-colors"
                 >
-                  <Plus size={16} className="text-muted-foreground" />
-                  <span className="text-[10px] text-muted-foreground">Add Image</span>
-                </Button>
-              ) : (
-                <div className="space-y-2">
-                  <div className="grid grid-cols-3 gap-1">
-                    {pages.map((page, index) => (
-                      <div
-                        key={page.id}
-                        className={cn(
-                          'relative aspect-square rounded border cursor-pointer overflow-hidden group',
-                          index === currentPageIndex 
-                            ? 'border-primary ring-1 ring-primary' 
-                            : 'border-border hover:border-muted-foreground'
-                        )}
-                        onClick={() => setCurrentPage(index)}
-                      >
-                        <img
-                          src={page.data}
-                          alt=""
-                          className="w-full h-full object-cover"
-                        />
-                        <div className="absolute bottom-0 left-0 right-0 bg-black/70 text-[8px] text-white text-center py-0.5">
+                  <Copy size={14} />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>Copy (Ctrl+C)</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={handleDeleteSelected}
+                  className="flex items-center justify-center w-7 h-7 rounded-md text-destructive hover:bg-destructive/20 transition-colors"
+                >
+                  <Trash2 size={14} />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>Delete</TooltipContent>
+            </Tooltip>
+          </div>
+        )}
+      </div>
+      
+      <Separator className="opacity-50" />
+      
+      {/* Scrollable Content */}
+      <ScrollArea className="flex-1">
+        <div className="p-3 space-y-4">
+          {/* Images Section */}
+          <section>
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
+                Images
+              </h3>
+              {pages.length > 0 && (
+                <span className="text-[10px] font-medium text-muted-foreground bg-muted/50 px-1.5 py-0.5 rounded">
+                  {pages.length}
+                </span>
+              )}
+            </div>
+            
+            {pages.length === 0 ? (
+              <button
+                onClick={handleAddImage}
+                className={cn(
+                  'w-full aspect-video rounded-xl border-2 border-dashed border-muted-foreground/25',
+                  'flex flex-col items-center justify-center gap-2 p-4',
+                  'text-muted-foreground hover:text-foreground hover:border-primary/50 hover:bg-primary/5',
+                  'transition-all duration-200 group'
+                )}
+              >
+                <div className="w-10 h-10 rounded-full bg-muted/50 flex items-center justify-center group-hover:bg-primary/10 transition-colors">
+                  <Upload size={18} className="group-hover:scale-110 transition-transform" />
+                </div>
+                <span className="text-xs font-medium">Add Image</span>
+                <span className="text-[10px] text-muted-foreground">
+                  Click or drag & drop
+                </span>
+              </button>
+            ) : (
+              <div className="space-y-2">
+                <div className="grid grid-cols-3 gap-1.5">
+                  {pages.map((page, index) => (
+                    <button
+                      key={page.id}
+                      onClick={() => setCurrentPage(index)}
+                      className={cn(
+                        'relative aspect-square rounded-lg overflow-hidden transition-all duration-200 group',
+                        'ring-2 ring-offset-1 ring-offset-card',
+                        index === currentPageIndex 
+                          ? 'ring-primary scale-[1.02]' 
+                          : 'ring-transparent hover:ring-muted-foreground/30'
+                      )}
+                    >
+                      <img
+                        src={page.data}
+                        alt=""
+                        className="w-full h-full object-cover"
+                      />
+                      {/* Overlay */}
+                      <div className={cn(
+                        'absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent',
+                        'opacity-0 group-hover:opacity-100 transition-opacity'
+                      )} />
+                      {/* Page number badge */}
+                      <div className={cn(
+                        'absolute bottom-1 left-1 text-[9px] font-bold px-1.5 py-0.5 rounded',
+                        index === currentPageIndex
+                          ? 'bg-primary text-primary-foreground'
+                          : 'bg-black/60 text-white'
+                      )}>
+                        {index + 1}
+                      </div>
+                      {/* Segment count */}
+                      {page.segments.length > 0 && (
+                        <div className="absolute bottom-1 right-1 text-[9px] font-medium px-1.5 py-0.5 rounded bg-black/60 text-white">
                           {page.segments.length}
                         </div>
-                        {pages.length > 1 && (
-                          <Button
-                            variant="destructive"
-                            size="icon"
-                            className="absolute top-0 right-0 h-4 w-4 opacity-0 group-hover:opacity-100 transition-opacity"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              removePage(index);
-                            }}
-                          >
-                            <Trash2 size={8} />
-                          </Button>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="w-full h-7 text-xs"
-                    onClick={handleAddImage}
-                  >
-                    <Plus size={12} className="mr-1" />
-                    Add More
-                  </Button>
-                </div>
-              )}
-            </CollapsibleContent>
-          </Collapsible>
-          
-          {/* Segments Section */}
-          <Collapsible open={segmentsOpen} onOpenChange={setSegmentsOpen}>
-            <CollapsibleTrigger className="flex items-center justify-between w-full px-2 py-1.5 rounded hover:bg-muted/50 transition-colors">
-              <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                <Layers size={12} />
-                Regions
-                {totalSegments > 0 && (
-                  <span className="text-[10px] bg-muted px-1.5 py-0.5 rounded-full">{totalSegments}</span>
-                )}
-              </div>
-              <ChevronDown size={14} className={cn('text-muted-foreground transition-transform', segmentsOpen && 'rotate-180')} />
-            </CollapsibleTrigger>
-            
-            <CollapsibleContent className="pt-2">
-              {pages.length === 0 ? (
-                <p className="text-[10px] text-muted-foreground text-center py-3 px-2">
-                  Add an image first
-                </p>
-              ) : totalSegments === 0 ? (
-                <p className="text-[10px] text-muted-foreground text-center py-3 px-2">
-                  Draw on image to create regions
-                </p>
-              ) : (
-                <div className="space-y-0.5 px-1">
-                  {pages.map((page, pageIndex) => (
-                    <React.Fragment key={page.id}>
-                      {pages.length > 1 && page.segments.length > 0 && (
-                        <div
+                      )}
+                      {/* Delete button */}
+                      {pages.length > 1 && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            removePage(index);
+                          }}
                           className={cn(
-                            'text-[9px] font-medium px-2 py-1 sticky top-0 bg-card',
-                            pageIndex === currentPageIndex ? 'text-primary' : 'text-muted-foreground'
+                            'absolute top-1 right-1 w-5 h-5 rounded flex items-center justify-center',
+                            'bg-destructive/90 text-destructive-foreground',
+                            'opacity-0 group-hover:opacity-100 transition-all',
+                            'hover:scale-110 active:scale-95'
                           )}
                         >
-                          Image {pageIndex + 1}
-                        </div>
+                          <Trash2 size={10} />
+                        </button>
                       )}
-                      
-                      {page.segments.map((segment) => {
-                        const isSelected = selectedSegmentIds.has(segment.id);
-                        const isPlaying = playbackTime >= segment.startTime && playbackTime < segment.endTime;
-                        
-                        return (
-                          <div
-                            key={segment.id}
-                            className={cn(
-                              'flex items-center gap-1.5 px-2 py-1.5 rounded cursor-pointer transition-colors group',
-                              isPlaying && 'bg-destructive/20 border-l-2 border-destructive',
-                              isSelected && !isPlaying && 'bg-primary/20 border-l-2 border-primary',
-                              !isSelected && !isPlaying && 'hover:bg-muted/50 border-l-2 border-transparent'
-                            )}
-                            onClick={(e) => handleSegmentClick(e, segment, pageIndex)}
-                            onDoubleClick={() => handlePlaySegment(segment)}
-                          >
-                            <div className="flex-1 min-w-0">
-                              <div className="text-[11px] font-medium truncate">{segment.label}</div>
-                              <div className="text-[9px] text-muted-foreground font-mono">
-                                {formatTime(segment.startTime)} → {formatTime(segment.endTime)}
-                              </div>
-                            </div>
-                            
-                            <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-5 w-5"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handlePlaySegment(segment);
-                                }}
-                              >
-                                <Play size={10} />
-                              </Button>
-                              
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-5 w-5"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  toggleSegmentVisibility(segment.id);
-                                }}
-                              >
-                                {segment.isHidden ? <EyeOff size={10} /> : <Eye size={10} />}
-                              </Button>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </React.Fragment>
+                    </button>
                   ))}
                 </div>
+                
+                <button
+                  onClick={handleAddImage}
+                  className={cn(
+                    'w-full h-9 rounded-lg border border-dashed border-muted-foreground/30',
+                    'flex items-center justify-center gap-1.5',
+                    'text-xs text-muted-foreground hover:text-foreground',
+                    'hover:border-primary/50 hover:bg-primary/5 transition-all'
+                  )}
+                >
+                  <ImagePlus size={14} />
+                  Add More
+                </button>
+              </div>
+            )}
+          </section>
+          
+          {/* Regions Section */}
+          <section>
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+                <Layers3 size={12} />
+                Regions
+              </h3>
+              {totalSegments > 0 && (
+                <span className="text-[10px] font-medium text-muted-foreground bg-muted/50 px-1.5 py-0.5 rounded">
+                  {totalSegments}
+                </span>
               )}
-            </CollapsibleContent>
-          </Collapsible>
+            </div>
+            
+            {pages.length === 0 ? (
+              <div className="py-6 text-center">
+                <div className="w-10 h-10 rounded-full bg-muted/30 flex items-center justify-center mx-auto mb-2">
+                  <Layers3 size={16} className="text-muted-foreground/50" />
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Add an image first
+                </p>
+              </div>
+            ) : totalSegments === 0 ? (
+              <div className="py-6 text-center">
+                <div className="w-10 h-10 rounded-full bg-muted/30 flex items-center justify-center mx-auto mb-2">
+                  <PenTool size={16} className="text-muted-foreground/50" />
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Draw on the image
+                </p>
+                <p className="text-[10px] text-muted-foreground/70 mt-1">
+                  Press <kbd className="px-1 py-0.5 bg-muted rounded text-[9px]">N</kbd> to start
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-1">
+                {pages.map((page, pageIndex) => (
+                  <React.Fragment key={page.id}>
+                    {/* Page header for multi-page */}
+                    {pages.length > 1 && page.segments.length > 0 && (
+                      <div className={cn(
+                        'text-[10px] font-semibold px-2 py-1.5 rounded-md mb-1',
+                        pageIndex === currentPageIndex 
+                          ? 'text-primary bg-primary/10' 
+                          : 'text-muted-foreground bg-muted/30'
+                      )}>
+                        Page {pageIndex + 1}
+                      </div>
+                    )}
+                    
+                    {/* Segments */}
+                    {page.segments.map((segment) => {
+                      const isSelected = selectedSegmentIds.has(segment.id);
+                      const isPlaying = playbackTime >= segment.startTime && playbackTime < segment.endTime;
+                      
+                      return (
+                        <button
+                          key={segment.id}
+                          onClick={(e) => handleSegmentClick(e, segment, pageIndex)}
+                          onDoubleClick={() => handlePlaySegment(segment)}
+                          className={cn(
+                            'w-full flex items-center gap-2 px-2.5 py-2 rounded-lg transition-all duration-150 text-left group',
+                            isPlaying && 'bg-destructive/15 ring-1 ring-destructive/30',
+                            isSelected && !isPlaying && 'bg-primary/15 ring-1 ring-primary/30',
+                            !isSelected && !isPlaying && 'hover:bg-muted/50'
+                          )}
+                        >
+                          {/* Drag handle indicator */}
+                          <div className={cn(
+                            'w-1 h-8 rounded-full transition-colors',
+                            isPlaying ? 'bg-destructive' : isSelected ? 'bg-primary' : 'bg-muted-foreground/20'
+                          )} />
+                          
+                          {/* Content */}
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-1.5">
+                              <span className={cn(
+                                'text-[11px] font-medium truncate',
+                                segment.isHidden && 'opacity-50'
+                              )}>
+                                {segment.label}
+                              </span>
+                              {segment.isHidden && (
+                                <EyeOff size={10} className="text-muted-foreground shrink-0" />
+                              )}
+                            </div>
+                            <div className="flex items-center gap-1 text-[10px] text-muted-foreground font-mono">
+                              <Clock size={9} />
+                              {formatTime(segment.startTime)} - {formatTime(segment.endTime)}
+                            </div>
+                          </div>
+                          
+                          {/* Actions */}
+                          <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handlePlaySegment(segment);
+                              }}
+                              className="w-6 h-6 rounded flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
+                            >
+                              <Play size={12} />
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                toggleSegmentVisibility(segment.id);
+                              }}
+                              className="w-6 h-6 rounded flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
+                            >
+                              {segment.isHidden ? <EyeOff size={12} /> : <Eye size={12} />}
+                            </button>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </React.Fragment>
+                ))}
+              </div>
+            )}
+          </section>
         </div>
       </ScrollArea>
+      
+      {/* Footer Stats */}
+      <div className="p-3 border-t border-border/50 bg-muted/20">
+        <div className="flex items-center justify-between text-[10px] text-muted-foreground">
+          <span>{pages.length} image{pages.length !== 1 ? 's' : ''}</span>
+          <span>{totalSegments} region{totalSegments !== 1 ? 's' : ''}</span>
+        </div>
+      </div>
     </div>
   );
 });
