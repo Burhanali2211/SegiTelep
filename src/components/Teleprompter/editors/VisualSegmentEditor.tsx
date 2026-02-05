@@ -5,7 +5,6 @@ import { RegionSelector } from './RegionSelector';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Slider } from '@/components/ui/slider';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   Select,
@@ -19,12 +18,10 @@ import {
   Crop,
   Plus,
   Trash2,
-  Play,
-  Music,
-  GripVertical,
   Upload,
   Clock,
   Save,
+  X,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { v4 as uuidv4 } from 'uuid';
@@ -83,7 +80,6 @@ export const VisualSegmentEditor = memo<VisualSegmentEditorProps>(({ className }
       setRegions([]);
       setSelectedRegionId(null);
       
-      // If a segment is selected, update its content
       if (selectedSegmentId) {
         updateSegment(selectedSegmentId, { content: data });
       }
@@ -127,7 +123,7 @@ export const VisualSegmentEditor = memo<VisualSegmentEditorProps>(({ className }
   const handleCreateSegments = useCallback(() => {
     if (!imageSrc || regions.length === 0) return;
 
-    regions.forEach((region, index) => {
+    regions.forEach((region) => {
       addSegment({
         type: 'image-region',
         name: region.name,
@@ -143,7 +139,6 @@ export const VisualSegmentEditor = memo<VisualSegmentEditorProps>(({ className }
       });
     });
 
-    // Clear regions after creating
     setRegions([]);
     setSelectedRegionId(null);
   }, [imageSrc, regions, addSegment]);
@@ -161,8 +156,6 @@ export const VisualSegmentEditor = memo<VisualSegmentEditorProps>(({ className }
       updateSegment(selectedSegmentId, { name });
     }
   }, [selectedSegmentId, updateSegment]);
-
-  const selectedRegion = regions.find((r) => r.id === selectedRegionId);
 
   // No segment selected
   if (!segment) {
@@ -186,9 +179,9 @@ export const VisualSegmentEditor = memo<VisualSegmentEditorProps>(({ className }
 
   return (
     <div className={cn('flex flex-col h-full overflow-hidden', className)}>
-      {/* Header */}
-      <div className="panel-header shrink-0">
-        <div className="flex items-center gap-3 flex-1">
+      {/* Compact Header */}
+      <div className="flex items-center justify-between px-4 py-2 border-b border-border bg-card shrink-0">
+        <div className="flex items-center gap-3 flex-1 min-w-0">
           <Input
             value={segment.name}
             onChange={(e) => handleNameChange(e.target.value)}
@@ -197,53 +190,42 @@ export const VisualSegmentEditor = memo<VisualSegmentEditorProps>(({ className }
           <span className="text-xs text-muted-foreground capitalize">
             {segment.type.replace('-', ' ')}
           </span>
+          <div className="flex items-center gap-2 ml-4">
+            <Clock size={14} className="text-muted-foreground" />
+            <Select
+              value={String(segment.duration)}
+              onValueChange={(v) => handleDurationChange(Number(v))}
+            >
+              <SelectTrigger className="h-7 w-20 text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {[1, 2, 3, 5, 8, 10, 15, 20, 30, 45, 60].map((sec) => (
+                  <SelectItem key={sec} value={String(sec)}>
+                    {sec}s
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </div>
         <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-7"
+            onClick={() => fileInputRef.current?.click()}
+          >
+            <Upload size={14} className="mr-1" />
+            Replace
+          </Button>
           {hasUnsavedChanges && (
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={saveCurrentProject}
-              className="h-7 px-2"
-            >
+            <Button size="sm" variant="ghost" onClick={saveCurrentProject} className="h-7 px-2">
               <Save size={14} className="mr-1" />
               Save
             </Button>
           )}
         </div>
-      </div>
-
-      {/* Settings Bar */}
-      <div className="flex items-center gap-4 px-4 py-2 border-b border-border bg-card/50 flex-wrap shrink-0">
-        <div className="flex items-center gap-2">
-          <Clock size={14} className="text-muted-foreground" />
-          <Label className="text-xs text-muted-foreground">Duration</Label>
-          <Select
-            value={String(segment.duration)}
-            onValueChange={(v) => handleDurationChange(Number(v))}
-          >
-            <SelectTrigger className="h-7 w-20 text-xs">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {[1, 2, 3, 5, 8, 10, 15, 20, 30, 45, 60].map((sec) => (
-                <SelectItem key={sec} value={String(sec)}>
-                  {sec}s
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-
-        <Button
-          variant="outline"
-          size="sm"
-          className="h-7"
-          onClick={() => fileInputRef.current?.click()}
-        >
-          <Upload size={14} className="mr-1" />
-          Replace Image
-        </Button>
         <input
           ref={fileInputRef}
           type="file"
@@ -253,25 +235,12 @@ export const VisualSegmentEditor = memo<VisualSegmentEditorProps>(({ className }
         />
       </div>
 
-      {/* Main Content */}
-      <div className="flex-1 min-h-0 flex overflow-hidden">
-        {/* Image Canvas Area */}
-        <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-          {imageSrc ? (
-            <>
-              <div className="flex items-center justify-between px-4 py-2 border-b border-border shrink-0">
-                <span className="text-sm text-muted-foreground">
-                  {isDrawing ? 'Draw a rectangle to select a region' : 'Click to select region'}
-                </span>
-                <Button
-                  variant={isDrawing ? 'default' : 'outline'}
-                  size="sm"
-                  onClick={() => setIsDrawing(!isDrawing)}
-                >
-                  <Crop size={14} className="mr-1" />
-                  {isDrawing ? 'Cancel Drawing' : 'Draw Region'}
-                </Button>
-              </div>
+      {/* Main Canvas Area - Maximum Space */}
+      <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+        {imageSrc ? (
+          <>
+            {/* Canvas */}
+            <div className="flex-1 min-h-0 relative">
               <RegionSelector
                 imageSrc={imageSrc}
                 regions={regions}
@@ -280,107 +249,112 @@ export const VisualSegmentEditor = memo<VisualSegmentEditorProps>(({ className }
                 onRegionSelect={setSelectedRegionId}
                 onRegionUpdate={(id, region) => handleRegionUpdate(id, region)}
                 isDrawing={isDrawing}
-                className="flex-1 min-h-0"
+                className="h-full"
               />
-            </>
-          ) : (
-            <div className="flex-1 flex flex-col items-center justify-center gap-4 bg-muted/30">
-              <ImageIcon size={64} className="text-muted-foreground" />
-              <p className="text-muted-foreground">No image loaded</p>
-              <Button onClick={() => fileInputRef.current?.click()}>
-                <Upload size={16} className="mr-2" />
-                Upload Image
-              </Button>
-            </div>
-          )}
-        </div>
-
-        {/* Regions Panel */}
-        <div className="w-64 border-l border-border flex flex-col shrink-0 overflow-hidden">
-          <div className="panel-header shrink-0">
-            <h3 className="text-sm font-semibold">Regions</h3>
-            <span className="text-xs text-muted-foreground">{regions.length}</span>
-          </div>
-
-          <ScrollArea className="flex-1">
-            <div className="p-2 space-y-2">
-              {regions.length === 0 ? (
-                <div className="text-center py-8 text-muted-foreground text-sm">
-                  <Crop size={24} className="mx-auto mb-2 opacity-50" />
-                  <p>No regions defined</p>
-                  <p className="text-xs mt-1">Click "Draw Region" to start</p>
+              
+              {/* Draw Mode Indicator */}
+              {isDrawing && (
+                <div className="absolute top-2 left-1/2 -translate-x-1/2 px-3 py-1.5 bg-primary text-primary-foreground rounded-full text-sm font-medium shadow-lg">
+                  Draw a rectangle to select a region
                 </div>
-              ) : (
-                regions.map((region) => (
-                  <div
-                    key={region.id}
-                    className={cn(
-                      'p-2 rounded-lg border cursor-pointer transition-all',
-                      selectedRegionId === region.id
-                        ? 'border-primary bg-primary/5'
-                        : 'border-transparent bg-card hover:bg-secondary'
-                    )}
-                    onClick={() => setSelectedRegionId(region.id)}
-                  >
-                    <div className="flex items-center gap-2">
-                      <GripVertical size={14} className="text-muted-foreground" />
-                      <Input
-                        value={region.name}
-                        onChange={(e) => {
-                          e.stopPropagation();
-                          handleRegionUpdate(region.id, { name: e.target.value });
-                        }}
-                        onClick={(e) => e.stopPropagation()}
-                        className="h-6 text-xs flex-1 bg-transparent border-transparent hover:border-border"
-                      />
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-6 w-6"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleRegionDelete(region.id);
-                        }}
-                      >
-                        <Trash2 size={12} />
-                      </Button>
-                    </div>
-                    <div className="flex items-center gap-2 mt-2 text-xs text-muted-foreground">
-                      <Clock size={12} />
-                      <Select
-                        value={String(region.duration)}
-                        onValueChange={(v) => handleRegionUpdate(region.id, { duration: Number(v) })}
-                      >
-                        <SelectTrigger className="h-5 w-14 text-xs" onClick={(e) => e.stopPropagation()}>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {[1, 2, 3, 5, 8, 10, 15, 20, 30].map((sec) => (
-                            <SelectItem key={sec} value={String(sec)}>
-                              {sec}s
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <span className="ml-auto text-xs">
-                        {Math.round(region.width)}% × {Math.round(region.height)}%
-                      </span>
-                    </div>
-                  </div>
-                ))
               )}
             </div>
-          </ScrollArea>
-
-          {regions.length > 0 && (
-            <div className="p-3 border-t border-border shrink-0">
-              <Button className="w-full" onClick={handleCreateSegments}>
-                <Plus size={16} className="mr-2" />
-                Create {regions.length} Segment{regions.length !== 1 ? 's' : ''}
-              </Button>
+            
+            {/* Horizontal Regions Strip */}
+            <div className="border-t border-border bg-card shrink-0">
+              <div className="flex items-center gap-2 px-4 py-2">
+                <span className="text-xs font-medium text-muted-foreground shrink-0">REGIONS</span>
+                <div className="flex-1 overflow-x-auto">
+                  <div className="flex items-center gap-2">
+                    {regions.map((region) => (
+                      <div
+                        key={region.id}
+                        className={cn(
+                          'flex items-center gap-2 px-3 py-1.5 rounded-lg border cursor-pointer transition-all shrink-0',
+                          selectedRegionId === region.id
+                            ? 'border-primary bg-primary/10'
+                            : 'border-border bg-secondary/50 hover:bg-secondary'
+                        )}
+                        onClick={() => setSelectedRegionId(region.id)}
+                      >
+                        <Input
+                          value={region.name}
+                          onChange={(e) => {
+                            e.stopPropagation();
+                            handleRegionUpdate(region.id, { name: e.target.value });
+                          }}
+                          onClick={(e) => e.stopPropagation()}
+                          className="h-6 w-24 text-xs bg-transparent border-transparent hover:border-border px-1"
+                        />
+                        <Select
+                          value={String(region.duration)}
+                          onValueChange={(v) => handleRegionUpdate(region.id, { duration: Number(v) })}
+                        >
+                          <SelectTrigger 
+                            className="h-6 w-14 text-xs border-transparent"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {[1, 2, 3, 5, 8, 10, 15, 20, 30].map((sec) => (
+                              <SelectItem key={sec} value={String(sec)}>
+                                {sec}s
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleRegionDelete(region.id);
+                          }}
+                        >
+                          <X size={12} />
+                        </Button>
+                      </div>
+                    ))}
+                    
+                    {regions.length === 0 && !isDrawing && (
+                      <span className="text-xs text-muted-foreground">No regions - click "Draw Region" to add</span>
+                    )}
+                  </div>
+                </div>
+                
+                <div className="flex items-center gap-2 shrink-0">
+                  <Button
+                    variant={isDrawing ? 'default' : 'outline'}
+                    size="sm"
+                    className="h-8"
+                    onClick={() => setIsDrawing(!isDrawing)}
+                  >
+                    <Crop size={14} className="mr-1" />
+                    {isDrawing ? 'Cancel' : 'Draw Region'}
+                  </Button>
+                  
+                  {regions.length > 0 && (
+                    <Button size="sm" className="h-8" onClick={handleCreateSegments}>
+                      <Plus size={14} className="mr-1" />
+                      Create {regions.length} Segment{regions.length !== 1 ? 's' : ''}
+                    </Button>
+                  )}
+                </div>
+              </div>
             </div>
-          )}
-        </div>
+          </>
+        ) : (
+          <div className="flex-1 flex flex-col items-center justify-center gap-4 bg-muted/30">
+            <ImageIcon size={64} className="text-muted-foreground" />
+            <p className="text-muted-foreground">No image loaded</p>
+            <Button onClick={() => fileInputRef.current?.click()}>
+              <Upload size={16} className="mr-2" />
+              Upload Image
+            </Button>
+          </div>
+        )}
       </div>
     </div>
   );

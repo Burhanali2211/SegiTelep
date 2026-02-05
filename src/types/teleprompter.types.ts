@@ -82,11 +82,16 @@ export interface RenderState {
   frameTime: number;
 }
 
+export type LayoutMode = 'default' | 'visual-expanded' | 'fullscreen-editor';
+
 export interface EditorState {
   selectedSegmentId: string | null;
   isEditing: boolean;
   isDragging: boolean;
   draggedSegmentId: string | null;
+  layoutMode: LayoutMode;
+  segmentListCollapsed: boolean;
+  previewCollapsed: boolean;
 }
 
 // Audio file stored in localStorage
