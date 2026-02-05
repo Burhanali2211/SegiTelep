@@ -1,6 +1,6 @@
-import React, { memo, useCallback, useState } from 'react';
+import React, { memo, useCallback, useState, useRef } from 'react';
 import { useTeleprompterStore } from '@/store/teleprompterStore';
-import { Segment } from '@/types/teleprompter.types';
+import { Segment, isVisualSegment } from '@/types/teleprompter.types';
 import { 
   GripVertical, 
   Copy, 
@@ -28,22 +28,36 @@ import { AudioManager } from './AudioManager';
 
 interface SegmentItemProps {
   segment: Segment;
+  index: number;
   isSelected: boolean;
   isPlaying: boolean;
   onSelect: () => void;
   onDuplicate: () => void;
   onDelete: () => void;
+  onDragStart: (index: number) => void;
+  onDragOver: (index: number) => void;
+  onDragEnd: () => void;
+  isDragging: boolean;
+  dragOverIndex: number | null;
+  editorType?: 'text' | 'visual';
 }
 
 const SegmentItem = memo<SegmentItemProps>(({
   segment,
+  index,
   isSelected,
   isPlaying,
   onSelect,
   onDuplicate,
   onDelete,
+  onDragStart,
+  onDragOver,
+  onDragEnd,
+  isDragging,
+  dragOverIndex,
+  editorType = 'text',
 }) => {
-  const isVisualType = segment.type === 'image' || segment.type === 'pdf-page' || segment.type === 'image-region';
+  const isVisualType = isVisualSegment(segment);
   const preview = isVisualType
     ? `${segment.type === 'image' ? 'Image' : segment.type === 'image-region' ? 'Region' : 'PDF'} - ${segment.duration}s`
     : (segment.content.slice(0, 80) || 'Empty segment');
@@ -52,16 +66,32 @@ const SegmentItem = memo<SegmentItemProps>(({
     segment.type === 'image-region' ? Crop : 
     segment.type === 'pdf-page' ? FileImage : FileText;
   
+  // Filter segments based on editor type
+  const shouldShow = editorType === 'visual' ? isVisualType : !isVisualType;
+  
   return (
     <div
       className={cn(
         'segment-item group',
         isSelected && 'active',
-        isPlaying && 'playing'
+        isPlaying && 'playing',
+        isDragging && 'opacity-50',
+        dragOverIndex === index && 'border-t-2 border-primary'
       )}
       onClick={onSelect}
+      draggable
+      onDragStart={(e) => {
+        e.dataTransfer.effectAllowed = 'move';
+        onDragStart(index);
+      }}
+      onDragOver={(e) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        onDragOver(index);
+      }}
+      onDragEnd={onDragEnd}
     >
-      <div className="drag-handle">
+      <div className="drag-handle cursor-grab active:cursor-grabbing">
         <GripVertical size={16} />
       </div>
       
@@ -128,9 +158,10 @@ SegmentItem.displayName = 'SegmentItem';
 
 interface SegmentListProps {
   onPlaySegment?: (index: number) => void;
+  editorType?: 'text' | 'visual';
 }
 
-export const SegmentList = memo<SegmentListProps>(({ onPlaySegment }) => {
+export const SegmentList = memo<SegmentListProps>(({ onPlaySegment, editorType = 'text' }) => {
   const project = useTeleprompterStore((s) => s.project);
   const selectedSegmentId = useTeleprompterStore((s) => s.editor.selectedSegmentId);
   const currentSegmentId = useTeleprompterStore((s) => s.playback.currentSegmentId);
@@ -141,10 +172,13 @@ export const SegmentList = memo<SegmentListProps>(({ onPlaySegment }) => {
   const duplicateSegment = useTeleprompterStore((s) => s.duplicateSegment);
   const deleteSegment = useTeleprompterStore((s) => s.deleteSegment);
   const setCurrentSegment = useTeleprompterStore((s) => s.setCurrentSegment);
+  const reorderSegments = useTeleprompterStore((s) => s.reorderSegments);
   
   const [showImageEditor, setShowImageEditor] = useState(false);
   const [showPdfEditor, setShowPdfEditor] = useState(false);
   const [showAudioManager, setShowAudioManager] = useState(false);
+  const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
   
   const handleSelect = useCallback((segmentId: string, index: number) => {
     selectSegment(segmentId);
@@ -158,68 +192,123 @@ export const SegmentList = memo<SegmentListProps>(({ onPlaySegment }) => {
     });
   }, [addSegment]);
   
+  const handleDragStart = useCallback((index: number) => {
+    setDraggedIndex(index);
+  }, []);
+  
+  const handleDragOver = useCallback((index: number) => {
+    if (draggedIndex !== null && draggedIndex !== index) {
+      setDragOverIndex(index);
+    }
+  }, [draggedIndex]);
+  
+  const handleDragEnd = useCallback(() => {
+    if (draggedIndex !== null && dragOverIndex !== null && draggedIndex !== dragOverIndex) {
+      reorderSegments(draggedIndex, dragOverIndex);
+    }
+    setDraggedIndex(null);
+    setDragOverIndex(null);
+  }, [draggedIndex, dragOverIndex, reorderSegments]);
+  
   if (!project) return null;
+  
+  // Filter segments based on editor type
+  const filteredSegments = project.segments.filter((segment) => {
+    const isVisual = isVisualSegment(segment);
+    return editorType === 'visual' ? isVisual : !isVisual;
+  });
+
+  // Get original index for a segment
+  const getOriginalIndex = (segmentId: string) => {
+    return project.segments.findIndex((s) => s.id === segmentId);
+  };
   
   return (
     <div className="flex flex-col h-full overflow-hidden">
       <div className="panel-header shrink-0">
-        <h2 className="text-sm font-semibold">Segments</h2>
+        <h2 className="text-sm font-semibold">
+          {editorType === 'visual' ? 'Visual Segments' : 'Text Segments'}
+        </h2>
         <span className="text-xs text-muted-foreground">
-          {project.segments.length} item{project.segments.length !== 1 ? 's' : ''}
+          {filteredSegments.length} item{filteredSegments.length !== 1 ? 's' : ''}
         </span>
       </div>
       
       <div className="flex-1 min-h-0 overflow-y-auto p-3 space-y-2">
-        {project.segments.map((segment, index) => (
-          <SegmentItem
-            key={segment.id}
-            segment={segment}
-            isSelected={selectedSegmentId === segment.id}
-            isPlaying={isPlaying && currentSegmentId === segment.id}
-            onSelect={() => handleSelect(segment.id, index)}
-            onDuplicate={() => duplicateSegment(segment.id)}
-            onDelete={() => deleteSegment(segment.id)}
-          />
-        ))}
+        {filteredSegments.map((segment) => {
+          const originalIndex = getOriginalIndex(segment.id);
+          return (
+            <SegmentItem
+              key={segment.id}
+              segment={segment}
+              index={originalIndex}
+              isSelected={selectedSegmentId === segment.id}
+              isPlaying={isPlaying && currentSegmentId === segment.id}
+              onSelect={() => handleSelect(segment.id, originalIndex)}
+              onDuplicate={() => duplicateSegment(segment.id)}
+              onDelete={() => deleteSegment(segment.id)}
+              onDragStart={handleDragStart}
+              onDragOver={handleDragOver}
+              onDragEnd={handleDragEnd}
+              isDragging={draggedIndex === originalIndex}
+              dragOverIndex={dragOverIndex}
+              editorType={editorType}
+            />
+          );
+        })}
         
-        {project.segments.length === 0 && (
+        {filteredSegments.length === 0 && (
           <div className="flex flex-col items-center justify-center py-8 text-center">
-            <FileText size={32} className="text-muted-foreground mb-2" />
-            <p className="text-sm text-muted-foreground mb-4">
-              No segments yet
-            </p>
+            {editorType === 'visual' ? (
+              <>
+                <Image size={32} className="text-muted-foreground mb-2" />
+                <p className="text-sm text-muted-foreground mb-4">
+                  No visual segments yet
+                </p>
+              </>
+            ) : (
+              <>
+                <FileText size={32} className="text-muted-foreground mb-2" />
+                <p className="text-sm text-muted-foreground mb-4">
+                  No text segments yet
+                </p>
+              </>
+            )}
           </div>
         )}
       </div>
       
       <div className="p-3 border-t border-border space-y-2 shrink-0">
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button className="w-full" variant="secondary">
-              <Plus size={16} className="mr-2" />
-              Add Segment
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="center" className="w-48">
-            <DropdownMenuItem onClick={handleAddText}>
-              <FileText size={16} className="mr-2" />
-              Text Segment
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => setShowImageEditor(true)}>
-              <Image size={16} className="mr-2" />
-              Image Segment
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => setShowPdfEditor(true)}>
-              <FileImage size={16} className="mr-2" />
-              PDF Pages
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={() => setShowAudioManager(true)}>
-              <Music size={16} className="mr-2" />
-              Audio Library
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        {editorType === 'text' ? (
+          <Button className="w-full" variant="secondary" onClick={handleAddText}>
+            <Plus size={16} className="mr-2" />
+            Add Text Segment
+          </Button>
+        ) : (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button className="w-full" variant="secondary">
+                <Plus size={16} className="mr-2" />
+                Add Visual
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="center" className="w-48">
+              <DropdownMenuItem onClick={() => setShowImageEditor(true)}>
+                <Image size={16} className="mr-2" />
+                Image Segment
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setShowPdfEditor(true)}>
+                <FileImage size={16} className="mr-2" />
+                PDF Pages
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => setShowAudioManager(true)}>
+                <Music size={16} className="mr-2" />
+                Audio Library
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
       </div>
       
       {/* Dialogs */}
