@@ -52,6 +52,9 @@ interface TeleprompterStore {
   selectSegment: (id: string | null) => void;
   setEditing: (isEditing: boolean) => void;
   setDragging: (isDragging: boolean, segmentId?: string | null) => void;
+  setLayoutMode: (mode: 'default' | 'visual-expanded' | 'fullscreen-editor') => void;
+  toggleSegmentListCollapsed: () => void;
+  togglePreviewCollapsed: () => void;
 }
 
 export const useTeleprompterStore = create<TeleprompterStore>((set, get) => ({
@@ -80,6 +83,9 @@ export const useTeleprompterStore = create<TeleprompterStore>((set, get) => ({
     isEditing: false,
     isDragging: false,
     draggedSegmentId: null,
+    layoutMode: 'default',
+    segmentListCollapsed: false,
+    previewCollapsed: false,
   },
   
   // Project actions
@@ -417,6 +423,24 @@ export const useTeleprompterStore = create<TeleprompterStore>((set, get) => ({
         isDragging,
         draggedSegmentId: segmentId,
       },
+    }));
+  },
+
+  setLayoutMode: (mode) => {
+    set((state) => ({
+      editor: { ...state.editor, layoutMode: mode },
+    }));
+  },
+
+  toggleSegmentListCollapsed: () => {
+    set((state) => ({
+      editor: { ...state.editor, segmentListCollapsed: !state.editor.segmentListCollapsed },
+    }));
+  },
+
+  togglePreviewCollapsed: () => {
+    set((state) => ({
+      editor: { ...state.editor, previewCollapsed: !state.editor.previewCollapsed },
     }));
   },
 }));

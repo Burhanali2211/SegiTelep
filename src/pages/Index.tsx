@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { useTeleprompterStore } from '@/store/teleprompterStore';
 import { createProject, getAllProjects, loadProject } from '@/core/storage/ProjectStorage';
 import { isVisualSegment } from '@/types/teleprompter.types';
@@ -10,6 +10,7 @@ import {
   TextSegmentEditor,
   VisualSegmentEditor,
 } from '@/components/Teleprompter';
+import { MiniPreview } from '@/components/Teleprompter/MiniPreview';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -35,8 +36,12 @@ import {
   Settings,
   Monitor,
   Keyboard,
-  HelpCircle,
+  PanelLeftClose,
+  PanelLeft,
+  Maximize2,
+  Minimize2,
 } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 const KEYBOARD_SHORTCUTS = [
   { key: 'Space', action: 'Play / Pause' },
@@ -58,10 +63,16 @@ const Index = () => {
   
   const project = useTeleprompterStore((s) => s.project);
   const selectedSegmentId = useTeleprompterStore((s) => s.editor.selectedSegmentId);
+  const layoutMode = useTeleprompterStore((s) => s.editor.layoutMode);
+  const segmentListCollapsed = useTeleprompterStore((s) => s.editor.segmentListCollapsed);
+  const previewCollapsed = useTeleprompterStore((s) => s.editor.previewCollapsed);
   const setProject = useTeleprompterStore((s) => s.setProject);
   const hasUnsavedChanges = useTeleprompterStore((s) => s.hasUnsavedChanges);
   const saveCurrentProject = useTeleprompterStore((s) => s.saveCurrentProject);
   const addSegment = useTeleprompterStore((s) => s.addSegment);
+  const setLayoutMode = useTeleprompterStore((s) => s.setLayoutMode);
+  const toggleSegmentListCollapsed = useTeleprompterStore((s) => s.toggleSegmentListCollapsed);
+  const togglePreviewCollapsed = useTeleprompterStore((s) => s.togglePreviewCollapsed);
   
   // Determine which editor to show based on selected segment type
   const selectedSegment = useMemo(() => {
@@ -70,19 +81,26 @@ const Index = () => {
   
   const showVisualEditor = selectedSegment && isVisualSegment(selectedSegment);
   
+  // Auto-switch layout mode based on segment type
+  useEffect(() => {
+    if (showVisualEditor && layoutMode === 'default') {
+      setLayoutMode('visual-expanded');
+    } else if (!showVisualEditor && layoutMode === 'visual-expanded') {
+      setLayoutMode('default');
+    }
+  }, [showVisualEditor, layoutMode, setLayoutMode]);
+  
   // Initialize - load most recent project or create new
   useEffect(() => {
     const init = async () => {
       const projects = await getAllProjects();
       
       if (projects.length > 0) {
-        // Load most recent
         const recent = await loadProject(projects[0].id);
         if (recent) {
           setProject(recent);
         }
       } else {
-        // Create default project
         const newProject = await createProject('My First Script');
         setProject(newProject);
       }
@@ -141,7 +159,129 @@ Delete this text and start writing your own script!`,
       </div>
     );
   }
+
+  // Visual Mode Layout - Optimized for region editing
+  if (layoutMode === 'visual-expanded') {
+    return (
+      <div className="h-screen flex flex-col bg-background overflow-hidden">
+        {/* Header */}
+        <header className="flex items-center justify-between px-4 py-2 border-b border-border bg-card">
+          <div className="flex items-center gap-3">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon">
+                  <Menu size={20} />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start">
+                <DropdownMenuItem onClick={() => setShowProjectManager(true)}>
+                  <FolderOpen size={16} className="mr-2" />
+                  Open Project
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={saveCurrentProject} disabled={!hasUnsavedChanges}>
+                  <Save size={16} className="mr-2" />
+                  Save
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => setShowShortcuts(true)}>
+                  <Keyboard size={16} className="mr-2" />
+                  Keyboard Shortcuts
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setShowSettings(true)}>
+                  <Settings size={16} className="mr-2" />
+                  Project Settings
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            
+            <div className="flex items-center gap-2">
+              <Monitor size={20} className="text-primary" />
+              <span className="font-semibold text-lg">ProTeleprompter</span>
+            </div>
+            
+            {project && (
+              <div className="flex items-center gap-2 ml-4 text-sm text-muted-foreground">
+                <span className="font-medium text-foreground">{project.name}</span>
+                {hasUnsavedChanges && (
+                  <span className="text-xs px-1.5 py-0.5 bg-accent/20 text-accent rounded">
+                    Unsaved
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
+          
+          <div className="flex items-center gap-2">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button 
+                  variant="ghost" 
+                  size="sm"
+                  onClick={toggleSegmentListCollapsed}
+                >
+                  {segmentListCollapsed ? <PanelLeft size={18} /> : <PanelLeftClose size={18} />}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>{segmentListCollapsed ? 'Show Segments' : 'Hide Segments'}</TooltipContent>
+            </Tooltip>
+            
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button 
+                  variant="ghost" 
+                  size="sm"
+                  onClick={() => setLayoutMode('default')}
+                >
+                  <Minimize2 size={18} />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Exit Visual Mode</TooltipContent>
+            </Tooltip>
+            
+            <Button variant="ghost" size="icon" onClick={() => setShowProjectManager(true)}>
+              <FolderOpen size={18} />
+            </Button>
+          </div>
+        </header>
+        
+        {/* Main Content - Visual Optimized */}
+        <main className="flex-1 min-h-0 flex overflow-hidden">
+          {/* Collapsible Segment List */}
+          <div 
+            className={cn(
+              'border-r border-border bg-card transition-all duration-200 shrink-0 overflow-hidden',
+              segmentListCollapsed ? 'w-12' : 'w-56'
+            )}
+          >
+            {segmentListCollapsed ? (
+              <CollapsedSegmentList />
+            ) : (
+              <SegmentList />
+            )}
+          </div>
+          
+          {/* Visual Editor - Takes most space */}
+          <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+            <VisualSegmentEditor className="flex-1 min-h-0" />
+            
+            {/* Mini Preview at bottom */}
+            <MiniPreview 
+              collapsed={previewCollapsed}
+              onToggleCollapse={togglePreviewCollapsed}
+              onExpand={() => setLayoutMode('default')}
+            />
+          </div>
+        </main>
+        
+        {/* Dialogs */}
+        <ProjectManager open={showProjectManager} onOpenChange={setShowProjectManager} />
+        <SettingsPanel open={showSettings} onOpenChange={setShowSettings} />
+        <KeyboardShortcutsDialog open={showShortcuts} onOpenChange={setShowShortcuts} />
+      </div>
+    );
+  }
   
+  // Default Mode Layout - 3 Panel
   return (
     <div className="h-screen flex flex-col bg-background overflow-hidden">
       {/* Header */}
@@ -192,6 +332,22 @@ Delete this text and start writing your own script!`,
         </div>
         
         <div className="flex items-center gap-2">
+          {showVisualEditor && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  onClick={() => setLayoutMode('visual-expanded')}
+                >
+                  <Maximize2 size={16} className="mr-2" />
+                  Expand Editor
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Maximize editor for region drawing</TooltipContent>
+            </Tooltip>
+          )}
+          
           <Tooltip>
             <TooltipTrigger asChild>
               <Button variant="ghost" size="icon" onClick={() => setShowSettings(true)}>
@@ -250,50 +406,96 @@ Delete this text and start writing your own script!`,
         </ResizablePanelGroup>
       </main>
       
-      {/* Project Manager Dialog */}
-      <ProjectManager 
-        open={showProjectManager} 
-        onOpenChange={setShowProjectManager} 
-      />
-      
-      {/* Settings Panel Dialog */}
-      <SettingsPanel 
-        open={showSettings} 
-        onOpenChange={setShowSettings} 
-      />
-      
-      {/* Keyboard Shortcuts Dialog */}
-      {showShortcuts && (
-        <div 
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80"
-          onClick={() => setShowShortcuts(false)}
-        >
-          <div 
-            className="bg-card rounded-lg p-6 max-w-md w-full mx-4"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
-              <Keyboard size={20} />
-              Keyboard Shortcuts
-            </h2>
-            <div className="space-y-2">
-              {KEYBOARD_SHORTCUTS.map(({ key, action }) => (
-                <div key={key} className="flex items-center justify-between py-1.5">
-                  <span className="text-muted-foreground">{action}</span>
-                  <kbd className="kbd px-2">{key}</kbd>
-                </div>
-              ))}
-            </div>
-            <Button 
-              className="w-full mt-4" 
-              variant="secondary"
-              onClick={() => setShowShortcuts(false)}
+      {/* Dialogs */}
+      <ProjectManager open={showProjectManager} onOpenChange={setShowProjectManager} />
+      <SettingsPanel open={showSettings} onOpenChange={setShowSettings} />
+      <KeyboardShortcutsDialog open={showShortcuts} onOpenChange={setShowShortcuts} />
+    </div>
+  );
+};
+
+// Collapsed Segment List - Icon only view
+const CollapsedSegmentList = () => {
+  const project = useTeleprompterStore((s) => s.project);
+  const selectedSegmentId = useTeleprompterStore((s) => s.editor.selectedSegmentId);
+  const selectSegment = useTeleprompterStore((s) => s.selectSegment);
+  const setCurrentSegment = useTeleprompterStore((s) => s.setCurrentSegment);
+  
+  if (!project) return null;
+  
+  const getSegmentIcon = (type: string) => {
+    switch (type) {
+      case 'image':
+        return '🖼️';
+      case 'image-region':
+        return '✂️';
+      case 'pdf-page':
+        return '📄';
+      default:
+        return '📝';
+    }
+  };
+  
+  return (
+    <div className="flex flex-col h-full py-2">
+      {project.segments.map((segment, index) => (
+        <Tooltip key={segment.id}>
+          <TooltipTrigger asChild>
+            <button
+              className={cn(
+                'w-full h-10 flex items-center justify-center text-lg transition-colors',
+                selectedSegmentId === segment.id
+                  ? 'bg-primary/10 text-primary'
+                  : 'hover:bg-secondary text-muted-foreground'
+              )}
+              onClick={() => {
+                selectSegment(segment.id);
+                setCurrentSegment(index);
+              }}
             >
-              Close
-            </Button>
-          </div>
+              {getSegmentIcon(segment.type)}
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="right">{segment.name}</TooltipContent>
+        </Tooltip>
+      ))}
+    </div>
+  );
+};
+
+// Keyboard Shortcuts Dialog
+const KeyboardShortcutsDialog = ({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) => {
+  if (!open) return null;
+  
+  return (
+    <div 
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/80"
+      onClick={() => onOpenChange(false)}
+    >
+      <div 
+        className="bg-card rounded-lg p-6 max-w-md w-full mx-4"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+          <Keyboard size={20} />
+          Keyboard Shortcuts
+        </h2>
+        <div className="space-y-2">
+          {KEYBOARD_SHORTCUTS.map(({ key, action }) => (
+            <div key={key} className="flex items-center justify-between py-1.5">
+              <span className="text-muted-foreground">{action}</span>
+              <kbd className="kbd px-2">{key}</kbd>
+            </div>
+          ))}
         </div>
-      )}
+        <Button 
+          className="w-full mt-4" 
+          variant="secondary"
+          onClick={() => onOpenChange(false)}
+        >
+          Close
+        </Button>
+      </div>
     </div>
   );
 };
