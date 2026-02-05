@@ -19,7 +19,7 @@ export const SegmentOverlay = memo<SegmentOverlayProps>(({
   isPlaying,
 }) => {
   const [isDragging, setIsDragging] = useState(false);
-  const [isResizing, setIsResizing] = useState<'top' | 'bottom' | null>(null);
+  const [isResizing, setIsResizing] = useState<'top' | 'bottom' | 'left' | 'right' | null>(null);
   const [isEditingLabel, setIsEditingLabel] = useState(false);
   const [labelValue, setLabelValue] = useState(segment.label);
   const dragStartRef = useRef<{ x: number; y: number; region: typeof segment.region } | null>(null);
@@ -75,14 +75,16 @@ export const SegmentOverlay = memo<SegmentOverlayProps>(({
   }, [segment, containerWidth, containerHeight, updateSegment, selectSegment]);
   
   // Handle resize
-  const handleResizeStart = useCallback((edge: 'top' | 'bottom', e: React.MouseEvent) => {
+  const handleResizeStart = useCallback((edge: 'top' | 'bottom' | 'left' | 'right', e: React.MouseEvent) => {
     e.stopPropagation();
     setIsResizing(edge);
     
+    const startX = e.clientX;
     const startY = e.clientY;
     const startRegion = { ...segment.region };
     
     const handleMove = (moveEvent: MouseEvent) => {
+      const dx = ((moveEvent.clientX - startX) / containerWidth) * 100;
       const dy = ((moveEvent.clientY - startY) / containerHeight) * 100;
       
       if (edge === 'top') {
@@ -91,10 +93,21 @@ export const SegmentOverlay = memo<SegmentOverlayProps>(({
         updateSegment(segment.id, {
           region: { ...segment.region, y: newY, height: newHeight },
         });
-      } else {
+      } else if (edge === 'bottom') {
         const newHeight = Math.max(5, Math.min(100 - startRegion.y, startRegion.height + dy));
         updateSegment(segment.id, {
           region: { ...segment.region, height: newHeight },
+        });
+      } else if (edge === 'left') {
+        const newX = Math.max(0, Math.min(startRegion.x + startRegion.width - 5, startRegion.x + dx));
+        const newWidth = startRegion.width - (newX - startRegion.x);
+        updateSegment(segment.id, {
+          region: { ...segment.region, x: newX, width: newWidth },
+        });
+      } else if (edge === 'right') {
+        const newWidth = Math.max(5, Math.min(100 - startRegion.x, startRegion.width + dx));
+        updateSegment(segment.id, {
+          region: { ...segment.region, width: newWidth },
         });
       }
     };
@@ -107,7 +120,7 @@ export const SegmentOverlay = memo<SegmentOverlayProps>(({
     
     window.addEventListener('mousemove', handleMove);
     window.addEventListener('mouseup', handleUp);
-  }, [segment, containerHeight, updateSegment]);
+  }, [segment, containerWidth, containerHeight, updateSegment]);
   
   // Handle label edit
   const handleDoubleClick = useCallback((e: React.MouseEvent) => {
@@ -145,6 +158,18 @@ export const SegmentOverlay = memo<SegmentOverlayProps>(({
       <div
         className="absolute -bottom-1 left-0 right-0 h-3 cursor-ns-resize hover:bg-primary/30"
         onMouseDown={(e) => handleResizeStart('bottom', e)}
+      />
+      
+      {/* Left resize handle */}
+      <div
+        className="absolute -left-1 top-0 bottom-0 w-3 cursor-ew-resize hover:bg-primary/30"
+        onMouseDown={(e) => handleResizeStart('left', e)}
+      />
+      
+      {/* Right resize handle */}
+      <div
+        className="absolute -right-1 top-0 bottom-0 w-3 cursor-ew-resize hover:bg-primary/30"
+        onMouseDown={(e) => handleResizeStart('right', e)}
       />
       
       {/* Label */}
