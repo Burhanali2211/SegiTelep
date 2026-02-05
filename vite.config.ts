@@ -18,4 +18,20 @@ export default defineConfig(({ mode }) => ({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  optimizeDeps: {
+    // Force rebuild of dependencies
+    force: true,
+    include: [
+      '@radix-ui/react-switch',
+      '@radix-ui/react-separator',
+      '@radix-ui/react-tabs',
+      '@radix-ui/react-scroll-area',
+      '@radix-ui/react-slider',
+      '@radix-ui/react-dialog',
+      '@radix-ui/react-dropdown-menu',
+      '@radix-ui/react-tooltip',
+      '@radix-ui/react-select',
+      '@radix-ui/react-checkbox',
+    ],
+  },
 }));
