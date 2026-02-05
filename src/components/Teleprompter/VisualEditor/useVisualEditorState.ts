@@ -19,7 +19,17 @@ export interface ImagePage {
   segments: VisualSegment[];
 }
 
+export type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
+
 interface VisualEditorState {
+  // Project metadata
+  projectId: string | null;
+  projectName: string;
+  lastSaved: number | null;
+  isDirty: boolean;
+  saveStatus: SaveStatus;
+  isLoading: boolean;
+  
   // Pages and segments
   pages: ImagePage[];
   currentPageIndex: number;
@@ -48,6 +58,15 @@ interface VisualEditorState {
   
   // Audio
   audioFile: { id: string; name: string; data: string; duration: number } | null;
+  
+  // Actions - Project
+  setProjectId: (id: string | null) => void;
+  setProjectName: (name: string) => void;
+  setLastSaved: (timestamp: number | null) => void;
+  setIsDirty: (dirty: boolean) => void;
+  setSaveStatus: (status: SaveStatus) => void;
+  setIsLoading: (loading: boolean) => void;
+  markDirty: () => void;
   
   // Actions - Pages
   addPage: (data: string) => void;
@@ -103,14 +122,29 @@ interface VisualEditorState {
   
   // Reset
   reset: () => void;
+  
+  // Load project data
+  loadProjectData: (data: { 
+    projectId: string; 
+    projectName: string; 
+    pages: ImagePage[]; 
+    audioFile: { id: string; name: string; data: string; duration: number } | null;
+    lastSaved: number;
+  }) => void;
 }
 
 const initialState = {
-  pages: [],
+  projectId: null as string | null,
+  projectName: 'Untitled Project',
+  lastSaved: null as number | null,
+  isDirty: false,
+  saveStatus: 'idle' as SaveStatus,
+  isLoading: false,
+  pages: [] as ImagePage[],
   currentPageIndex: 0,
   selectedSegmentIds: new Set<string>(),
-  lastSelectedId: null,
-  clipboard: [],
+  lastSelectedId: null as string | null,
+  clipboard: [] as VisualSegment[],
   zoom: 1,
   pan: { x: 0, y: 0 },
   isDrawing: false,
@@ -118,11 +152,37 @@ const initialState = {
   isPlaying: false,
   playbackSpeed: 1,
   chainTimesMode: false,
-  audioFile: null,
+  audioFile: null as { id: string; name: string; data: string; duration: number } | null,
 };
 
 export const useVisualEditorState = create<VisualEditorState>((set, get) => ({
   ...initialState,
+  
+  // Project metadata actions
+  setProjectId: (id) => set({ projectId: id }),
+  setProjectName: (name) => set({ projectName: name, isDirty: true }),
+  setLastSaved: (timestamp) => set({ lastSaved: timestamp }),
+  setIsDirty: (dirty) => set({ isDirty: dirty }),
+  setSaveStatus: (status) => set({ saveStatus: status }),
+  setIsLoading: (loading) => set({ isLoading: loading }),
+  markDirty: () => set({ isDirty: true }),
+  
+  // Load project data
+  loadProjectData: (data) => {
+    set({
+      projectId: data.projectId,
+      projectName: data.projectName,
+      pages: data.pages,
+      audioFile: data.audioFile,
+      lastSaved: data.lastSaved,
+      isDirty: false,
+      saveStatus: 'idle',
+      isLoading: false,
+      currentPageIndex: 0,
+      selectedSegmentIds: new Set(),
+      lastSelectedId: null,
+    });
+  },
   
   // Pages
   addPage: (data) => {
@@ -134,6 +194,7 @@ export const useVisualEditorState = create<VisualEditorState>((set, get) => ({
     set((state) => ({
       pages: [...state.pages, newPage],
       currentPageIndex: state.pages.length,
+      isDirty: true,
     }));
   },
   
@@ -143,6 +204,7 @@ export const useVisualEditorState = create<VisualEditorState>((set, get) => ({
       return {
         pages: newPages,
         currentPageIndex: Math.min(state.currentPageIndex, newPages.length - 1),
+        isDirty: true,
       };
     });
   },
@@ -181,6 +243,7 @@ export const useVisualEditorState = create<VisualEditorState>((set, get) => ({
       ),
       selectedSegmentIds: new Set([newSegment.id]),
       lastSelectedId: newSegment.id,
+      isDirty: true,
     }));
   },
   
@@ -212,7 +275,7 @@ export const useVisualEditorState = create<VisualEditorState>((set, get) => ({
         return { ...page, segments: newSegments };
       });
       
-      return { pages: newPages };
+      return { pages: newPages, isDirty: true };
     });
   },
   
@@ -226,6 +289,7 @@ export const useVisualEditorState = create<VisualEditorState>((set, get) => ({
       })),
       selectedSegmentIds: new Set(),
       lastSelectedId: null,
+      isDirty: true,
     }));
   },
   
@@ -426,7 +490,7 @@ export const useVisualEditorState = create<VisualEditorState>((set, get) => ({
   
   // Audio
   setAudioFile: (file) => {
-    set({ audioFile: file });
+    set({ audioFile: file, isDirty: true });
   },
   
   // Helpers
@@ -460,7 +524,10 @@ export const useVisualEditorState = create<VisualEditorState>((set, get) => ({
   
   // Reset
   reset: () => {
-    set(initialState);
+    set({
+      ...initialState,
+      selectedSegmentIds: new Set<string>(),
+    });
   },
 }));
 
