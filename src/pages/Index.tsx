@@ -211,21 +211,27 @@ Delete this text and start writing your own script!`,
         <ResizablePanelGroup direction="horizontal" className="h-full">
           {/* Segment List */}
           <ResizablePanel defaultSize={20} minSize={15} maxSize={30}>
-            <SegmentList />
+            <div className="h-full overflow-hidden">
+              <SegmentList />
+            </div>
           </ResizablePanel>
           
           <ResizableHandle withHandle />
           
           {/* Editor */}
           <ResizablePanel defaultSize={35} minSize={25}>
-            <ContentEditor />
+            <div className="h-full overflow-hidden">
+              <ContentEditor />
+            </div>
           </ResizablePanel>
           
           <ResizableHandle withHandle />
           
           {/* Teleprompter Display */}
           <ResizablePanel defaultSize={45} minSize={30}>
-            <TeleprompterDisplay className="h-full" />
+            <div className="h-full overflow-hidden">
+              <TeleprompterDisplay className="h-full" />
+            </div>
           </ResizablePanel>
         </ResizablePanelGroup>
       </main>

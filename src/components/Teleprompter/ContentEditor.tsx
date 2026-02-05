@@ -105,9 +105,9 @@ export const ContentEditor = memo<ContentEditorProps>(({ className }) => {
   const wordCount = localContent.trim() ? localContent.trim().split(/\s+/).length : 0;
   
   return (
-    <div className={cn('flex flex-col h-full', className)}>
+    <div className={cn('flex flex-col h-full overflow-hidden', className)}>
       {/* Header */}
-      <div className="panel-header">
+      <div className="panel-header shrink-0">
         <div className="flex items-center gap-3 flex-1">
           <Input
             value={segment.name}
@@ -134,7 +134,7 @@ export const ContentEditor = memo<ContentEditorProps>(({ className }) => {
       </div>
       
       {/* Settings Bar */}
-      <div className="flex items-center gap-4 px-4 py-2 border-b border-border bg-card/50 flex-wrap">
+      <div className="flex items-center gap-4 px-4 py-2 border-b border-border bg-card/50 flex-wrap shrink-0">
         {/* Font Size */}
         <div className="flex items-center gap-2">
           <Label className="text-xs text-muted-foreground">Size</Label>
@@ -229,13 +229,13 @@ export const ContentEditor = memo<ContentEditorProps>(({ className }) => {
       </div>
       
       {/* Text Editor */}
-      <div className="flex-1 p-4 overflow-hidden">
+      <div className="flex-1 min-h-0 p-4 overflow-hidden">
         <textarea
           ref={textareaRef}
           value={localContent}
           onChange={(e) => handleContentChange(e.target.value)}
           placeholder="Enter your teleprompter text here..."
-          className="editor-textarea text-lg"
+          className="editor-textarea text-lg h-full"
           style={{
             fontSize: Math.min(segment.fontSize / 3, 24),
             fontFamily: segment.fontFamily,
@@ -245,7 +245,7 @@ export const ContentEditor = memo<ContentEditorProps>(({ className }) => {
       </div>
       
       {/* Footer Stats */}
-      <div className="flex items-center justify-between px-4 py-2 border-t border-border text-xs text-muted-foreground">
+      <div className="flex items-center justify-between px-4 py-2 border-t border-border text-xs text-muted-foreground shrink-0">
         <div className="flex items-center gap-4">
           <span>Scroll: {segment.scrollSpeed} px/s</span>
           <span>Est. duration: ~{Math.round((wordCount / 150) * 60)}s</span>
