@@ -5,6 +5,7 @@ export { TimelineStrip } from './TimelineStrip';
 export { AudioWaveform } from './AudioWaveform';
 export { LeftControlPanel } from './LeftControlPanel';
 export { SelectionToolbar } from './SelectionToolbar';
+export { FullscreenPlayer } from './FullscreenPlayer';
 export { useVisualEditorState, formatTime, parseTime } from './useVisualEditorState';
 export { useUndoRedo } from './useUndoRedo';
 export type { VisualSegment, ImagePage } from './useVisualEditorState';
