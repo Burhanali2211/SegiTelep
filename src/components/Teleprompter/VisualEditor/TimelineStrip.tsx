@@ -68,7 +68,7 @@ export const TimelineStrip = memo<TimelineStripProps>(({ className }) => {
   return (
     <div className={cn('bg-card border-t border-border', className)}>
       {/* Segments strip */}
-      <div className="flex items-stretch overflow-x-auto p-2 gap-1.5">
+      <div className="flex items-stretch overflow-x-auto p-2 gap-3">
         {segments.map((segment) => {
           const isSelected = selectedSegmentIds.has(segment.id);
           const isPlaying = playbackTime >= segment.startTime && playbackTime < segment.endTime;
@@ -77,9 +77,9 @@ export const TimelineStrip = memo<TimelineStripProps>(({ className }) => {
             <div
               key={segment.id}
               className={cn(
-                'flex flex-col gap-1 p-2 rounded border min-w-[160px] cursor-pointer transition-colors',
+                'flex flex-col gap-2 p-3 rounded-lg border min-w-[200px] cursor-pointer transition-colors',
                 isPlaying && 'border-red-500 bg-red-500/10',
-                isSelected && !isPlaying && 'border-yellow-400 bg-yellow-400/10',
+                isSelected && !isPlaying && 'border-primary bg-primary/10',
                 !isSelected && !isPlaying && 'border-border bg-muted/30 hover:bg-muted/50'
               )}
               onClick={(e) => {
@@ -92,137 +92,169 @@ export const TimelineStrip = memo<TimelineStripProps>(({ className }) => {
                 }
               }}
             >
-              <div className="flex items-center gap-1.5 text-xs font-medium">
-                <span className={cn(
-                  'w-2 h-2 rounded-full shrink-0',
-                  isPlaying && 'bg-red-500',
-                  isSelected && !isPlaying && 'bg-yellow-400',
-                  !isSelected && !isPlaying && 'bg-green-500'
-                )} />
-                <span className="truncate flex-1">{segment.label}</span>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-5 w-5 shrink-0"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handlePlaySegment(segment);
-                  }}
-                >
-                  <Play size={10} />
-                </Button>
+              {/* Header row: label + play */}
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <span className={cn(
+                    'w-2.5 h-2.5 rounded-full shrink-0',
+                    isPlaying && 'bg-red-500',
+                    isSelected && !isPlaying && 'bg-primary',
+                    !isSelected && !isPlaying && 'bg-green-500'
+                  )} />
+                  <span className="text-sm font-medium truncate max-w-[120px]">{segment.label}</span>
+                </div>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 shrink-0"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handlePlaySegment(segment);
+                      }}
+                    >
+                      <Play size={14} />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Play segment</TooltipContent>
+                </Tooltip>
               </div>
               
-              {/* Time controls */}
-              <div className="flex items-center gap-1">
-                {/* Start time */}
-                <div className="flex items-center gap-0.5">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-5 w-5"
-                    onClick={(e) => { e.stopPropagation(); handleTimeAdjust(segment, 'start', -0.1); }}
-                  >
-                    <ChevronLeft size={10} />
-                  </Button>
-                  
-                  {editingField?.id === segment.id && editingField.field === 'start' ? (
-                    <Input
-                      value={editValue}
-                      onChange={(e) => setEditValue(e.target.value)}
-                      onBlur={handleTimeSubmit}
-                      onKeyDown={(e) => e.key === 'Enter' && handleTimeSubmit()}
-                      className="h-5 w-16 text-[10px] text-center p-0"
-                      onClick={(e) => e.stopPropagation()}
-                      autoFocus
-                    />
-                  ) : (
-                    <button
-                      className="text-[10px] px-1 hover:bg-muted rounded font-mono"
-                      onClick={(e) => { e.stopPropagation(); handleTimeEdit(segment, 'start'); }}
-                    >
-                      {formatTime(segment.startTime)}
-                    </button>
-                  )}
-                  
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-5 w-5"
-                    onClick={(e) => { e.stopPropagation(); handleTimeAdjust(segment, 'start', 0.1); }}
-                  >
-                    <ChevronRight size={10} />
-                  </Button>
-                  
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-5 w-5"
-                        onClick={(e) => { e.stopPropagation(); handleCaptureTime(segment, 'start'); }}
+              {/* Time controls - stacked vertically */}
+              <div className="flex flex-col gap-1.5">
+                {/* Start time row */}
+                <div className="flex items-center gap-1">
+                  <span className="text-[10px] text-muted-foreground w-8">Start</span>
+                  <div className="flex items-center gap-0.5 flex-1">
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          className="h-6 w-6"
+                          onClick={(e) => { e.stopPropagation(); handleTimeAdjust(segment, 'start', -0.1); }}
+                        >
+                          <ChevronLeft size={12} />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>-0.1s</TooltipContent>
+                    </Tooltip>
+                    
+                    {editingField?.id === segment.id && editingField.field === 'start' ? (
+                      <Input
+                        value={editValue}
+                        onChange={(e) => setEditValue(e.target.value)}
+                        onBlur={handleTimeSubmit}
+                        onKeyDown={(e) => e.key === 'Enter' && handleTimeSubmit()}
+                        className="h-6 w-20 text-xs text-center px-1"
+                        onClick={(e) => e.stopPropagation()}
+                        autoFocus
+                      />
+                    ) : (
+                      <button
+                        className="h-6 px-2 text-xs hover:bg-muted rounded font-mono border border-border bg-background"
+                        onClick={(e) => { e.stopPropagation(); handleTimeEdit(segment, 'start'); }}
                       >
-                        <Target size={10} />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>Set to current time (S)</TooltipContent>
-                  </Tooltip>
+                        {formatTime(segment.startTime)}
+                      </button>
+                    )}
+                    
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          className="h-6 w-6"
+                          onClick={(e) => { e.stopPropagation(); handleTimeAdjust(segment, 'start', 0.1); }}
+                        >
+                          <ChevronRight size={12} />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>+0.1s</TooltipContent>
+                    </Tooltip>
+                    
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="secondary"
+                          size="icon"
+                          className="h-6 w-6 ml-1"
+                          onClick={(e) => { e.stopPropagation(); handleCaptureTime(segment, 'start'); }}
+                        >
+                          <Target size={12} />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Capture current time (S)</TooltipContent>
+                    </Tooltip>
+                  </div>
                 </div>
                 
-                <span className="text-[10px] text-muted-foreground">-</span>
-                
-                {/* End time */}
-                <div className="flex items-center gap-0.5">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-5 w-5"
-                    onClick={(e) => { e.stopPropagation(); handleTimeAdjust(segment, 'end', -0.1); }}
-                  >
-                    <ChevronLeft size={10} />
-                  </Button>
-                  
-                  {editingField?.id === segment.id && editingField.field === 'end' ? (
-                    <Input
-                      value={editValue}
-                      onChange={(e) => setEditValue(e.target.value)}
-                      onBlur={handleTimeSubmit}
-                      onKeyDown={(e) => e.key === 'Enter' && handleTimeSubmit()}
-                      className="h-5 w-16 text-[10px] text-center p-0"
-                      onClick={(e) => e.stopPropagation()}
-                      autoFocus
-                    />
-                  ) : (
-                    <button
-                      className="text-[10px] px-1 hover:bg-muted rounded font-mono"
-                      onClick={(e) => { e.stopPropagation(); handleTimeEdit(segment, 'end'); }}
-                    >
-                      {formatTime(segment.endTime)}
-                    </button>
-                  )}
-                  
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-5 w-5"
-                    onClick={(e) => { e.stopPropagation(); handleTimeAdjust(segment, 'end', 0.1); }}
-                  >
-                    <ChevronRight size={10} />
-                  </Button>
-                  
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-5 w-5"
-                        onClick={(e) => { e.stopPropagation(); handleCaptureTime(segment, 'end'); }}
+                {/* End time row */}
+                <div className="flex items-center gap-1">
+                  <span className="text-[10px] text-muted-foreground w-8">End</span>
+                  <div className="flex items-center gap-0.5 flex-1">
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          className="h-6 w-6"
+                          onClick={(e) => { e.stopPropagation(); handleTimeAdjust(segment, 'end', -0.1); }}
+                        >
+                          <ChevronLeft size={12} />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>-0.1s</TooltipContent>
+                    </Tooltip>
+                    
+                    {editingField?.id === segment.id && editingField.field === 'end' ? (
+                      <Input
+                        value={editValue}
+                        onChange={(e) => setEditValue(e.target.value)}
+                        onBlur={handleTimeSubmit}
+                        onKeyDown={(e) => e.key === 'Enter' && handleTimeSubmit()}
+                        className="h-6 w-20 text-xs text-center px-1"
+                        onClick={(e) => e.stopPropagation()}
+                        autoFocus
+                      />
+                    ) : (
+                      <button
+                        className="h-6 px-2 text-xs hover:bg-muted rounded font-mono border border-border bg-background"
+                        onClick={(e) => { e.stopPropagation(); handleTimeEdit(segment, 'end'); }}
                       >
-                        <Target size={10} />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>Set to current time (E)</TooltipContent>
-                  </Tooltip>
+                        {formatTime(segment.endTime)}
+                      </button>
+                    )}
+                    
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          className="h-6 w-6"
+                          onClick={(e) => { e.stopPropagation(); handleTimeAdjust(segment, 'end', 0.1); }}
+                        >
+                          <ChevronRight size={12} />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>+0.1s</TooltipContent>
+                    </Tooltip>
+                    
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="secondary"
+                          size="icon"
+                          className="h-6 w-6 ml-1"
+                          onClick={(e) => { e.stopPropagation(); handleCaptureTime(segment, 'end'); }}
+                        >
+                          <Target size={12} />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Capture current time (E)</TooltipContent>
+                    </Tooltip>
+                  </div>
                 </div>
               </div>
             </div>
