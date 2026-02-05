@@ -49,6 +49,8 @@ export const PlaybackControls = memo<PlaybackControlsProps>(({
   const currentSegment = project?.segments[currentSegmentIndex];
   
   const handlePlayPause = useCallback(() => {
+    if (!project || totalSegments === 0) return;
+    
     if (!isPlaying) {
       play();
     } else if (isPaused) {
@@ -56,7 +58,7 @@ export const PlaybackControls = memo<PlaybackControlsProps>(({
     } else {
       pause();
     }
-  }, [isPlaying, isPaused, play, pause]);
+  }, [isPlaying, isPaused, play, pause, project, totalSegments]);
   
   const handleSpeedChange = useCallback((delta: number) => {
     setSpeed(speed + delta);

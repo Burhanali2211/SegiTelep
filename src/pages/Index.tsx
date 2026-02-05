@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, forwardRef } from 'react';
 import { useTeleprompterStore } from '@/store/teleprompterStore';
 import { createProject, getAllProjects, loadProject } from '@/core/storage/ProjectStorage';
 import { isVisualSegment } from '@/types/teleprompter.types';
@@ -30,6 +30,11 @@ import {
   ResizableHandle,
 } from '@/components/ui/resizable';
 import {
+  Tabs,
+  TabsList,
+  TabsTrigger,
+} from '@/components/ui/tabs';
+import {
   Menu,
   FolderOpen,
   Save,
@@ -40,6 +45,8 @@ import {
   PanelLeft,
   Maximize2,
   Minimize2,
+  FileText,
+  Image,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -55,11 +62,14 @@ const KEYBOARD_SHORTCUTS = [
   { key: 'Ctrl+S', action: 'Save project' },
 ];
 
+type EditorType = 'text' | 'visual';
+
 const Index = () => {
   const [showProjectManager, setShowProjectManager] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [initialized, setInitialized] = useState(false);
+  const [editorType, setEditorType] = useState<EditorType>('text');
   
   const project = useTeleprompterStore((s) => s.project);
   const selectedSegmentId = useTeleprompterStore((s) => s.editor.selectedSegmentId);
@@ -79,9 +89,17 @@ const Index = () => {
     return project?.segments.find((s) => s.id === selectedSegmentId);
   }, [project?.segments, selectedSegmentId]);
   
-  const showVisualEditor = selectedSegment && isVisualSegment(selectedSegment);
+  // Auto-detect editor type from selected segment
+  useEffect(() => {
+    if (selectedSegment) {
+      const isVisual = isVisualSegment(selectedSegment);
+      setEditorType(isVisual ? 'visual' : 'text');
+    }
+  }, [selectedSegment]);
   
-  // Auto-switch layout mode based on segment type
+  const showVisualEditor = editorType === 'visual';
+  
+  // Auto-switch layout mode based on editor type
   useEffect(() => {
     if (showVisualEditor && layoutMode === 'default') {
       setLayoutMode('visual-expanded');
@@ -160,6 +178,22 @@ Delete this text and start writing your own script!`,
     );
   }
 
+  // Type Selector Component
+  const TypeSelector = () => (
+    <Tabs value={editorType} onValueChange={(v) => setEditorType(v as EditorType)} className="ml-4">
+      <TabsList className="h-8">
+        <TabsTrigger value="text" className="text-xs h-7 px-3">
+          <FileText size={14} className="mr-1.5" />
+          Text Mode
+        </TabsTrigger>
+        <TabsTrigger value="visual" className="text-xs h-7 px-3">
+          <Image size={14} className="mr-1.5" />
+          Visual Mode
+        </TabsTrigger>
+      </TabsList>
+    </Tabs>
+  );
+
   // Visual Mode Layout - Optimized for region editing
   if (layoutMode === 'visual-expanded') {
     return (
@@ -198,6 +232,8 @@ Delete this text and start writing your own script!`,
               <Monitor size={20} className="text-primary" />
               <span className="font-semibold text-lg">ProTeleprompter</span>
             </div>
+            
+            <TypeSelector />
             
             {project && (
               <div className="flex items-center gap-2 ml-4 text-sm text-muted-foreground">
@@ -256,7 +292,7 @@ Delete this text and start writing your own script!`,
             {segmentListCollapsed ? (
               <CollapsedSegmentList />
             ) : (
-              <SegmentList />
+              <SegmentList editorType={editorType} />
             )}
           </div>
           
@@ -319,6 +355,8 @@ Delete this text and start writing your own script!`,
             <span className="font-semibold text-lg">ProTeleprompter</span>
           </div>
           
+          <TypeSelector />
+          
           {project && (
             <div className="flex items-center gap-2 ml-4 text-sm text-muted-foreground">
               <span className="font-medium text-foreground">{project.name}</span>
@@ -378,13 +416,13 @@ Delete this text and start writing your own script!`,
           {/* Segment List */}
           <ResizablePanel defaultSize={20} minSize={15} maxSize={30}>
             <div className="h-full overflow-hidden">
-              <SegmentList />
+              <SegmentList editorType={editorType} />
             </div>
           </ResizablePanel>
           
           <ResizableHandle withHandle />
           
-          {/* Editor - Dynamic based on segment type */}
+          {/* Editor - Dynamic based on editor type */}
           <ResizablePanel defaultSize={35} minSize={25}>
             <div className="h-full overflow-hidden">
               {showVisualEditor ? (
@@ -414,8 +452,8 @@ Delete this text and start writing your own script!`,
   );
 };
 
-// Collapsed Segment List - Icon only view
-const CollapsedSegmentList = () => {
+// Collapsed Segment List - Icon only view (with forwardRef to fix warning)
+const CollapsedSegmentList = forwardRef<HTMLDivElement>((_, ref) => {
   const project = useTeleprompterStore((s) => s.project);
   const selectedSegmentId = useTeleprompterStore((s) => s.editor.selectedSegmentId);
   const selectSegment = useTeleprompterStore((s) => s.selectSegment);
@@ -437,13 +475,14 @@ const CollapsedSegmentList = () => {
   };
   
   return (
-    <div className="flex flex-col h-full py-2">
+    <div ref={ref} className="flex flex-col h-full py-2">
       {project.segments.map((segment, index) => (
         <Tooltip key={segment.id}>
           <TooltipTrigger asChild>
-            <button
+            <Button
+              variant="ghost"
               className={cn(
-                'w-full h-10 flex items-center justify-center text-lg transition-colors',
+                'w-full h-10 flex items-center justify-center text-lg rounded-none',
                 selectedSegmentId === segment.id
                   ? 'bg-primary/10 text-primary'
                   : 'hover:bg-secondary text-muted-foreground'
@@ -454,14 +493,16 @@ const CollapsedSegmentList = () => {
               }}
             >
               {getSegmentIcon(segment.type)}
-            </button>
+            </Button>
           </TooltipTrigger>
           <TooltipContent side="right">{segment.name}</TooltipContent>
         </Tooltip>
       ))}
     </div>
   );
-};
+});
+
+CollapsedSegmentList.displayName = 'CollapsedSegmentList';
 
 // Keyboard Shortcuts Dialog
 const KeyboardShortcutsDialog = ({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) => {
