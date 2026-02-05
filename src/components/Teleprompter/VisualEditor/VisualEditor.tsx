@@ -1,5 +1,5 @@
 import React, { memo, useEffect, useState, useCallback } from 'react';
-import { useVisualEditorState } from './useVisualEditorState';
+import { useVisualEditorState, SaveStatus } from './useVisualEditorState';
 import { useUndoRedo } from './useUndoRedo';
 import { ImageCanvas } from './ImageCanvas';
 import { TimelineStrip } from './TimelineStrip';
@@ -7,26 +7,29 @@ import { SelectionToolbar } from './SelectionToolbar';
 import { LeftControlPanel } from './LeftControlPanel';
 import { AudioWaveform } from './AudioWaveform';
 import { FullscreenPlayer } from './FullscreenPlayer';
+import { ProjectListDialog } from './ProjectListDialog';
+import { KeyboardShortcutsOverlay } from './KeyboardShortcutsOverlay';
+import { useVisualProjectSession } from '@/hooks/useVisualProjectSession';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { Skeleton } from '@/components/ui/skeleton';
 import { 
-  Presentation, 
   Eye, 
   Save, 
   FolderOpen, 
   Play,
   Loader2,
   Check,
+  Plus,
+  Download,
+  Upload,
+  Keyboard,
+  Cloud,
+  CloudOff,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { 
-  saveVisualProject, 
-  loadVisualProject, 
-  getAllVisualProjects,
-  createVisualProject,
-  VisualProject,
-} from '@/core/storage/VisualProjectStorage';
+import { exportVisualProject, importVisualProject } from '@/core/storage/VisualProjectStorage';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -41,13 +44,65 @@ interface VisualEditorProps {
   onOpenPreview?: () => void;
 }
 
+// Save status indicator component
+const SaveStatusIndicator = ({ status, lastSaved }: { status: SaveStatus; lastSaved: number | null }) => {
+  if (status === 'saving') {
+    return (
+      <span className="text-[10px] text-muted-foreground flex items-center gap-1">
+        <Loader2 size={10} className="animate-spin" />
+        Saving...
+      </span>
+    );
+  }
+  
+  if (status === 'saved' && lastSaved) {
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span className="text-[10px] text-muted-foreground flex items-center gap-1 cursor-default">
+            <Cloud size={10} className="text-primary" />
+            Saved
+          </span>
+        </TooltipTrigger>
+        <TooltipContent>
+          Last saved: {new Date(lastSaved).toLocaleString()}
+        </TooltipContent>
+      </Tooltip>
+    );
+  }
+  
+  if (status === 'error') {
+    return (
+      <span className="text-[10px] text-destructive flex items-center gap-1">
+        <CloudOff size={10} />
+        Save failed
+      </span>
+    );
+  }
+  
+  return null;
+};
+
 export const VisualEditor = memo<VisualEditorProps>(({ className, onOpenPreview }) => {
-  const [currentProjectId, setCurrentProjectId] = useState<string | null>(null);
-  const [projectName, setProjectName] = useState('Untitled Project');
-  const [isSaving, setIsSaving] = useState(false);
-  const [savedProjects, setSavedProjects] = useState<VisualProject[]>([]);
   const [showPlayer, setShowPlayer] = useState(false);
-  const [lastSaved, setLastSaved] = useState<Date | null>(null);
+  const [showProjectList, setShowProjectList] = useState(false);
+  const [showShortcuts, setShowShortcuts] = useState(false);
+  
+  // Session management
+  const { 
+    saveProject, 
+    loadProject, 
+    createNewProject,
+    projectId,
+    isDirty,
+    saveStatus,
+    isLoading,
+  } = useVisualProjectSession();
+  
+  // Local state for project name editing
+  const projectName = useVisualEditorState((s) => s.projectName);
+  const setProjectName = useVisualEditorState((s) => s.setProjectName);
+  const lastSaved = useVisualEditorState((s) => s.lastSaved);
   
   const zoom = useVisualEditorState((s) => s.zoom);
   const selectedSegmentIds = useVisualEditorState((s) => s.selectedSegmentIds);
@@ -66,86 +121,48 @@ export const VisualEditor = memo<VisualEditorProps>(({ className, onOpenPreview 
   const setCurrentPage = useVisualEditorState((s) => s.setCurrentPage);
   const currentPageIndex = useVisualEditorState((s) => s.currentPageIndex);
   const setDrawing = useVisualEditorState((s) => s.setDrawing);
-  const reset = useVisualEditorState((s) => s.reset);
-  const setAudioFile = useVisualEditorState((s) => s.setAudioFile);
   
   const { saveState, undo, redo } = useUndoRedo();
   
-  // Load saved projects list
-  useEffect(() => {
-    getAllVisualProjects().then(setSavedProjects);
-  }, []);
-  
-  // Save project
-  const handleSave = useCallback(async () => {
+  // Export current project
+  const handleExport = useCallback(() => {
     if (pages.length === 0) {
-      toast.error('Add at least one image before saving');
+      toast.error('Add at least one image before exporting');
       return;
     }
     
-    setIsSaving(true);
-    try {
-      const project: VisualProject = {
-        id: currentProjectId || '',
-        name: projectName,
-        createdAt: Date.now(),
-        modifiedAt: Date.now(),
-        pages,
-        audioFile,
-      };
+    exportVisualProject({
+      id: projectId || 'exported',
+      name: projectName,
+      createdAt: Date.now(),
+      modifiedAt: Date.now(),
+      pages,
+      audioFile,
+    });
+    toast.success('Project exported');
+  }, [projectId, projectName, pages, audioFile]);
+  
+  // Import project
+  const handleImport = useCallback(async () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.visualprompt.json,.json';
+    
+    input.onchange = async (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (!file) return;
       
-      if (!currentProjectId) {
-        const newProject = await createVisualProject(projectName, pages, audioFile);
-        setCurrentProjectId(newProject.id);
-      } else {
-        project.id = currentProjectId;
-        await saveVisualProject(project);
+      try {
+        const imported = await importVisualProject(file);
+        await loadProject(imported.id);
+        toast.success(`Imported: ${imported.name}`);
+      } catch (error) {
+        toast.error('Failed to import project. Invalid file format.');
       }
-      
-      setLastSaved(new Date());
-      toast.success('Project saved');
-      getAllVisualProjects().then(setSavedProjects);
-    } catch (error) {
-      toast.error('Failed to save project');
-    } finally {
-      setIsSaving(false);
-    }
-  }, [currentProjectId, projectName, pages, audioFile]);
-  
-  // Load project
-  const handleLoad = useCallback(async (id: string) => {
-    const project = await loadVisualProject(id);
-    if (!project) {
-      toast.error('Project not found');
-      return;
-    }
+    };
     
-    reset();
-    setCurrentProjectId(project.id);
-    setProjectName(project.name);
-    
-    // Load pages into state
-    const { addPage, setAudioFile } = useVisualEditorState.getState();
-    project.pages.forEach((page) => {
-      addPage(page.data);
-    });
-    
-    // Manually set segments (need to update state directly)
-    useVisualEditorState.setState({ 
-      pages: project.pages,
-      audioFile: project.audioFile,
-    });
-    
-    toast.success(`Loaded: ${project.name}`);
-  }, [reset]);
-  
-  // New project
-  const handleNewProject = useCallback(() => {
-    reset();
-    setCurrentProjectId(null);
-    setProjectName('Untitled Project');
-    setLastSaved(null);
-  }, [reset]);
+    input.click();
+  }, [loadProject]);
   
   // Check if has segments to play
   const totalSegments = pages.reduce((acc, p) => acc + p.segments.filter(s => !s.isHidden).length, 0);
@@ -160,6 +177,41 @@ export const VisualEditor = memo<VisualEditorProps>(({ className, onOpenPreview 
       }
       
       const ctrl = e.ctrlKey || e.metaKey;
+      
+      // Show shortcuts (?)
+      if (e.key === '?' || (e.shiftKey && e.key === '/')) {
+        e.preventDefault();
+        setShowShortcuts(true);
+        return;
+      }
+      
+      // New project (Ctrl+N)
+      if (ctrl && e.key === 'n') {
+        e.preventDefault();
+        createNewProject();
+        return;
+      }
+      
+      // Open project (Ctrl+O)
+      if (ctrl && e.key === 'o') {
+        e.preventDefault();
+        setShowProjectList(true);
+        return;
+      }
+      
+      // Export (Ctrl+Shift+S)
+      if (ctrl && e.shiftKey && e.key === 's') {
+        e.preventDefault();
+        handleExport();
+        return;
+      }
+      
+      // Save shortcut (Ctrl+S)
+      if (ctrl && e.key === 's' && !e.shiftKey) {
+        e.preventDefault();
+        saveProject();
+        return;
+      }
       
       // New segment (N key)
       if (e.key === 'n' || e.key === 'N') {
@@ -257,13 +309,6 @@ export const VisualEditor = memo<VisualEditorProps>(({ className, onOpenPreview 
         }
         return;
       }
-      
-      // Save shortcut
-      if (ctrl && e.key === 's') {
-        e.preventDefault();
-        handleSave();
-        return;
-      }
     };
     
     window.addEventListener('keydown', handleKeyDown);
@@ -271,16 +316,57 @@ export const VisualEditor = memo<VisualEditorProps>(({ className, onOpenPreview 
   }, [
     selectedSegmentIds, zoom, pages.length, currentPageIndex,
     saveState, deleteSegments, copySelected, paste, duplicateSegment,
-    selectAll, deselectAll, undo, redo, setZoom, setCurrentPage, setDrawing, handleSave,
+    selectAll, deselectAll, undo, redo, setZoom, setCurrentPage, setDrawing,
+    saveProject, createNewProject, handleExport,
   ]);
   
   const hasHiddenSegments = currentPage?.segments.some(s => s.isHidden);
+  
+  // Loading state
+  if (isLoading) {
+    return (
+      <div className={cn('flex h-full bg-background overflow-hidden', className)}>
+        <div className="w-48 shrink-0 border-r p-3 space-y-3">
+          <Skeleton className="h-8 w-full" />
+          <Skeleton className="h-24 w-full" />
+          <Skeleton className="h-24 w-full" />
+        </div>
+        <div className="flex-1 flex flex-col">
+          <div className="h-10 border-b flex items-center px-3 gap-2">
+            <Skeleton className="h-7 w-40" />
+            <div className="flex-1" />
+            <Skeleton className="h-7 w-20" />
+            <Skeleton className="h-7 w-20" />
+          </div>
+          <div className="flex-1 flex items-center justify-center">
+            <div className="flex flex-col items-center gap-3">
+              <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+              <p className="text-sm text-muted-foreground">Loading project...</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
   
   return (
     <>
       {showPlayer && (
         <FullscreenPlayer onClose={() => setShowPlayer(false)} />
       )}
+      
+      <ProjectListDialog
+        open={showProjectList}
+        onOpenChange={setShowProjectList}
+        onSelectProject={loadProject}
+        onNewProject={() => createNewProject()}
+        currentProjectId={projectId}
+      />
+      
+      <KeyboardShortcutsOverlay
+        open={showShortcuts}
+        onOpenChange={setShowShortcuts}
+      />
       
       <div className={cn('flex h-full bg-background overflow-hidden', className)}>
         {/* Left Control Panel */}
@@ -299,42 +385,61 @@ export const VisualEditor = memo<VisualEditorProps>(({ className, onOpenPreview 
             />
             
             {/* Save status */}
-            {lastSaved && (
-              <span className="text-[10px] text-muted-foreground flex items-center gap-1">
-                <Check size={10} className="text-primary" />
-                {lastSaved.toLocaleTimeString()}
+            <SaveStatusIndicator status={saveStatus} lastSaved={lastSaved} />
+            
+            {/* Unsaved indicator */}
+            {isDirty && saveStatus === 'idle' && (
+              <span className="text-[10px] px-1.5 py-0.5 bg-accent/20 text-accent rounded">
+                Unsaved
               </span>
             )}
             
             <div className="flex-1" />
             
-            {/* Load dropdown */}
+            {/* Shortcuts help */}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setShowShortcuts(true)}>
+                  <Keyboard size={14} />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Keyboard shortcuts (?)</TooltipContent>
+            </Tooltip>
+            
+            {/* File menu */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" size="sm">
                   <FolderOpen size={14} className="mr-1" />
-                  Open
+                  File
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={handleNewProject}>
+                <DropdownMenuItem onClick={() => createNewProject()}>
+                  <Plus size={14} className="mr-2" />
                   New Project
+                  <span className="ml-auto text-[10px] text-muted-foreground">Ctrl+N</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setShowProjectList(true)}>
+                  <FolderOpen size={14} className="mr-2" />
+                  Open Project...
+                  <span className="ml-auto text-[10px] text-muted-foreground">Ctrl+O</span>
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
-                {savedProjects.length === 0 ? (
-                  <DropdownMenuItem disabled>
-                    No saved projects
-                  </DropdownMenuItem>
-                ) : (
-                  savedProjects.map((p) => (
-                    <DropdownMenuItem key={p.id} onClick={() => handleLoad(p.id)}>
-                      {p.name}
-                      <span className="ml-auto text-[10px] text-muted-foreground">
-                        {new Date(p.modifiedAt).toLocaleDateString()}
-                      </span>
-                    </DropdownMenuItem>
-                  ))
-                )}
+                <DropdownMenuItem onClick={() => saveProject()}>
+                  <Save size={14} className="mr-2" />
+                  Save
+                  <span className="ml-auto text-[10px] text-muted-foreground">Ctrl+S</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleExport} disabled={pages.length === 0}>
+                  <Download size={14} className="mr-2" />
+                  Export...
+                  <span className="ml-auto text-[10px] text-muted-foreground">Ctrl+Shift+S</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleImport}>
+                  <Upload size={14} className="mr-2" />
+                  Import...
+                </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
             
@@ -344,10 +449,10 @@ export const VisualEditor = memo<VisualEditorProps>(({ className, onOpenPreview 
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={handleSave}
-                  disabled={isSaving || pages.length === 0}
+                  onClick={() => saveProject()}
+                  disabled={saveStatus === 'saving' || pages.length === 0}
                 >
-                  {isSaving ? (
+                  {saveStatus === 'saving' ? (
                     <Loader2 size={14} className="mr-1 animate-spin" />
                   ) : (
                     <Save size={14} className="mr-1" />
