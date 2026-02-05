@@ -3,3 +3,7 @@ export { ContentEditor } from './ContentEditor';
 export { PlaybackControls } from './PlaybackControls';
 export { TeleprompterDisplay } from './TeleprompterDisplay';
 export { ProjectManager } from './ProjectManager';
+export { SettingsPanel } from './SettingsPanel';
+export { ImageSegmentEditor } from './ImageSegmentEditor';
+export { PdfSegmentEditor } from './PdfSegmentEditor';
+export { AudioManager } from './AudioManager';
