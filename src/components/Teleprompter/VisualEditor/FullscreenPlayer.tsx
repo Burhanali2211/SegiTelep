@@ -117,23 +117,19 @@ export const FullscreenPlayer = memo<FullscreenPlayerProps>(({ onClose }) => {
     return () => window.removeEventListener('resize', handleResize);
   }, [currentSegment, drawSegment]);
   
-  // Animation loop
+  // Track current segment index in a ref to avoid dependency issues
+  const currentSegmentIndexRef = useRef(currentSegmentIndex);
+  useEffect(() => {
+    currentSegmentIndexRef.current = currentSegmentIndex;
+  }, [currentSegmentIndex]);
+  
+  // Animation loop - NOTE: currentSegmentIndex is NOT in dependencies to prevent restart
   useEffect(() => {
     if (!isPlaying) return;
     
     const animate = () => {
       const elapsed = (performance.now() - startTimeRef.current) / 1000 + pausedTimeRef.current;
       setCurrentTime(elapsed);
-      
-      // Find current segment based on time
-      const segIndex = allSegments.findIndex(
-        (s, i) => elapsed >= s.startTime && elapsed < s.endTime
-      );
-      
-      if (segIndex !== -1 && segIndex !== currentSegmentIndex) {
-        setCurrentSegmentIndex(segIndex);
-        drawSegment(allSegments[segIndex]);
-      }
       
       // Check if playback complete
       if (elapsed >= totalDuration) {
@@ -148,6 +144,34 @@ export const FullscreenPlayer = memo<FullscreenPlayerProps>(({ onClose }) => {
         return;
       }
       
+      // Find current segment based on time
+      let segIndex = -1;
+      for (let i = 0; i < allSegments.length; i++) {
+        const seg = allSegments[i];
+        if (elapsed >= seg.startTime && elapsed < seg.endTime) {
+          segIndex = i;
+          break;
+        }
+      }
+      
+      // If no exact match, find the segment that should be showing
+      // (handles gaps between segments - show the previous segment until next starts)
+      if (segIndex === -1) {
+        for (let i = allSegments.length - 1; i >= 0; i--) {
+          if (elapsed >= allSegments[i].startTime) {
+            segIndex = i;
+            break;
+          }
+        }
+      }
+      
+      // Update segment if changed
+      if (segIndex !== -1 && segIndex !== currentSegmentIndexRef.current) {
+        currentSegmentIndexRef.current = segIndex;
+        setCurrentSegmentIndex(segIndex);
+        drawSegment(allSegments[segIndex]);
+      }
+      
       animationRef.current = requestAnimationFrame(animate);
     };
     
@@ -159,7 +183,7 @@ export const FullscreenPlayer = memo<FullscreenPlayerProps>(({ onClose }) => {
         cancelAnimationFrame(animationRef.current);
       }
     };
-  }, [isPlaying, allSegments, currentSegmentIndex, totalDuration, drawSegment]);
+  }, [isPlaying, allSegments, totalDuration, drawSegment]);
   
   // Sync audio with playback
   useEffect(() => {
