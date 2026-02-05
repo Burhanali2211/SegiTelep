@@ -158,15 +158,15 @@ export const SegmentList = memo<SegmentListProps>(({ onPlaySegment }) => {
   if (!project) return null;
   
   return (
-    <div className="flex flex-col h-full">
-      <div className="panel-header">
+    <div className="flex flex-col h-full overflow-hidden">
+      <div className="panel-header shrink-0">
         <h2 className="text-sm font-semibold">Segments</h2>
         <span className="text-xs text-muted-foreground">
           {project.segments.length} item{project.segments.length !== 1 ? 's' : ''}
         </span>
       </div>
       
-      <div className="flex-1 overflow-y-auto p-3 space-y-2">
+      <div className="flex-1 min-h-0 overflow-y-auto p-3 space-y-2">
         {project.segments.map((segment, index) => (
           <SegmentItem
             key={segment.id}
@@ -189,7 +189,7 @@ export const SegmentList = memo<SegmentListProps>(({ onPlaySegment }) => {
         )}
       </div>
       
-      <div className="p-3 border-t border-border space-y-2">
+      <div className="p-3 border-t border-border space-y-2 shrink-0">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button className="w-full" variant="secondary">
