@@ -6,6 +6,7 @@ import {
   ContentEditor,
   TeleprompterDisplay,
   ProjectManager,
+  SettingsPanel,
 } from '@/components/Teleprompter';
 import { Button } from '@/components/ui/button';
 import {
@@ -50,6 +51,7 @@ const KEYBOARD_SHORTCUTS = [
 const Index = () => {
   const [showProjectManager, setShowProjectManager] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
   const [initialized, setInitialized] = useState(false);
   
   const project = useTeleprompterStore((s) => s.project);
@@ -131,7 +133,7 @@ Delete this text and start writing your own script!`,
   }
   
   return (
-    <div className="min-h-screen flex flex-col bg-background">
+    <div className="h-screen flex flex-col bg-background overflow-hidden">
       {/* Header */}
       <header className="flex items-center justify-between px-4 py-2 border-b border-border bg-card">
         <div className="flex items-center gap-3">
@@ -154,6 +156,10 @@ Delete this text and start writing your own script!`,
               <DropdownMenuItem onClick={() => setShowShortcuts(true)}>
                 <Keyboard size={16} className="mr-2" />
                 Keyboard Shortcuts
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setShowSettings(true)}>
+                <Settings size={16} className="mr-2" />
+                Project Settings
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -178,6 +184,15 @@ Delete this text and start writing your own script!`,
         <div className="flex items-center gap-2">
           <Tooltip>
             <TooltipTrigger asChild>
+              <Button variant="ghost" size="icon" onClick={() => setShowSettings(true)}>
+                <Settings size={18} />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Project Settings</TooltipContent>
+          </Tooltip>
+          
+          <Tooltip>
+            <TooltipTrigger asChild>
               <Button variant="ghost" size="icon" onClick={() => setShowShortcuts(true)}>
                 <Keyboard size={18} />
               </Button>
@@ -192,8 +207,8 @@ Delete this text and start writing your own script!`,
       </header>
       
       {/* Main Content */}
-      <main className="flex-1 overflow-hidden">
-        <ResizablePanelGroup direction="horizontal">
+      <main className="flex-1 min-h-0 overflow-hidden">
+        <ResizablePanelGroup direction="horizontal" className="h-full">
           {/* Segment List */}
           <ResizablePanel defaultSize={20} minSize={15} maxSize={30}>
             <SegmentList />
@@ -219,6 +234,12 @@ Delete this text and start writing your own script!`,
       <ProjectManager 
         open={showProjectManager} 
         onOpenChange={setShowProjectManager} 
+      />
+      
+      {/* Settings Panel Dialog */}
+      <SettingsPanel 
+        open={showSettings} 
+        onOpenChange={setShowSettings} 
       />
       
       {/* Keyboard Shortcuts Dialog */}

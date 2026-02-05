@@ -1,4 +1,4 @@
-import React, { memo, useCallback } from 'react';
+import React, { memo, useCallback, useState } from 'react';
 import { useTeleprompterStore } from '@/store/teleprompterStore';
 import { Segment } from '@/types/teleprompter.types';
 import { 
@@ -7,16 +7,23 @@ import {
   Trash2, 
   MoreVertical,
   FileText,
-  Play
+  Image,
+  FileImage,
+  Music,
+  Plus,
 } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { ImageSegmentEditor } from './ImageSegmentEditor';
+import { PdfSegmentEditor } from './PdfSegmentEditor';
+import { AudioManager } from './AudioManager';
 
 interface SegmentItemProps {
   segment: Segment;
@@ -35,7 +42,12 @@ const SegmentItem = memo<SegmentItemProps>(({
   onDuplicate,
   onDelete,
 }) => {
-  const preview = segment.content.slice(0, 80) || 'Empty segment';
+  const isImage = segment.type === 'image' || segment.type === 'pdf-page';
+  const preview = isImage
+    ? `${segment.type === 'image' ? 'Image' : 'PDF'} - ${segment.duration}s`
+    : (segment.content.slice(0, 80) || 'Empty segment');
+  
+  const SegmentIcon = segment.type === 'image' ? Image : segment.type === 'pdf-page' ? FileImage : FileText;
   
   return (
     <div
@@ -52,20 +64,32 @@ const SegmentItem = memo<SegmentItemProps>(({
       
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 mb-1">
-          <FileText size={14} className="text-muted-foreground shrink-0" />
+          <SegmentIcon size={14} className="text-muted-foreground shrink-0" />
           <span className="font-medium text-sm truncate">{segment.name}</span>
           {isPlaying && (
             <div className="status-dot active ml-auto" />
           )}
         </div>
-        <p className="text-xs text-muted-foreground truncate">
-          {preview}
-        </p>
+        {isImage && segment.content.startsWith('data:') ? (
+          <div className="w-12 h-8 rounded overflow-hidden bg-muted">
+            <img src={segment.content} alt="" className="w-full h-full object-cover" />
+          </div>
+        ) : (
+          <p className="text-xs text-muted-foreground truncate">
+            {preview}
+          </p>
+        )}
         <div className="flex items-center gap-2 mt-1.5">
-          <span className="speed-badge">{segment.scrollSpeed}px/s</span>
-          <span className="text-xs text-muted-foreground">
-            {segment.fontSize}px
-          </span>
+          {isImage ? (
+            <span className="text-xs text-muted-foreground">{segment.duration}s</span>
+          ) : (
+            <>
+              <span className="speed-badge">{segment.scrollSpeed}px/s</span>
+              <span className="text-xs text-muted-foreground">
+                {segment.fontSize}px
+              </span>
+            </>
+          )}
         </div>
       </div>
       
@@ -115,13 +139,18 @@ export const SegmentList = memo<SegmentListProps>(({ onPlaySegment }) => {
   const deleteSegment = useTeleprompterStore((s) => s.deleteSegment);
   const setCurrentSegment = useTeleprompterStore((s) => s.setCurrentSegment);
   
+  const [showImageEditor, setShowImageEditor] = useState(false);
+  const [showPdfEditor, setShowPdfEditor] = useState(false);
+  const [showAudioManager, setShowAudioManager] = useState(false);
+  
   const handleSelect = useCallback((segmentId: string, index: number) => {
     selectSegment(segmentId);
     setCurrentSegment(index);
   }, [selectSegment, setCurrentSegment]);
   
-  const handleAdd = useCallback(() => {
+  const handleAddText = useCallback(() => {
     addSegment({
+      type: 'text',
       content: 'Enter your teleprompter text here...',
     });
   }, [addSegment]);
@@ -160,15 +189,40 @@ export const SegmentList = memo<SegmentListProps>(({ onPlaySegment }) => {
         )}
       </div>
       
-      <div className="p-3 border-t border-border">
-        <Button
-          onClick={handleAdd}
-          className="w-full"
-          variant="secondary"
-        >
-          + Add Segment
-        </Button>
+      <div className="p-3 border-t border-border space-y-2">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button className="w-full" variant="secondary">
+              <Plus size={16} className="mr-2" />
+              Add Segment
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="center" className="w-48">
+            <DropdownMenuItem onClick={handleAddText}>
+              <FileText size={16} className="mr-2" />
+              Text Segment
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setShowImageEditor(true)}>
+              <Image size={16} className="mr-2" />
+              Image Segment
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setShowPdfEditor(true)}>
+              <FileImage size={16} className="mr-2" />
+              PDF Pages
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => setShowAudioManager(true)}>
+              <Music size={16} className="mr-2" />
+              Audio Library
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
+      
+      {/* Dialogs */}
+      <ImageSegmentEditor open={showImageEditor} onOpenChange={setShowImageEditor} />
+      <PdfSegmentEditor open={showPdfEditor} onOpenChange={setShowPdfEditor} />
+      <AudioManager open={showAudioManager} onOpenChange={setShowAudioManager} />
     </div>
   );
 });
