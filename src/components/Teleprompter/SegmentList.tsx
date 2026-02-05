@@ -1,4 +1,4 @@
-import React, { memo, useCallback, useState, useRef } from 'react';
+import React, { memo, useCallback, useState } from 'react';
 import { useTeleprompterStore } from '@/store/teleprompterStore';
 import { Segment, isVisualSegment } from '@/types/teleprompter.types';
 import { 
@@ -39,7 +39,6 @@ interface SegmentItemProps {
   onDragEnd: () => void;
   isDragging: boolean;
   dragOverIndex: number | null;
-  editorType?: 'text' | 'visual';
 }
 
 const SegmentItem = memo<SegmentItemProps>(({
@@ -55,19 +54,15 @@ const SegmentItem = memo<SegmentItemProps>(({
   onDragEnd,
   isDragging,
   dragOverIndex,
-  editorType = 'text',
 }) => {
   const isVisualType = isVisualSegment(segment);
   const preview = isVisualType
     ? `${segment.type === 'image' ? 'Image' : segment.type === 'image-region' ? 'Region' : 'PDF'} - ${segment.duration}s`
-    : (segment.content.slice(0, 80) || 'Empty segment');
+    : (segment.content?.slice(0, 80) || 'Empty segment');
   
   const SegmentIcon = segment.type === 'image' ? Image : 
     segment.type === 'image-region' ? Crop : 
     segment.type === 'pdf-page' ? FileImage : FileText;
-  
-  // Filter segments based on editor type
-  const shouldShow = editorType === 'visual' ? isVisualType : !isVisualType;
   
   return (
     <div
@@ -103,7 +98,7 @@ const SegmentItem = memo<SegmentItemProps>(({
             <div className="status-dot active ml-auto" />
           )}
         </div>
-        {isVisualType && segment.content.startsWith('data:') ? (
+        {isVisualType && segment.content?.startsWith('data:') ? (
           <div className="w-12 h-8 rounded overflow-hidden bg-muted">
             <img src={segment.content} alt="" className="w-full h-full object-cover" />
           </div>
@@ -212,103 +207,75 @@ export const SegmentList = memo<SegmentListProps>(({ onPlaySegment, editorType =
   
   if (!project) return null;
   
-  // Filter segments based on editor type
-  const filteredSegments = project.segments.filter((segment) => {
-    const isVisual = isVisualSegment(segment);
-    return editorType === 'visual' ? isVisual : !isVisual;
-  });
-
-  // Get original index for a segment
-  const getOriginalIndex = (segmentId: string) => {
-    return project.segments.findIndex((s) => s.id === segmentId);
-  };
+  // Show all segments - filtering is now optional display, playback still uses all
+  const segments = project.segments;
   
   return (
     <div className="flex flex-col h-full overflow-hidden">
       <div className="panel-header shrink-0">
-        <h2 className="text-sm font-semibold">
-          {editorType === 'visual' ? 'Visual Segments' : 'Text Segments'}
-        </h2>
+        <h2 className="text-sm font-semibold">Segments</h2>
         <span className="text-xs text-muted-foreground">
-          {filteredSegments.length} item{filteredSegments.length !== 1 ? 's' : ''}
+          {segments.length} item{segments.length !== 1 ? 's' : ''}
         </span>
       </div>
       
       <div className="flex-1 min-h-0 overflow-y-auto p-3 space-y-2">
-        {filteredSegments.map((segment) => {
-          const originalIndex = getOriginalIndex(segment.id);
-          return (
-            <SegmentItem
-              key={segment.id}
-              segment={segment}
-              index={originalIndex}
-              isSelected={selectedSegmentId === segment.id}
-              isPlaying={isPlaying && currentSegmentId === segment.id}
-              onSelect={() => handleSelect(segment.id, originalIndex)}
-              onDuplicate={() => duplicateSegment(segment.id)}
-              onDelete={() => deleteSegment(segment.id)}
-              onDragStart={handleDragStart}
-              onDragOver={handleDragOver}
-              onDragEnd={handleDragEnd}
-              isDragging={draggedIndex === originalIndex}
-              dragOverIndex={dragOverIndex}
-              editorType={editorType}
-            />
-          );
-        })}
+        {segments.map((segment, index) => (
+          <SegmentItem
+            key={segment.id}
+            segment={segment}
+            index={index}
+            isSelected={selectedSegmentId === segment.id}
+            isPlaying={isPlaying && currentSegmentId === segment.id}
+            onSelect={() => handleSelect(segment.id, index)}
+            onDuplicate={() => duplicateSegment(segment.id)}
+            onDelete={() => deleteSegment(segment.id)}
+            onDragStart={handleDragStart}
+            onDragOver={handleDragOver}
+            onDragEnd={handleDragEnd}
+            isDragging={draggedIndex === index}
+            dragOverIndex={dragOverIndex}
+          />
+        ))}
         
-        {filteredSegments.length === 0 && (
+        {segments.length === 0 && (
           <div className="flex flex-col items-center justify-center py-8 text-center">
-            {editorType === 'visual' ? (
-              <>
-                <Image size={32} className="text-muted-foreground mb-2" />
-                <p className="text-sm text-muted-foreground mb-4">
-                  No visual segments yet
-                </p>
-              </>
-            ) : (
-              <>
-                <FileText size={32} className="text-muted-foreground mb-2" />
-                <p className="text-sm text-muted-foreground mb-4">
-                  No text segments yet
-                </p>
-              </>
-            )}
+            <FileText size={32} className="text-muted-foreground mb-2" />
+            <p className="text-sm text-muted-foreground mb-4">
+              No segments yet
+            </p>
           </div>
         )}
       </div>
       
       <div className="p-3 border-t border-border space-y-2 shrink-0">
-        {editorType === 'text' ? (
-          <Button className="w-full" variant="secondary" onClick={handleAddText}>
-            <Plus size={16} className="mr-2" />
-            Add Text Segment
-          </Button>
-        ) : (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button className="w-full" variant="secondary">
-                <Plus size={16} className="mr-2" />
-                Add Visual
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="center" className="w-48">
-              <DropdownMenuItem onClick={() => setShowImageEditor(true)}>
-                <Image size={16} className="mr-2" />
-                Image Segment
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setShowPdfEditor(true)}>
-                <FileImage size={16} className="mr-2" />
-                PDF Pages
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => setShowAudioManager(true)}>
-                <Music size={16} className="mr-2" />
-                Audio Library
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        )}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button className="w-full" variant="secondary">
+              <Plus size={16} className="mr-2" />
+              Add Segment
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="center" className="w-48">
+            <DropdownMenuItem onClick={handleAddText}>
+              <FileText size={16} className="mr-2" />
+              Text Segment
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setShowImageEditor(true)}>
+              <Image size={16} className="mr-2" />
+              Image Segment
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setShowPdfEditor(true)}>
+              <FileImage size={16} className="mr-2" />
+              PDF Pages
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => setShowAudioManager(true)}>
+              <Music size={16} className="mr-2" />
+              Audio Library
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
       
       {/* Dialogs */}
