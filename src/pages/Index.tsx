@@ -282,24 +282,8 @@ Delete this text and start writing your own script!`,
         
         {/* Main Content - Visual Optimized */}
         <main className="flex-1 min-h-0 flex overflow-hidden">
-          {/* Collapsible Segment List */}
-          <div 
-            className={cn(
-              'border-r border-border bg-card transition-all duration-200 shrink-0 overflow-hidden',
-              segmentListCollapsed ? 'w-12' : 'w-56'
-            )}
-          >
-            {segmentListCollapsed ? (
-              <CollapsedSegmentList />
-            ) : (
-              <SegmentList />
-            )}
-          </div>
-          
-          {/* Visual Editor - Takes most space */}
-          <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-            <VisualEditor className="flex-1 min-h-0" />
-          </div>
+          {/* Visual Editor - Takes full space with integrated sidebar */}
+          <VisualEditor className="flex-1 min-h-0" />
         </main>
         
         {/* Dialogs */}
