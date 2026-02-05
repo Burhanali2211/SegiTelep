@@ -8,8 +8,8 @@ import {
   ProjectManager,
   SettingsPanel,
   TextSegmentEditor,
-  VisualSegmentEditor,
 } from '@/components/Teleprompter';
+import { VisualEditor } from '@/components/Teleprompter/VisualEditor';
 import { MiniPreview } from '@/components/Teleprompter/MiniPreview';
 import { Button } from '@/components/ui/button';
 import {
@@ -298,14 +298,7 @@ Delete this text and start writing your own script!`,
           
           {/* Visual Editor - Takes most space */}
           <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-            <VisualSegmentEditor className="flex-1 min-h-0" />
-            
-            {/* Mini Preview at bottom */}
-            <MiniPreview 
-              collapsed={previewCollapsed}
-              onToggleCollapse={togglePreviewCollapsed}
-              onExpand={() => setLayoutMode('default')}
-            />
+            <VisualEditor className="flex-1 min-h-0" />
           </div>
         </main>
         
@@ -426,7 +419,7 @@ Delete this text and start writing your own script!`,
           <ResizablePanel defaultSize={35} minSize={25}>
             <div className="h-full overflow-hidden">
               {showVisualEditor ? (
-                <VisualSegmentEditor />
+                <VisualEditor className="h-full" />
               ) : (
                 <TextSegmentEditor />
               )}
