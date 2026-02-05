@@ -8,6 +8,9 @@ interface ImageCanvasProps {
   className?: string;
 }
 
+// Magnetic snap threshold in pixels
+const SNAP_THRESHOLD = 15;
+
 export const ImageCanvas = memo<ImageCanvasProps>(({ className }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const imageRef = useRef<HTMLImageElement | null>(null);
@@ -56,7 +59,7 @@ export const ImageCanvas = memo<ImageCanvasProps>(({ className }) => {
     img.src = currentPage.data;
   }, [currentPage?.data]);
   
-  // Calculate display size
+  // Calculate display size - image fills container and can be scrolled
   useEffect(() => {
     if (!containerRef.current || !imageRef.current || !imageLoaded) return;
     
@@ -69,17 +72,12 @@ export const ImageCanvas = memo<ImageCanvasProps>(({ className }) => {
       
       setContainerSize({ width: rect.width, height: rect.height });
       
+      // Calculate image size to fit width, allowing vertical scroll
       const imgAspect = img.width / img.height;
-      const containerAspect = rect.width / rect.height;
       
-      let w: number, h: number;
-      if (imgAspect > containerAspect) {
-        w = rect.width * 0.95;
-        h = w / imgAspect;
-      } else {
-        h = rect.height * 0.95;
-        w = h * imgAspect;
-      }
+      // Fit to container width
+      const w = rect.width;
+      const h = w / imgAspect;
       
       setImageDisplaySize({ width: w, height: h });
     };
@@ -89,6 +87,66 @@ export const ImageCanvas = memo<ImageCanvasProps>(({ className }) => {
     observer.observe(container);
     return () => observer.disconnect();
   }, [imageLoaded]);
+  
+  // Magnetic snap function - snaps pan position to edges
+  const applyMagneticSnap = useCallback((newPan: { x: number; y: number }) => {
+    const scaledWidth = imageDisplaySize.width * zoom;
+    const scaledHeight = imageDisplaySize.height * zoom;
+    
+    let snappedX = newPan.x;
+    let snappedY = newPan.y;
+    
+    // Calculate bounds - image can be dragged so edges align with viewport
+    const minX = containerSize.width - scaledWidth;
+    const maxX = 0;
+    const minY = containerSize.height - scaledHeight;
+    const maxY = 0;
+    
+    // Snap to left edge (x = 0)
+    if (Math.abs(snappedX - maxX) < SNAP_THRESHOLD) {
+      snappedX = maxX;
+    }
+    // Snap to right edge
+    if (Math.abs(snappedX - minX) < SNAP_THRESHOLD && scaledWidth > containerSize.width) {
+      snappedX = minX;
+    }
+    
+    // Snap to top edge (y = 0)
+    if (Math.abs(snappedY - maxY) < SNAP_THRESHOLD) {
+      snappedY = maxY;
+    }
+    // Snap to bottom edge
+    if (Math.abs(snappedY - minY) < SNAP_THRESHOLD && scaledHeight > containerSize.height) {
+      snappedY = minY;
+    }
+    
+    // Constrain to valid bounds so image stays in view
+    if (scaledWidth <= containerSize.width) {
+      // Image fits - center it
+      snappedX = (containerSize.width - scaledWidth) / 2;
+    } else {
+      // Image larger - allow panning but keep it in bounds
+      snappedX = Math.max(minX, Math.min(maxX, snappedX));
+    }
+    
+    if (scaledHeight <= containerSize.height) {
+      // Image fits - center it
+      snappedY = (containerSize.height - scaledHeight) / 2;
+    } else {
+      // Image larger - allow panning but keep it in bounds
+      snappedY = Math.max(minY, Math.min(maxY, snappedY));
+    }
+    
+    return { x: snappedX, y: snappedY };
+  }, [containerSize, imageDisplaySize, zoom]);
+  
+  // Reset pan when zoom changes or image loads to snap to top-left
+  useEffect(() => {
+    if (imageLoaded && containerSize.width > 0) {
+      const snapped = applyMagneticSnap({ x: 0, y: 0 });
+      setPan(snapped);
+    }
+  }, [imageLoaded, zoom, containerSize.width]);
   
   // Get percentage coords from pointer event relative to image
   const getPercentCoords = useCallback((e: React.PointerEvent | PointerEvent) => {
@@ -157,7 +215,9 @@ export const ImageCanvas = memo<ImageCanvasProps>(({ className }) => {
     if (isPanning && panStart) {
       const dx = e.clientX - panStart.x;
       const dy = e.clientY - panStart.y;
-      setPan({ x: panStart.panX + dx, y: panStart.panY + dy });
+      const newPan = { x: panStart.panX + dx, y: panStart.panY + dy };
+      // Apply magnetic snap on release, allow free movement while dragging
+      setPan(newPan);
       return;
     }
     
@@ -176,6 +236,9 @@ export const ImageCanvas = memo<ImageCanvasProps>(({ className }) => {
     (e.target as HTMLElement).releasePointerCapture(e.pointerId);
     
     if (isPanning) {
+      // Apply magnetic snap when releasing
+      const snapped = applyMagneticSnap(pan);
+      setPan(snapped);
       setIsPanning(false);
       setPanStart(null);
       return;
@@ -196,16 +259,22 @@ export const ImageCanvas = memo<ImageCanvasProps>(({ className }) => {
     
     setDrawStart(null);
     setCurrentDraw(null);
-  }, [isDrawing, currentDraw, addSegment, currentPageIndex, isPanning, saveState, setDrawing]);
+  }, [isDrawing, currentDraw, addSegment, currentPageIndex, isPanning, saveState, setDrawing, applyMagneticSnap, pan, setPan]);
   
-  // Wheel zoom
+  // Wheel for scrolling (vertical pan) and Ctrl+wheel for zoom
   const handleWheel = useCallback((e: React.WheelEvent) => {
     if (e.ctrlKey || e.metaKey) {
       e.preventDefault();
       const delta = e.deltaY > 0 ? -0.1 : 0.1;
       useVisualEditorState.getState().setZoom(zoom + delta);
+    } else {
+      // Regular scroll - pan vertically
+      e.preventDefault();
+      const newPan = { x: pan.x, y: pan.y - e.deltaY };
+      const snapped = applyMagneticSnap(newPan);
+      setPan(snapped);
     }
-  }, [zoom]);
+  }, [zoom, pan, applyMagneticSnap, setPan]);
   
   if (!currentPage) {
     return (
@@ -227,7 +296,7 @@ export const ImageCanvas = memo<ImageCanvasProps>(({ className }) => {
     <div
       ref={containerRef}
       className={cn(
-        'flex items-center justify-center bg-black/90 overflow-hidden relative select-none',
+        'relative bg-black/90 overflow-hidden select-none',
         isDrawing && 'cursor-crosshair',
         isPanning && 'cursor-grabbing',
         className
@@ -235,10 +304,12 @@ export const ImageCanvas = memo<ImageCanvasProps>(({ className }) => {
       onWheel={handleWheel}
     >
       <div
-        className="relative"
+        className="absolute"
         style={{
-          transform: `scale(${zoom}) translate(${pan.x / zoom}px, ${pan.y / zoom}px)`,
-          transformOrigin: 'center center',
+          transform: `scale(${zoom})`,
+          transformOrigin: 'top left',
+          left: pan.x,
+          top: pan.y,
         }}
       >
         {/* Image */}
@@ -246,7 +317,7 @@ export const ImageCanvas = memo<ImageCanvasProps>(({ className }) => {
           id="visual-editor-image"
           src={currentPage.data}
           alt=""
-          className="max-w-full max-h-full select-none pointer-events-none"
+          className="select-none pointer-events-none"
           style={{
             width: imageDisplaySize.width,
             height: imageDisplaySize.height,
