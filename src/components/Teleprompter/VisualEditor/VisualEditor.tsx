@@ -326,7 +326,7 @@ export const VisualEditor = memo<VisualEditorProps>(({ className, onOpenPreview 
   if (isLoading) {
     return (
       <div className={cn('flex h-full bg-background overflow-hidden', className)}>
-        <div className="w-48 shrink-0 border-r p-3 space-y-3">
+        <div className="w-56 shrink-0 border-r p-3 space-y-3">
           <Skeleton className="h-8 w-full" />
           <Skeleton className="h-24 w-full" />
           <Skeleton className="h-24 w-full" />
@@ -370,7 +370,7 @@ export const VisualEditor = memo<VisualEditorProps>(({ className, onOpenPreview 
       
       <div className={cn('flex h-full bg-background overflow-hidden', className)}>
         {/* Left Control Panel */}
-        <LeftControlPanel className="w-48 shrink-0" />
+        <LeftControlPanel className="w-56 shrink-0" />
         
         {/* Main Canvas Area */}
         <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
