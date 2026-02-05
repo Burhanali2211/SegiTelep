@@ -49,25 +49,35 @@ export const RegionSelector = memo<RegionSelectorProps>(({
     const container = containerRef.current;
     const img = imageRef.current;
     
-    const containerRect = container.getBoundingClientRect();
-    const containerWidth = containerRect.width;
-    const containerHeight = containerRect.height;
+    const updateSize = () => {
+      const containerRect = container.getBoundingClientRect();
+      const containerWidth = containerRect.width;
+      const containerHeight = containerRect.height;
+      
+      if (containerWidth === 0 || containerHeight === 0) return;
+      
+      const imgAspect = img.width / img.height;
+      const containerAspect = containerWidth / containerHeight;
+      
+      let canvasWidth: number;
+      let canvasHeight: number;
+      
+      if (imgAspect > containerAspect) {
+        canvasWidth = containerWidth;
+        canvasHeight = containerWidth / imgAspect;
+      } else {
+        canvasHeight = containerHeight;
+        canvasWidth = containerHeight * imgAspect;
+      }
+      
+      setCanvasSize({ width: canvasWidth, height: canvasHeight });
+    };
     
-    const imgAspect = img.width / img.height;
-    const containerAspect = containerWidth / containerHeight;
+    updateSize();
     
-    let canvasWidth: number;
-    let canvasHeight: number;
-    
-    if (imgAspect > containerAspect) {
-      canvasWidth = containerWidth;
-      canvasHeight = containerWidth / imgAspect;
-    } else {
-      canvasHeight = containerHeight;
-      canvasWidth = containerHeight * imgAspect;
-    }
-    
-    setCanvasSize({ width: canvasWidth, height: canvasHeight });
+    // Also update on window resize
+    window.addEventListener('resize', updateSize);
+    return () => window.removeEventListener('resize', updateSize);
   }, [imageLoaded]);
 
   // Draw canvas

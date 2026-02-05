@@ -292,7 +292,7 @@ Delete this text and start writing your own script!`,
             {segmentListCollapsed ? (
               <CollapsedSegmentList />
             ) : (
-              <SegmentList editorType={editorType} />
+              <SegmentList />
             )}
           </div>
           
@@ -416,7 +416,7 @@ Delete this text and start writing your own script!`,
           {/* Segment List */}
           <ResizablePanel defaultSize={20} minSize={15} maxSize={30}>
             <div className="h-full overflow-hidden">
-              <SegmentList editorType={editorType} />
+              <SegmentList />
             </div>
           </ResizablePanel>
           
