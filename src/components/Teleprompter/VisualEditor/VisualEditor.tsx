@@ -1,23 +1,14 @@
-import React, { memo, useEffect, useCallback } from 'react';
+import React, { memo, useEffect } from 'react';
 import { useVisualEditorState } from './useVisualEditorState';
 import { useUndoRedo } from './useUndoRedo';
 import { ImageCanvas } from './ImageCanvas';
 import { TimelineStrip } from './TimelineStrip';
 import { SelectionToolbar } from './SelectionToolbar';
-import { PageNavigator } from './PageNavigator';
-import { SegmentListPanel } from './SegmentListPanel';
+import { LeftControlPanel } from './LeftControlPanel';
 import { AudioWaveform } from './AudioWaveform';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import {
-  ZoomIn,
-  ZoomOut,
-  Maximize,
-  Undo,
-  Redo,
-  Eye,
-  Presentation,
-} from 'lucide-react';
+import { Presentation, Eye } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface VisualEditorProps {
@@ -32,7 +23,6 @@ export const VisualEditor = memo<VisualEditorProps>(({ className, onOpenPreview 
   const currentPage = useVisualEditorState((s) => s.getCurrentPage());
   
   const setZoom = useVisualEditorState((s) => s.setZoom);
-  const resetView = useVisualEditorState((s) => s.resetView);
   const showAllSegments = useVisualEditorState((s) => s.showAllSegments);
   const deleteSegments = useVisualEditorState((s) => s.deleteSegments);
   const copySelected = useVisualEditorState((s) => s.copySelected);
@@ -42,8 +32,9 @@ export const VisualEditor = memo<VisualEditorProps>(({ className, onOpenPreview 
   const deselectAll = useVisualEditorState((s) => s.deselectAll);
   const setCurrentPage = useVisualEditorState((s) => s.setCurrentPage);
   const currentPageIndex = useVisualEditorState((s) => s.currentPageIndex);
+  const setDrawing = useVisualEditorState((s) => s.setDrawing);
   
-  const { saveState, undo, redo, canUndo, canRedo } = useUndoRedo();
+  const { saveState, undo, redo } = useUndoRedo();
   
   // Keyboard shortcuts
   useEffect(() => {
@@ -54,6 +45,13 @@ export const VisualEditor = memo<VisualEditorProps>(({ className, onOpenPreview 
       }
       
       const ctrl = e.ctrlKey || e.metaKey;
+      
+      // New segment (N key)
+      if (e.key === 'n' || e.key === 'N') {
+        e.preventDefault();
+        setDrawing(true);
+        return;
+      }
       
       // Delete
       if ((e.key === 'Delete' || e.key === 'Backspace') && selectedSegmentIds.size > 0) {
@@ -97,6 +95,7 @@ export const VisualEditor = memo<VisualEditorProps>(({ className, onOpenPreview 
       if (e.key === 'Escape') {
         e.preventDefault();
         deselectAll();
+        setDrawing(false);
         return;
       }
       
@@ -143,8 +142,6 @@ export const VisualEditor = memo<VisualEditorProps>(({ className, onOpenPreview 
         }
         return;
       }
-      
-      // Space for play/pause handled by AudioWaveform
     };
     
     window.addEventListener('keydown', handleKeyDown);
@@ -152,122 +149,35 @@ export const VisualEditor = memo<VisualEditorProps>(({ className, onOpenPreview 
   }, [
     selectedSegmentIds, zoom, pages.length, currentPageIndex,
     saveState, deleteSegments, copySelected, paste, duplicateSegment,
-    selectAll, deselectAll, undo, redo, setZoom, setCurrentPage,
+    selectAll, deselectAll, undo, redo, setZoom, setCurrentPage, setDrawing,
   ]);
   
   const hasHiddenSegments = currentPage?.segments.some(s => s.isHidden);
   
   return (
-    <div className={cn('flex flex-col h-full bg-background', className)}>
-      {/* Header toolbar */}
-      <div className="flex items-center justify-between px-3 py-2 border-b border-border bg-card">
-        <PageNavigator />
-        
-        <div className="flex items-center gap-2">
-          {/* Zoom controls */}
-          <div className="flex items-center gap-1">
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-7 w-7"
-                  onClick={() => setZoom(zoom - 0.25)}
-                  disabled={zoom <= 0.5}
-                >
-                  <ZoomOut size={14} />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Zoom out (-)</TooltipContent>
-            </Tooltip>
-            
-            <span className="text-xs font-mono w-10 text-center">
-              {Math.round(zoom * 100)}%
-            </span>
-            
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-7 w-7"
-                  onClick={() => setZoom(zoom + 0.25)}
-                  disabled={zoom >= 4}
-                >
-                  <ZoomIn size={14} />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Zoom in (+)</TooltipContent>
-            </Tooltip>
-            
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-7 w-7"
-                  onClick={resetView}
-                >
-                  <Maximize size={14} />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Reset view</TooltipContent>
-            </Tooltip>
-          </div>
-          
-          <div className="h-4 w-px bg-border" />
-          
-          {/* Undo/Redo */}
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7"
-                onClick={undo}
-                disabled={!canUndo}
-              >
-                <Undo size={14} />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>Undo (Ctrl+Z)</TooltipContent>
-          </Tooltip>
-          
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7"
-                onClick={redo}
-                disabled={!canRedo}
-              >
-                <Redo size={14} />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>Redo (Ctrl+Shift+Z)</TooltipContent>
-          </Tooltip>
-          
+    <div className={cn('flex h-full bg-background overflow-hidden', className)}>
+      {/* Left Control Panel */}
+      <LeftControlPanel className="w-48 shrink-0" />
+      
+      {/* Main Canvas Area */}
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+        {/* Header - minimal, just preview and show hidden */}
+        <div className="flex items-center justify-end px-3 py-1.5 border-b border-border bg-card gap-2">
           {hasHiddenSegments && (
-            <>
-              <div className="h-4 w-px bg-border" />
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={showAllSegments}
-                  >
-                    <Eye size={14} className="mr-1" />
-                    Show All
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>Show all hidden segments</TooltipContent>
-              </Tooltip>
-            </>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={showAllSegments}
+                >
+                  <Eye size={14} className="mr-1" />
+                  Show Hidden
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Show all hidden segments</TooltipContent>
+            </Tooltip>
           )}
-          
-          <div className="h-4 w-px bg-border" />
           
           {onOpenPreview && (
             <Tooltip>
@@ -281,22 +191,18 @@ export const VisualEditor = memo<VisualEditorProps>(({ className, onOpenPreview 
             </Tooltip>
           )}
         </div>
-      </div>
-      
-      {/* Main content area */}
-      <div className="flex-1 flex min-h-0 overflow-hidden">
-        {/* Canvas area */}
-        <div className="flex-1 flex flex-col min-w-0">
-          <ImageCanvas className="flex-1 min-h-0" />
-          <AudioWaveform />
-          <TimelineStrip />
-          <SelectionToolbar />
-        </div>
         
-        {/* Segment list sidebar */}
-        <div className="w-56 border-l border-border shrink-0">
-          <SegmentListPanel className="h-full" />
-        </div>
+        {/* Canvas */}
+        <ImageCanvas className="flex-1 min-h-0" />
+        
+        {/* Audio Waveform */}
+        <AudioWaveform />
+        
+        {/* Timeline Strip */}
+        <TimelineStrip />
+        
+        {/* Selection Toolbar (floating) */}
+        <SelectionToolbar />
       </div>
     </div>
   );
