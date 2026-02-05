@@ -401,12 +401,9 @@ export const VisualSegmentEditor = memo<VisualSegmentEditorProps>(({ className }
                   >
                     <img
                       src={image.data}
-                      alt={image.name}
+                      alt="Image"
                       className="w-full h-16 object-cover"
                     />
-                    <div className="absolute bottom-0 left-0 right-0 bg-black/60 px-1 py-0.5">
-                      <p className="text-[10px] text-white truncate">{image.name}</p>
-                    </div>
                     {image.regions.length > 0 && (
                       <div className="absolute top-1 right-1 bg-primary text-primary-foreground text-[10px] px-1 rounded">
                         {image.regions.length}

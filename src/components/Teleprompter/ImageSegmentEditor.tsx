@@ -172,15 +172,6 @@ export const ImageSegmentEditor = memo<ImageSegmentEditorProps>(({
               {/* Controls */}
               <div className="space-y-4">
                 <div className="flex items-center gap-4">
-                  <div className="flex-1">
-                    <Label className="text-sm">Segment Name</Label>
-                    <Input
-                      value={imageName}
-                      onChange={(e) => setImageName(e.target.value)}
-                      placeholder="Enter segment name"
-                      className="mt-1"
-                    />
-                  </div>
                   <div className="w-32">
                     <Label className="text-sm">Duration (s)</Label>
                     <Input

@@ -93,7 +93,9 @@ const SegmentItem = memo<SegmentItemProps>(({
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 mb-1">
           <SegmentIcon size={14} className="text-muted-foreground shrink-0" />
-          <span className="font-medium text-sm truncate">{segment.name}</span>
+          <span className="font-medium text-sm truncate">
+            {segment.type === 'text' ? 'Text' : segment.type === 'image' ? 'Image' : segment.type === 'image-region' ? 'Region' : 'PDF'}
+          </span>
           {isPlaying && (
             <div className="status-dot active ml-auto" />
           )}
