@@ -1,5 +1,12 @@
 // Core Types for Teleprompter Application
 
+export interface Region {
+  x: number;      // percentage 0-100
+  y: number;      // percentage 0-100
+  width: number;  // percentage 0-100
+  height: number; // percentage 0-100
+}
+
 export interface Project {
   id: string;
   name: string;
@@ -11,16 +18,24 @@ export interface Project {
 
 export interface Segment {
   id: string;
-  type: 'text' | 'image' | 'pdf-page';
+  type: 'text' | 'image' | 'image-region' | 'pdf-page';
   name: string;
   order: number;
   
   // Content
-  content: string; // Text content or asset reference ID
+  content: string; // Text content or asset reference (base64 data URL)
+  
+  // Region for cropped segments
+  region?: Region;
+  sourceAssetId?: string; // Reference to source image for regions
+  
+  // Audio
+  audioId?: string;
+  syncToAudio?: boolean; // If true, use audio duration
   
   // Playback settings
-  scrollSpeed: number; // pixels per second
-  duration: number; // seconds (for static content)
+  scrollSpeed: number; // pixels per second (for text)
+  duration: number; // seconds (for static content like images)
   
   // Visual settings
   fontSize: number;
@@ -54,6 +69,9 @@ export interface PlaybackState {
   speed: number;
   startTime: number | null;
   elapsedTime: number;
+  // Duration playback for visual segments
+  segmentStartTime: number | null;
+  segmentElapsedTime: number;
 }
 
 export interface RenderState {
@@ -69,6 +87,14 @@ export interface EditorState {
   isEditing: boolean;
   isDragging: boolean;
   draggedSegmentId: string | null;
+}
+
+// Audio file stored in localStorage
+export interface AudioFile {
+  id: string;
+  name: string;
+  data: string;
+  duration: number;
 }
 
 // Default values
@@ -89,7 +115,7 @@ export const DEFAULT_SEGMENT: Omit<Segment, 'id' | 'order' | 'name'> = {
   type: 'text',
   content: '',
   scrollSpeed: 100,
-  duration: 10,
+  duration: 5,
   fontSize: 48,
   fontFamily: 'Inter',
   textColor: 'white',
@@ -114,3 +140,8 @@ export const TEXT_COLOR_OPTIONS: Array<{ value: 'green' | 'white' | 'yellow'; la
   { value: 'white', label: 'White', hex: '#ffffff' },
   { value: 'yellow', label: 'Yellow', hex: '#ffff00' },
 ];
+
+// Helper to check if segment is visual type
+export const isVisualSegment = (segment: Segment): boolean => {
+  return segment.type === 'image' || segment.type === 'image-region' || segment.type === 'pdf-page';
+};

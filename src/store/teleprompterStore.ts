@@ -71,6 +71,8 @@ export const useTeleprompterStore = create<TeleprompterStore>((set, get) => ({
     speed: 100,
     startTime: null,
     elapsedTime: 0,
+    segmentStartTime: null,
+    segmentElapsedTime: 0,
   },
   
   editor: {

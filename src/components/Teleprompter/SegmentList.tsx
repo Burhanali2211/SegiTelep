@@ -11,6 +11,7 @@ import {
   FileImage,
   Music,
   Plus,
+  Crop,
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -42,12 +43,14 @@ const SegmentItem = memo<SegmentItemProps>(({
   onDuplicate,
   onDelete,
 }) => {
-  const isImage = segment.type === 'image' || segment.type === 'pdf-page';
-  const preview = isImage
-    ? `${segment.type === 'image' ? 'Image' : 'PDF'} - ${segment.duration}s`
+  const isVisualType = segment.type === 'image' || segment.type === 'pdf-page' || segment.type === 'image-region';
+  const preview = isVisualType
+    ? `${segment.type === 'image' ? 'Image' : segment.type === 'image-region' ? 'Region' : 'PDF'} - ${segment.duration}s`
     : (segment.content.slice(0, 80) || 'Empty segment');
   
-  const SegmentIcon = segment.type === 'image' ? Image : segment.type === 'pdf-page' ? FileImage : FileText;
+  const SegmentIcon = segment.type === 'image' ? Image : 
+    segment.type === 'image-region' ? Crop : 
+    segment.type === 'pdf-page' ? FileImage : FileText;
   
   return (
     <div
@@ -70,7 +73,7 @@ const SegmentItem = memo<SegmentItemProps>(({
             <div className="status-dot active ml-auto" />
           )}
         </div>
-        {isImage && segment.content.startsWith('data:') ? (
+        {isVisualType && segment.content.startsWith('data:') ? (
           <div className="w-12 h-8 rounded overflow-hidden bg-muted">
             <img src={segment.content} alt="" className="w-full h-full object-cover" />
           </div>
@@ -80,7 +83,7 @@ const SegmentItem = memo<SegmentItemProps>(({
           </p>
         )}
         <div className="flex items-center gap-2 mt-1.5">
-          {isImage ? (
+          {isVisualType ? (
             <span className="text-xs text-muted-foreground">{segment.duration}s</span>
           ) : (
             <>
