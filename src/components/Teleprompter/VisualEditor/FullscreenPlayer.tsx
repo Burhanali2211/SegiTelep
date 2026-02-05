@@ -1,7 +1,6 @@
 import React, { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { useVisualEditorState, formatTime, VisualSegment, ImagePage } from './useVisualEditorState';
 import { Button } from '@/components/ui/button';
-import { Progress } from '@/components/ui/progress';
 import { cn } from '@/lib/utils';
 import {
   Play,
@@ -13,11 +12,14 @@ import {
   X,
   Maximize,
   Minimize,
+  Timer,
 } from 'lucide-react';
 
 interface FullscreenPlayerProps {
   onClose: () => void;
 }
+
+type CountdownState = 'idle' | 'countdown' | 'playing';
 
 export const FullscreenPlayer = memo<FullscreenPlayerProps>(({ onClose }) => {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -26,15 +28,20 @@ export const FullscreenPlayer = memo<FullscreenPlayerProps>(({ onClose }) => {
   const animationRef = useRef<number | null>(null);
   const startTimeRef = useRef<number>(0);
   const pausedTimeRef = useRef<number>(0);
+  const currentSegmentIndexRef = useRef<number>(0);
   
-  const [isPlaying, setIsPlaying] = useState(false);
+  const [playbackState, setPlaybackState] = useState<CountdownState>('idle');
+  const [countdownValue, setCountdownValue] = useState(3);
   const [currentTime, setCurrentTime] = useState(0);
   const [currentSegmentIndex, setCurrentSegmentIndex] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [controlsVisible, setControlsVisible] = useState(true);
   const [isMuted, setIsMuted] = useState(false);
+  const [countdownEnabled, setCountdownEnabled] = useState(true);
+  const [countdownDuration, setCountdownDuration] = useState(3);
   
   const hideTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const countdownIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   
   const pages = useVisualEditorState((s) => s.pages);
   const audioFile = useVisualEditorState((s) => s.audioFile);
@@ -52,8 +59,10 @@ export const FullscreenPlayer = memo<FullscreenPlayerProps>(({ onClose }) => {
   
   const totalDuration = React.useMemo(() => {
     if (allSegments.length === 0) return 0;
-    return Math.max(...allSegments.map(s => s.endTime));
-  }, [allSegments]);
+    const maxSegmentEnd = Math.max(...allSegments.map(s => s.endTime));
+    // Use audio duration if longer
+    return audioFile?.duration ? Math.max(maxSegmentEnd, audioFile.duration) : maxSegmentEnd;
+  }, [allSegments, audioFile?.duration]);
   
   const currentSegment = allSegments[currentSegmentIndex];
   
@@ -67,28 +76,23 @@ export const FullscreenPlayer = memo<FullscreenPlayerProps>(({ onClose }) => {
     
     const img = new Image();
     img.onload = () => {
-      // Canvas size
       const canvasWidth = canvas.width;
       const canvasHeight = canvas.height;
       
-      // Region in percentage
       const regionX = (segment.region.x / 100) * img.width;
       const regionY = (segment.region.y / 100) * img.height;
       const regionW = (segment.region.width / 100) * img.width;
       const regionH = (segment.region.height / 100) * img.height;
       
-      // Clear and fill black
       ctx.fillStyle = '#000';
       ctx.fillRect(0, 0, canvasWidth, canvasHeight);
       
-      // Calculate aspect-fit scaling
       const scale = Math.min(canvasWidth / regionW, canvasHeight / regionH);
       const drawW = regionW * scale;
       const drawH = regionH * scale;
       const drawX = (canvasWidth - drawW) / 2;
       const drawY = (canvasHeight - drawH) / 2;
       
-      // Draw the cropped region
       ctx.drawImage(
         img,
         regionX, regionY, regionW, regionH,
@@ -105,7 +109,7 @@ export const FullscreenPlayer = memo<FullscreenPlayerProps>(({ onClose }) => {
       
       const container = containerRef.current;
       canvasRef.current.width = container.clientWidth;
-      canvasRef.current.height = container.clientHeight - 80; // Account for controls
+      canvasRef.current.height = container.clientHeight - 80;
       
       if (currentSegment) {
         drawSegment(currentSegment);
@@ -117,30 +121,78 @@ export const FullscreenPlayer = memo<FullscreenPlayerProps>(({ onClose }) => {
     return () => window.removeEventListener('resize', handleResize);
   }, [currentSegment, drawSegment]);
   
-  // Track current segment index in a ref to avoid dependency issues
-  const currentSegmentIndexRef = useRef(currentSegmentIndex);
-  useEffect(() => {
-    currentSegmentIndexRef.current = currentSegmentIndex;
-  }, [currentSegmentIndex]);
+  // Start countdown
+  const startCountdown = useCallback(() => {
+    if (!countdownEnabled) {
+      setPlaybackState('playing');
+      return;
+    }
+    
+    setPlaybackState('countdown');
+    setCountdownValue(countdownDuration);
+    
+    let count = countdownDuration;
+    countdownIntervalRef.current = setInterval(() => {
+      count -= 1;
+      if (count <= 0) {
+        if (countdownIntervalRef.current) {
+          clearInterval(countdownIntervalRef.current);
+        }
+        setPlaybackState('playing');
+      } else {
+        setCountdownValue(count);
+      }
+    }, 1000);
+  }, [countdownEnabled, countdownDuration]);
   
-  // Animation loop - NOTE: currentSegmentIndex is NOT in dependencies to prevent restart
+  // Cancel countdown
+  const cancelCountdown = useCallback(() => {
+    if (countdownIntervalRef.current) {
+      clearInterval(countdownIntervalRef.current);
+    }
+    setPlaybackState('idle');
+  }, []);
+  
+  // Main playback loop - Audio drives timing when available
   useEffect(() => {
-    if (!isPlaying) return;
+    if (playbackState !== 'playing') return;
+    
+    const audio = audioRef.current;
+    const hasAudio = audio && audioFile;
+    
+    // Start audio playback
+    if (hasAudio) {
+      audio.currentTime = pausedTimeRef.current;
+      audio.play().catch(console.error);
+    } else {
+      // No audio - track start time for internal timer
+      startTimeRef.current = performance.now();
+    }
     
     const animate = () => {
-      const elapsed = (performance.now() - startTimeRef.current) / 1000 + pausedTimeRef.current;
+      // Get time from audio if available, otherwise use internal timer
+      let elapsed: number;
+      if (hasAudio) {
+        elapsed = audio.currentTime;
+      } else {
+        // No audio - use performance timer
+        elapsed = ((performance.now() - startTimeRef.current) / 1000) + pausedTimeRef.current;
+      }
+      
       setCurrentTime(elapsed);
       
       // Check if playback complete
       if (elapsed >= totalDuration) {
-        setIsPlaying(false);
+        setPlaybackState('idle');
         pausedTimeRef.current = 0;
         setCurrentTime(0);
         setCurrentSegmentIndex(0);
-        if (audioRef.current) {
-          audioRef.current.pause();
-          audioRef.current.currentTime = 0;
+        currentSegmentIndexRef.current = 0;
+        if (audio) {
+          audio.pause();
+          audio.currentTime = 0;
         }
+        drawSegment(allSegments[0]);
         return;
       }
       
@@ -155,7 +207,6 @@ export const FullscreenPlayer = memo<FullscreenPlayerProps>(({ onClose }) => {
       }
       
       // If no exact match, find the segment that should be showing
-      // (handles gaps between segments - show the previous segment until next starts)
       if (segIndex === -1) {
         for (let i = allSegments.length - 1; i >= 0; i--) {
           if (elapsed >= allSegments[i].startTime) {
@@ -165,7 +216,7 @@ export const FullscreenPlayer = memo<FullscreenPlayerProps>(({ onClose }) => {
         }
       }
       
-      // Update segment if changed
+      // Update segment if changed (use ref to avoid stale closure)
       if (segIndex !== -1 && segIndex !== currentSegmentIndexRef.current) {
         currentSegmentIndexRef.current = segIndex;
         setCurrentSegmentIndex(segIndex);
@@ -175,7 +226,6 @@ export const FullscreenPlayer = memo<FullscreenPlayerProps>(({ onClose }) => {
       animationRef.current = requestAnimationFrame(animate);
     };
     
-    startTimeRef.current = performance.now();
     animationRef.current = requestAnimationFrame(animate);
     
     return () => {
@@ -183,19 +233,14 @@ export const FullscreenPlayer = memo<FullscreenPlayerProps>(({ onClose }) => {
         cancelAnimationFrame(animationRef.current);
       }
     };
-  }, [isPlaying, allSegments, totalDuration, drawSegment]);
+  }, [playbackState, allSegments, totalDuration, drawSegment, audioFile]);
   
-  // Sync audio with playback
+  // Pause when state changes to idle
   useEffect(() => {
-    if (!audioRef.current || !audioFile) return;
-    
-    if (isPlaying) {
-      audioRef.current.currentTime = currentTime;
-      audioRef.current.play().catch(() => {});
-    } else {
+    if (playbackState === 'idle' && audioRef.current) {
       audioRef.current.pause();
     }
-  }, [isPlaying, audioFile]);
+  }, [playbackState]);
   
   // Draw initial segment
   useEffect(() => {
@@ -212,10 +257,6 @@ export const FullscreenPlayer = memo<FullscreenPlayerProps>(({ onClose }) => {
     
     const handleFullscreenChange = () => {
       setIsFullscreen(!!document.fullscreenElement);
-      if (!document.fullscreenElement) {
-        // If exited fullscreen, close the player
-        // onClose();
-      }
     };
     
     document.addEventListener('fullscreenchange', handleFullscreenChange);
@@ -230,12 +271,12 @@ export const FullscreenPlayer = memo<FullscreenPlayerProps>(({ onClose }) => {
       clearTimeout(hideTimeoutRef.current);
     }
     
-    if (isPlaying) {
+    if (playbackState === 'playing') {
       hideTimeoutRef.current = setTimeout(() => {
         setControlsVisible(false);
       }, 3000);
     }
-  }, [isPlaying]);
+  }, [playbackState]);
   
   const handleMouseMove = useCallback(() => {
     showControls();
@@ -243,21 +284,34 @@ export const FullscreenPlayer = memo<FullscreenPlayerProps>(({ onClose }) => {
   
   // Playback controls
   const togglePlay = useCallback(() => {
-    if (isPlaying) {
+    if (playbackState === 'playing') {
+      // Pause - save current time
       pausedTimeRef.current = currentTime;
-      setIsPlaying(false);
+      setPlaybackState('idle');
+      if (audioRef.current) {
+        audioRef.current.pause();
+      }
+    } else if (playbackState === 'countdown') {
+      cancelCountdown();
     } else {
       if (currentTime >= totalDuration) {
         pausedTimeRef.current = 0;
         setCurrentTime(0);
         setCurrentSegmentIndex(0);
+        currentSegmentIndexRef.current = 0;
+        if (audioRef.current) {
+          audioRef.current.currentTime = 0;
+        }
+      } else {
+        pausedTimeRef.current = currentTime;
       }
-      setIsPlaying(true);
+      startCountdown();
     }
-  }, [isPlaying, currentTime, totalDuration]);
+  }, [playbackState, currentTime, totalDuration, startCountdown, cancelCountdown]);
   
   const skipPrev = useCallback(() => {
     const newIndex = Math.max(0, currentSegmentIndex - 1);
+    currentSegmentIndexRef.current = newIndex;
     setCurrentSegmentIndex(newIndex);
     const segment = allSegments[newIndex];
     if (segment) {
@@ -272,6 +326,7 @@ export const FullscreenPlayer = memo<FullscreenPlayerProps>(({ onClose }) => {
   
   const skipNext = useCallback(() => {
     const newIndex = Math.min(allSegments.length - 1, currentSegmentIndex + 1);
+    currentSegmentIndexRef.current = newIndex;
     setCurrentSegmentIndex(newIndex);
     const segment = allSegments[newIndex];
     if (segment) {
@@ -311,10 +366,25 @@ export const FullscreenPlayer = memo<FullscreenPlayerProps>(({ onClose }) => {
     setCurrentTime(newTime);
     
     // Find segment at this time
-    const segIndex = allSegments.findIndex(
-      s => newTime >= s.startTime && newTime < s.endTime
-    );
+    let segIndex = -1;
+    for (let i = 0; i < allSegments.length; i++) {
+      if (newTime >= allSegments[i].startTime && newTime < allSegments[i].endTime) {
+        segIndex = i;
+        break;
+      }
+    }
+    
+    if (segIndex === -1) {
+      for (let i = allSegments.length - 1; i >= 0; i--) {
+        if (newTime >= allSegments[i].startTime) {
+          segIndex = i;
+          break;
+        }
+      }
+    }
+    
     if (segIndex !== -1) {
+      currentSegmentIndexRef.current = segIndex;
       setCurrentSegmentIndex(segIndex);
       drawSegment(allSegments[segIndex]);
     }
@@ -344,13 +414,29 @@ export const FullscreenPlayer = memo<FullscreenPlayerProps>(({ onClose }) => {
         toggleMute();
       } else if (e.key === 'Escape') {
         e.preventDefault();
-        onClose();
+        if (playbackState === 'countdown') {
+          cancelCountdown();
+        } else {
+          onClose();
+        }
       }
     };
     
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [togglePlay, skipPrev, skipNext, toggleFullscreen, toggleMute, onClose]);
+  }, [togglePlay, skipPrev, skipNext, toggleFullscreen, toggleMute, onClose, playbackState, cancelCountdown]);
+  
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (countdownIntervalRef.current) {
+        clearInterval(countdownIntervalRef.current);
+      }
+      if (animationRef.current) {
+        cancelAnimationFrame(animationRef.current);
+      }
+    };
+  }, []);
   
   const progress = totalDuration > 0 ? (currentTime / totalDuration) * 100 : 0;
   
@@ -375,7 +461,31 @@ export const FullscreenPlayer = memo<FullscreenPlayerProps>(({ onClose }) => {
     >
       {/* Audio element */}
       {audioFile && (
-        <audio ref={audioRef} src={audioFile.data} preload="auto" />
+        <audio 
+          ref={audioRef} 
+          src={audioFile.data} 
+          preload="auto"
+          muted={isMuted}
+        />
+      )}
+      
+      {/* Countdown Overlay */}
+      {playbackState === 'countdown' && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/80">
+          <div className="text-center">
+            <div className="text-[200px] font-bold text-white leading-none animate-pulse">
+              {countdownValue}
+            </div>
+            <p className="text-white/60 text-xl mt-4">Starting in...</p>
+            <Button
+              variant="ghost"
+              className="mt-6 text-white/60 hover:text-white"
+              onClick={cancelCountdown}
+            >
+              Cancel (Esc)
+            </Button>
+          </div>
+        </div>
       )}
       
       {/* Canvas */}
@@ -388,11 +498,11 @@ export const FullscreenPlayer = memo<FullscreenPlayerProps>(({ onClose }) => {
         {/* Segment info overlay */}
         <div className={cn(
           'absolute top-4 left-4 transition-opacity duration-300',
-          controlsVisible ? 'opacity-100' : 'opacity-0'
+          controlsVisible && playbackState !== 'countdown' ? 'opacity-100' : 'opacity-0'
         )}>
           <div className="bg-black/70 text-white px-3 py-2 rounded text-sm">
             <p className="font-medium">{currentSegment?.label}</p>
-            <p className="text-xs text-muted-foreground">
+            <p className="text-xs text-white/60">
               {currentSegmentIndex + 1} / {allSegments.length}
             </p>
           </div>
@@ -404,7 +514,7 @@ export const FullscreenPlayer = memo<FullscreenPlayerProps>(({ onClose }) => {
           size="icon"
           className={cn(
             'absolute top-4 right-4 text-white hover:bg-white/20 transition-opacity duration-300',
-            controlsVisible ? 'opacity-100' : 'opacity-0'
+            controlsVisible && playbackState !== 'countdown' ? 'opacity-100' : 'opacity-0'
           )}
           onClick={onClose}
         >
@@ -415,11 +525,11 @@ export const FullscreenPlayer = memo<FullscreenPlayerProps>(({ onClose }) => {
       {/* Controls */}
       <div className={cn(
         'bg-black/90 p-4 transition-opacity duration-300',
-        controlsVisible ? 'opacity-100' : 'opacity-0'
+        controlsVisible && playbackState !== 'countdown' ? 'opacity-100' : 'opacity-0'
       )}>
         {/* Progress bar */}
         <div
-          className="h-1 bg-muted rounded cursor-pointer mb-4 relative group"
+          className="h-1.5 bg-white/20 rounded cursor-pointer mb-4 relative group"
           onClick={handleProgressClick}
         >
           <div
@@ -430,7 +540,7 @@ export const FullscreenPlayer = memo<FullscreenPlayerProps>(({ onClose }) => {
           {allSegments.map((seg, i) => (
             <div
               key={seg.id}
-              className="absolute top-0 bottom-0 w-0.5 bg-white/30"
+              className="absolute top-0 bottom-0 w-0.5 bg-white/40"
               style={{ left: `${(seg.startTime / totalDuration) * 100}%` }}
             />
           ))}
@@ -438,7 +548,7 @@ export const FullscreenPlayer = memo<FullscreenPlayerProps>(({ onClose }) => {
         
         {/* Time and controls */}
         <div className="flex items-center justify-between">
-          <div className="text-white text-sm font-mono">
+          <div className="text-white text-sm font-mono min-w-[100px]">
             {formatTime(currentTime)} / {formatTime(totalDuration)}
           </div>
           
@@ -448,6 +558,7 @@ export const FullscreenPlayer = memo<FullscreenPlayerProps>(({ onClose }) => {
               size="icon"
               className="text-white hover:bg-white/20"
               onClick={skipPrev}
+              disabled={playbackState === 'countdown'}
             >
               <SkipBack size={20} />
             </Button>
@@ -458,7 +569,13 @@ export const FullscreenPlayer = memo<FullscreenPlayerProps>(({ onClose }) => {
               className="text-white hover:bg-white/20 h-12 w-12"
               onClick={togglePlay}
             >
-              {isPlaying ? <Pause size={28} /> : <Play size={28} />}
+              {playbackState === 'playing' ? (
+                <Pause size={28} />
+              ) : playbackState === 'countdown' ? (
+                <X size={28} />
+              ) : (
+                <Play size={28} />
+              )}
             </Button>
             
             <Button
@@ -466,12 +583,27 @@ export const FullscreenPlayer = memo<FullscreenPlayerProps>(({ onClose }) => {
               size="icon"
               className="text-white hover:bg-white/20"
               onClick={skipNext}
+              disabled={playbackState === 'countdown'}
             >
               <SkipForward size={20} />
             </Button>
           </div>
           
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 min-w-[100px] justify-end">
+            {/* Countdown toggle */}
+            <Button
+              variant="ghost"
+              size="icon"
+              className={cn(
+                'text-white hover:bg-white/20',
+                countdownEnabled && 'text-primary'
+              )}
+              onClick={() => setCountdownEnabled(!countdownEnabled)}
+              disabled={playbackState !== 'idle'}
+            >
+              <Timer size={18} />
+            </Button>
+            
             {audioFile && (
               <Button
                 variant="ghost"
