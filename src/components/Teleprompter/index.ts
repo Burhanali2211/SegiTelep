@@ -8,4 +8,4 @@ export { ImageSegmentEditor } from './ImageSegmentEditor';
 export { PdfSegmentEditor } from './PdfSegmentEditor';
 export { AudioManager } from './AudioManager';
 export { MiniPreview } from './MiniPreview';
-export { TextSegmentEditor, VisualSegmentEditor } from './editors';
+export { TextSegmentEditor } from './editors';
