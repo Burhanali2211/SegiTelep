@@ -9,7 +9,9 @@ import { useTeleprompterStore } from '@/store/teleprompterStore';
 import { RenderEngine, getRenderEngine } from '@/core/engine/RenderEngine';
 import { ScrollEngine, getScrollEngine } from '@/core/engine/ScrollEngine';
 import { PlaybackControls } from './PlaybackControls';
+import { isVisualSegment } from '@/types/teleprompter.types';
 import { cn } from '@/lib/utils';
+import { Progress } from '@/components/ui/progress';
 
 interface TeleprompterDisplayProps {
   className?: string;
@@ -21,10 +23,12 @@ export const TeleprompterDisplay = memo<TeleprompterDisplayProps>(({ className }
   const renderEngineRef = useRef<RenderEngine | null>(null);
   const scrollEngineRef = useRef<ScrollEngine | null>(null);
   const rafRef = useRef<number | null>(null);
+  const durationTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [controlsVisible, setControlsVisible] = useState(true);
   const [fps, setFps] = useState(60);
+  const [durationProgress, setDurationProgress] = useState(0);
   const hideTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   
   const project = useTeleprompterStore((s) => s.project);
@@ -36,6 +40,7 @@ export const TeleprompterDisplay = memo<TeleprompterDisplayProps>(({ className }
   const { isPlaying, isPaused, currentSegmentIndex, speed } = playback;
   const currentSegment = project?.segments[currentSegmentIndex];
   const mirrorMode = project?.settings.mirrorMode || false;
+  const isVisual = currentSegment && isVisualSegment(currentSegment);
   
   // Initialize engines
   useEffect(() => {
@@ -49,6 +54,9 @@ export const TeleprompterDisplay = memo<TeleprompterDisplayProps>(({ className }
     return () => {
       if (rafRef.current) {
         cancelAnimationFrame(rafRef.current);
+      }
+      if (durationTimerRef.current) {
+        clearInterval(durationTimerRef.current);
       }
     };
   }, []);
@@ -102,14 +110,60 @@ export const TeleprompterDisplay = memo<TeleprompterDisplayProps>(({ className }
   useEffect(() => {
     if (!currentSegment || !renderEngineRef.current || !scrollEngineRef.current) return;
     
-    const metrics = renderEngineRef.current.measureText(currentSegment);
-    scrollEngineRef.current.setTarget(metrics.totalHeight);
-    scrollEngineRef.current.setCurrentOffset(0);
-  }, [currentSegment?.id, currentSegment?.content]);
+    // Reset duration progress when segment changes
+    setDurationProgress(0);
+    
+    // For text segments, use scroll-based metrics
+    if (!isVisual) {
+      const metrics = renderEngineRef.current.measureText(currentSegment);
+      scrollEngineRef.current.setTarget(metrics.totalHeight);
+      scrollEngineRef.current.setCurrentOffset(0);
+    }
+  }, [currentSegment?.id, currentSegment?.content, isVisual]);
   
-  // Playback control
+  // Duration-based playback for visual segments
   useEffect(() => {
-    if (!scrollEngineRef.current) return;
+    if (!currentSegment || !isVisual) {
+      if (durationTimerRef.current) {
+        clearInterval(durationTimerRef.current);
+        durationTimerRef.current = null;
+      }
+      return;
+    }
+    
+    if (isPlaying && !isPaused) {
+      const startTime = Date.now();
+      const duration = currentSegment.duration * 1000; // Convert to ms
+      
+      durationTimerRef.current = setInterval(() => {
+        const elapsed = Date.now() - startTime;
+        const progress = Math.min(elapsed / duration, 1);
+        setDurationProgress(progress * 100);
+        
+        if (progress >= 1) {
+          clearInterval(durationTimerRef.current!);
+          durationTimerRef.current = null;
+          nextSegment();
+        }
+      }, 50);
+    } else {
+      if (durationTimerRef.current) {
+        clearInterval(durationTimerRef.current);
+        durationTimerRef.current = null;
+      }
+    }
+    
+    return () => {
+      if (durationTimerRef.current) {
+        clearInterval(durationTimerRef.current);
+        durationTimerRef.current = null;
+      }
+    };
+  }, [isPlaying, isPaused, currentSegment?.id, isVisual, currentSegment?.duration, nextSegment]);
+  
+  // Playback control for text segments
+  useEffect(() => {
+    if (!scrollEngineRef.current || isVisual) return;
     
     if (isPlaying && !isPaused) {
       scrollEngineRef.current.play();
@@ -118,7 +172,7 @@ export const TeleprompterDisplay = memo<TeleprompterDisplayProps>(({ className }
     } else {
       scrollEngineRef.current.stop();
     }
-  }, [isPlaying, isPaused]);
+  }, [isPlaying, isPaused, isVisual]);
   
   // Render loop
   useEffect(() => {
@@ -128,7 +182,7 @@ export const TeleprompterDisplay = memo<TeleprompterDisplayProps>(({ className }
         return;
       }
       
-      const offset = scrollEngineRef.current.getCurrentOffset();
+      const offset = isVisual ? 0 : scrollEngineRef.current.getCurrentOffset();
       renderEngineRef.current.render(currentSegment, offset, mirrorMode);
       setFps(renderEngineRef.current.getFps());
       
@@ -142,7 +196,7 @@ export const TeleprompterDisplay = memo<TeleprompterDisplayProps>(({ className }
         cancelAnimationFrame(rafRef.current);
       }
     };
-  }, [currentSegment, mirrorMode]);
+  }, [currentSegment, mirrorMode, isVisual]);
   
   // Auto-hide controls
   const showControls = useCallback(() => {
@@ -221,6 +275,17 @@ export const TeleprompterDisplay = memo<TeleprompterDisplayProps>(({ className }
           className="teleprompter-canvas absolute inset-0 w-full h-full"
         />
         
+        {/* Duration Progress Bar for visual segments */}
+        {isVisual && isPlaying && (
+          <div className="absolute bottom-0 left-0 right-0 px-4 pb-2">
+            <Progress value={durationProgress} className="h-1" />
+            <div className="flex justify-between mt-1 text-xs text-muted-foreground">
+              <span>{Math.ceil(currentSegment.duration * (1 - durationProgress / 100))}s remaining</span>
+              <span>{currentSegment.duration}s total</span>
+            </div>
+          </div>
+        )}
+        
         {/* FPS indicator (debug) */}
         {!isFullscreen && (
           <div className="absolute top-2 right-2 text-xs text-muted-foreground font-mono opacity-50">
@@ -236,6 +301,7 @@ export const TeleprompterDisplay = memo<TeleprompterDisplayProps>(({ className }
           )} />
           <span className="text-xs text-muted-foreground">
             {isPlaying && !isPaused ? 'Playing' : isPaused ? 'Paused' : 'Ready'}
+            {isVisual && ` (${currentSegment.duration}s)`}
           </span>
         </div>
       </div>

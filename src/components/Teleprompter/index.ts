@@ -7,3 +7,4 @@ export { SettingsPanel } from './SettingsPanel';
 export { ImageSegmentEditor } from './ImageSegmentEditor';
 export { PdfSegmentEditor } from './PdfSegmentEditor';
 export { AudioManager } from './AudioManager';
+export { TextSegmentEditor, VisualSegmentEditor } from './editors';

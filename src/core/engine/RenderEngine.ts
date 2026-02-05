@@ -1,6 +1,6 @@
 // Canvas-based rendering engine for high-performance text display
 
-import { Segment, TEXT_COLOR_OPTIONS } from '@/types/teleprompter.types';
+import { Segment, TEXT_COLOR_OPTIONS, Region } from '@/types/teleprompter.types';
 
 export interface RenderConfig {
   width: number;
@@ -77,7 +77,7 @@ export class RenderEngine {
   
   measureText(segment: Segment): TextMetrics {
     // For image/pdf segments, return simple metrics
-    if (segment.type === 'image' || segment.type === 'pdf-page') {
+    if (segment.type === 'image' || segment.type === 'pdf-page' || segment.type === 'image-region') {
       return {
         lines: [],
         lineHeight: 0,
@@ -171,6 +171,8 @@ export class RenderEngine {
     // Handle different segment types
     if (segment.type === 'image' || segment.type === 'pdf-page') {
       this.renderImage(segment, scrollOffset);
+    } else if (segment.type === 'image-region') {
+      this.renderRegion(segment);
     } else {
       this.renderText(segment, scrollOffset);
     }
@@ -209,6 +211,62 @@ export class RenderEngine {
         this.ctx!.fillText('Image failed to load', width / 2, height / 2);
       });
     }
+  }
+  
+  private renderRegion(segment: Segment): void {
+    if (!this.ctx || !segment.content || !segment.region) return;
+    
+    const { width, height } = this.config;
+    const region = segment.region;
+    
+    // Check if image is cached
+    if (this.cachedImages.has(segment.content)) {
+      const img = this.cachedImages.get(segment.content)!;
+      this.drawRegionCropped(img, region, width, height);
+    } else {
+      // Load and cache the image
+      this.loadImage(segment.content).then((img) => {
+        this.drawRegionCropped(img, region, width, height);
+      }).catch(() => {
+        this.ctx!.fillStyle = '#333333';
+        this.ctx!.fillRect(width * 0.1, height * 0.1, width * 0.8, height * 0.8);
+        this.ctx!.fillStyle = '#666666';
+        this.ctx!.font = '24px Inter';
+        this.ctx!.textAlign = 'center';
+        this.ctx!.fillText('Region failed to load', width / 2, height / 2);
+      });
+    }
+  }
+  
+  private drawRegionCropped(img: HTMLImageElement, region: Region, width: number, height: number): void {
+    if (!this.ctx) return;
+    
+    // Convert percentage region to pixel coordinates on source image
+    const sx = (region.x / 100) * img.width;
+    const sy = (region.y / 100) * img.height;
+    const sw = (region.width / 100) * img.width;
+    const sh = (region.height / 100) * img.height;
+    
+    // Calculate destination dimensions maintaining aspect ratio
+    const cropAspect = sw / sh;
+    const canvasAspect = width / height;
+    
+    let drawWidth: number;
+    let drawHeight: number;
+    
+    if (cropAspect > canvasAspect) {
+      drawWidth = width;
+      drawHeight = width / cropAspect;
+    } else {
+      drawHeight = height;
+      drawWidth = height * cropAspect;
+    }
+    
+    const dx = (width - drawWidth) / 2;
+    const dy = (height - drawHeight) / 2;
+    
+    // Draw cropped region scaled to fit canvas
+    this.ctx.drawImage(img, sx, sy, sw, sh, dx, dy, drawWidth, drawHeight);
   }
   
   private drawImageCentered(img: HTMLImageElement, width: number, height: number): void {

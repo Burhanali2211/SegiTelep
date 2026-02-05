@@ -1,12 +1,14 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { useTeleprompterStore } from '@/store/teleprompterStore';
 import { createProject, getAllProjects, loadProject } from '@/core/storage/ProjectStorage';
+import { isVisualSegment } from '@/types/teleprompter.types';
 import {
   SegmentList,
-  ContentEditor,
   TeleprompterDisplay,
   ProjectManager,
   SettingsPanel,
+  TextSegmentEditor,
+  VisualSegmentEditor,
 } from '@/components/Teleprompter';
 import { Button } from '@/components/ui/button';
 import {
@@ -55,10 +57,18 @@ const Index = () => {
   const [initialized, setInitialized] = useState(false);
   
   const project = useTeleprompterStore((s) => s.project);
+  const selectedSegmentId = useTeleprompterStore((s) => s.editor.selectedSegmentId);
   const setProject = useTeleprompterStore((s) => s.setProject);
   const hasUnsavedChanges = useTeleprompterStore((s) => s.hasUnsavedChanges);
   const saveCurrentProject = useTeleprompterStore((s) => s.saveCurrentProject);
   const addSegment = useTeleprompterStore((s) => s.addSegment);
+  
+  // Determine which editor to show based on selected segment type
+  const selectedSegment = useMemo(() => {
+    return project?.segments.find((s) => s.id === selectedSegmentId);
+  }, [project?.segments, selectedSegmentId]);
+  
+  const showVisualEditor = selectedSegment && isVisualSegment(selectedSegment);
   
   // Initialize - load most recent project or create new
   useEffect(() => {
@@ -218,10 +228,14 @@ Delete this text and start writing your own script!`,
           
           <ResizableHandle withHandle />
           
-          {/* Editor */}
+          {/* Editor - Dynamic based on segment type */}
           <ResizablePanel defaultSize={35} minSize={25}>
             <div className="h-full overflow-hidden">
-              <ContentEditor />
+              {showVisualEditor ? (
+                <VisualSegmentEditor />
+              ) : (
+                <TextSegmentEditor />
+              )}
             </div>
           </ResizablePanel>
           
