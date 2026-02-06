@@ -74,6 +74,9 @@ export function useVisualProjectSession() {
 
   // Save project to IndexedDB with retry logic and safe serialization
   const saveProject = useCallback(async (showToast = true, retryCount = 0) => {
+    // Escape event context - wait for microtask to ensure no event references are captured
+    await new Promise(resolve => setTimeout(resolve, 0));
+    
     // Get fresh state from store - avoids stale closure issues
     const state = useVisualEditorState.getState();
     const { pages, audioFile, projectName, projectId } = state;
