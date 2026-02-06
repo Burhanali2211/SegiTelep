@@ -6,6 +6,7 @@ export { AudioWaveform } from './AudioWaveform';
 export { LeftControlPanel } from './LeftControlPanel';
 export { SelectionToolbar } from './SelectionToolbar';
 export { FullscreenPlayer } from './FullscreenPlayer';
+export { WelcomeDashboard } from './WelcomeDashboard';
 export { useVisualEditorState, formatTime, parseTime } from './useVisualEditorState';
 export { useUndoRedo } from './useUndoRedo';
 export type { VisualSegment, ImagePage } from './useVisualEditorState';

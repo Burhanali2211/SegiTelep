@@ -1,25 +1,39 @@
 
 # Desktop Application Startup and Playback Improvements Plan
 
-## Current Issues Identified
+## ✅ IMPLEMENTATION COMPLETE
 
-### 1. Abrupt Application Startup
-The application currently opens directly to the editor workspace without any user-friendly onboarding:
-- No welcome screen or dashboard
-- No visible recent projects list on startup
-- Session restoration happens silently in the background (in `useVisualProjectSession.ts`)
-- Users are immediately dropped into an empty or restored project with no context
+All phases have been implemented successfully.
 
-### 2. Hardcoded/Incorrect Duration Display
-In `FullscreenPlayer.tsx`, the `totalDuration` calculation (lines 60-65) has issues:
-- Shows incorrect duration (e.g., "15 minutes something seconds") instead of actual content length
-- Duration should be derived from the last segment's end time when no audio is present
-- When audio exists, should use the longer of: audio duration OR last segment end time
+---
 
-### 3. Segment Playback Not Working Properly
-- Segments may not auto-advance correctly based on their timing
-- Playback doesn't stop automatically when the last segment completes
-- Audio-segment synchronization needs verification
+## Changes Made
+
+### Phase 1: Welcome Dashboard ✅
+- Created `WelcomeDashboard.tsx` with recent projects list, thumbnails, and metadata
+- Keyboard shortcuts: `N` for new, `↑↓` to navigate, `Enter` to open
+- Auto-resume checkbox persisted to localStorage
+
+### Phase 2: Duration Calculation ✅
+- Fixed `totalDuration` in `FullscreenPlayer.tsx` to calculate from visible segments
+- Duration now shows `00:00.00` when empty
+- Uses `Math.max(lastSegmentEndTime, audioFile.duration)` when audio exists
+
+### Phase 3: Playback Auto-Stop ✅
+- Verified auto-stop logic at `elapsed >= totalDuration`
+- Playback resets to beginning after completion
+- Audio stops and resets with visual segments
+
+### Phase 4: Session Restoration Flow ✅
+- Added `StartupMode` type (`'welcome'` | `'editor'`)
+- Added `AUTO_RESUME_KEY` localStorage preference
+- Session only auto-restores when preference is enabled
+
+### Phase 5: Integration ✅
+- `VisualEditor` shows `WelcomeDashboard` when `startupMode === 'welcome'`
+- Exported `WelcomeDashboard` from index
+
+---
 
 ---
 
