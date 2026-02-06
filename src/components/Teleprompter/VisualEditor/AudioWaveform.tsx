@@ -1,14 +1,14 @@
 import React, { memo, useCallback, useRef, useEffect, useState } from 'react';
 import { useVisualEditorState, formatTime } from './useVisualEditorState';
 import { Button } from '@/components/ui/button';
-import { Slider } from '@/components/ui/slider';
 import { 
   Play, 
   Pause, 
   SkipBack, 
   SkipForward,
-  Volume2,
+  Gauge,
   Upload,
+  X,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -99,7 +99,7 @@ export const AudioWaveform = memo<AudioWaveformProps>(({ className }) => {
     const ctx = canvas?.getContext('2d');
     if (!canvas || !ctx || canvasWidth === 0) return;
     
-    const height = 50;
+    const height = 32;
     const dpr = window.devicePixelRatio || 1;
     canvas.width = canvasWidth * dpr;
     canvas.height = height * dpr;
@@ -123,18 +123,18 @@ export const AudioWaveform = memo<AudioWaveformProps>(({ className }) => {
       if (segment.isHidden) return;
       const startX = (segment.startTime / duration) * canvasWidth;
       const endX = (segment.endTime / duration) * canvasWidth;
-      ctx.fillStyle = 'hsla(var(--primary), 0.2)';
+      ctx.fillStyle = 'hsla(var(--primary), 0.15)';
       ctx.fillRect(startX, 0, endX - startX, height);
     });
     
     // Draw waveform bars
     waveformData.forEach((val, i) => {
       const x = i * barWidth;
-      const barHeight = val * (height - 10);
+      const barHeight = val * (height - 6);
       const y = (height - barHeight) / 2;
       
       const isPlayed = i / waveformData.length < progress;
-      ctx.fillStyle = isPlayed ? 'hsl(var(--primary))' : 'hsl(var(--muted-foreground))';
+      ctx.fillStyle = isPlayed ? 'hsl(var(--primary))' : 'hsl(var(--muted-foreground) / 0.5)';
       ctx.fillRect(x, y, barWidth - 1, barHeight);
     });
     
@@ -236,6 +236,16 @@ export const AudioWaveform = memo<AudioWaveformProps>(({ className }) => {
     e.target.value = '';
   }, [setAudioFile]);
   
+  const handleRemoveAudio = useCallback(() => {
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
+    }
+    setAudioFile(null);
+    setPlaybackTime(0);
+    setPlaying(false);
+  }, [setAudioFile, setPlaybackTime, setPlaying]);
+  
   const handleTogglePlay = useCallback(() => {
     setPlaying(!isPlaying);
   }, [isPlaying, setPlaying]);
@@ -248,8 +258,15 @@ export const AudioWaveform = memo<AudioWaveformProps>(({ className }) => {
     }
   }, [playbackTime, audioFile?.duration, setPlaybackTime]);
   
+  const cycleSpeed = useCallback(() => {
+    const speeds = [0.5, 0.75, 1, 1.25, 1.5, 2];
+    const currentIndex = speeds.indexOf(playbackSpeed);
+    const nextIndex = (currentIndex + 1) % speeds.length;
+    setPlaybackSpeed(speeds[nextIndex]);
+  }, [playbackSpeed, setPlaybackSpeed]);
+  
   return (
-    <div className={cn('flex items-center gap-3 px-3 py-2 bg-muted/30 border-t border-border', className)}>
+    <div className={cn('flex items-center gap-2 px-2 py-1 bg-muted/20 border-t border-border h-10', className)}>
       <input
         ref={fileInputRef}
         type="file"
@@ -259,29 +276,29 @@ export const AudioWaveform = memo<AudioWaveformProps>(({ className }) => {
       />
       
       {!audioFile ? (
-        <Button variant="outline" size="sm" onClick={handleUploadAudio}>
-          <Upload size={14} className="mr-1" />
+        <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={handleUploadAudio}>
+          <Upload size={12} className="mr-1" />
           Load Audio
         </Button>
       ) : (
         <>
-          {/* Playback controls */}
-          <div className="flex items-center gap-1">
-            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleSeek(-5)}>
-              <SkipBack size={14} />
+          {/* Compact playback controls */}
+          <div className="flex items-center">
+            <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleSeek(-5)}>
+              <SkipBack size={12} />
             </Button>
             
-            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={handleTogglePlay}>
-              {isPlaying ? <Pause size={16} /> : <Play size={16} />}
+            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={handleTogglePlay}>
+              {isPlaying ? <Pause size={14} /> : <Play size={14} />}
             </Button>
             
-            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleSeek(5)}>
-              <SkipForward size={14} />
+            <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleSeek(5)}>
+              <SkipForward size={12} />
             </Button>
           </div>
           
-          {/* Time display */}
-          <span className="text-xs font-mono min-w-[80px]">
+          {/* Compact time display */}
+          <span className="text-[10px] font-mono text-muted-foreground min-w-[70px]">
             {formatTime(playbackTime)} / {formatTime(audioFile.duration)}
           </span>
           
@@ -290,25 +307,32 @@ export const AudioWaveform = memo<AudioWaveformProps>(({ className }) => {
             <canvas
               ref={canvasRef}
               onClick={handleCanvasClick}
-              className="cursor-pointer rounded"
+              className="cursor-pointer rounded-sm"
             />
           </div>
           
-          {/* Speed control */}
-          <div className="flex items-center gap-2">
-            <Volume2 size={14} className="text-muted-foreground" />
-            <div className="w-20">
-              <Slider
-                value={[playbackSpeed]}
-                onValueChange={([v]) => setPlaybackSpeed(v)}
-                min={0.5}
-                max={2}
-                step={0.25}
-                className="h-1"
-              />
-            </div>
-            <span className="text-xs text-muted-foreground w-8">{playbackSpeed}x</span>
-          </div>
+          {/* Speed control button */}
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-6 px-2 text-[10px] font-mono gap-1"
+            onClick={cycleSpeed}
+            title="Click to cycle playback speed"
+          >
+            <Gauge size={10} />
+            {playbackSpeed}x
+          </Button>
+          
+          {/* Remove audio */}
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6 text-muted-foreground hover:text-destructive"
+            onClick={handleRemoveAudio}
+            title="Remove audio"
+          >
+            <X size={12} />
+          </Button>
         </>
       )}
     </div>
