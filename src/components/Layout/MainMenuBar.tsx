@@ -76,6 +76,9 @@ interface MainMenuBarProps {
   onOpenStatistics: () => void;
   onOpenCountdown: () => void;
   onOpenAbout: () => void;
+  onOpenAudioManager: () => void;
+  onOpenRemoteControl: () => void;
+  onOpenVoiceInput: () => void;
   onPlay: () => void;
   onGoHome: () => void;
   recentProjects?: Array<{ id: string; name: string }>;
@@ -96,6 +99,9 @@ export const MainMenuBar = memo<MainMenuBarProps>(({
   onOpenStatistics,
   onOpenCountdown,
   onOpenAbout,
+  onOpenAudioManager,
+  onOpenRemoteControl,
+  onOpenVoiceInput,
   onPlay,
   onGoHome,
   recentProjects = [],
@@ -471,7 +477,7 @@ export const MainMenuBar = memo<MainMenuBarProps>(({
           
           <MenubarSeparator />
           
-          <MenubarItem disabled>
+          <MenubarItem onClick={onOpenAudioManager}>
             <Music size={16} className="mr-2" />
             Audio Manager
           </MenubarItem>
@@ -496,14 +502,14 @@ export const MainMenuBar = memo<MainMenuBarProps>(({
             <MenubarShortcut>?</MenubarShortcut>
           </MenubarItem>
           
-          <MenubarItem disabled>
+          <MenubarItem onClick={onOpenRemoteControl}>
             <Radio size={16} className="mr-2" />
-            Remote Control (Coming Soon)
+            Remote Control
           </MenubarItem>
           
-          <MenubarItem disabled>
+          <MenubarItem onClick={onOpenVoiceInput}>
             <Mic size={16} className="mr-2" />
-            Voice Input (Coming Soon)
+            Voice Input
           </MenubarItem>
         </MenubarContent>
       </MenubarMenu>
