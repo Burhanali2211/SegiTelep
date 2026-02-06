@@ -50,22 +50,12 @@ export function useVisualProjectSession() {
   
   const [autoResumeEnabled, setAutoResumeEnabledState] = useState(getAutoResumePreference);
   
-  const projectId = useVisualEditorState((s) => s.projectId);
-  const projectName = useVisualEditorState((s) => s.projectName);
-  const pages = useVisualEditorState((s) => s.pages);
-  const audioFile = useVisualEditorState((s) => s.audioFile);
+  // Only subscribe to what we need for UI rendering
   const isDirty = useVisualEditorState((s) => s.isDirty);
   const saveStatus = useVisualEditorState((s) => s.saveStatus);
   const isLoading = useVisualEditorState((s) => s.isLoading);
-  
-  const setProjectId = useVisualEditorState((s) => s.setProjectId);
-  const setProjectName = useVisualEditorState((s) => s.setProjectName);
-  const setLastSaved = useVisualEditorState((s) => s.setLastSaved);
-  const setIsDirty = useVisualEditorState((s) => s.setIsDirty);
-  const setSaveStatus = useVisualEditorState((s) => s.setSaveStatus);
-  const setIsLoading = useVisualEditorState((s) => s.setIsLoading);
-  const loadProjectData = useVisualEditorState((s) => s.loadProjectData);
-  const reset = useVisualEditorState((s) => s.reset);
+  const projectId = useVisualEditorState((s) => s.projectId);
+  const projectName = useVisualEditorState((s) => s.projectName);
   
   // Update auto-resume preference
   const setAutoResumeEnabled = useCallback((enabled: boolean) => {
@@ -84,6 +74,11 @@ export function useVisualProjectSession() {
 
   // Save project to IndexedDB with retry logic and safe serialization
   const saveProject = useCallback(async (showToast = true, retryCount = 0) => {
+    // Get fresh state from store - avoids stale closure issues
+    const state = useVisualEditorState.getState();
+    const { pages, audioFile, projectName, projectId } = state;
+    const { setProjectId, setLastSaved, setIsDirty, setSaveStatus } = state;
+    
     if (pages.length === 0) return;
     
     // Prevent infinite retry loops
@@ -137,22 +132,37 @@ export function useVisualProjectSession() {
       }
       
       // Reset to idle after showing saved status
-      setTimeout(() => setSaveStatus('idle'), 2000);
+      setTimeout(() => useVisualEditorState.getState().setSaveStatus('idle'), 2000);
       
     } catch (error) {
-      console.error(`[Save] Attempt ${retryCount + 1} failed:`, error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error(`[Save] Attempt ${retryCount + 1} failed:`, errorMessage, error);
       
       // Check if it's a quota error
       const isQuotaError = error instanceof Error && (
         error.name === 'QuotaExceededError' ||
-        error.message.includes('quota')
+        errorMessage.includes('quota')
       );
       
+      // Check for data structure errors - don't retry these
+      const isDataError = errorMessage.includes('DataCloneError') ||
+        errorMessage.includes('circular') ||
+        errorMessage.includes('could not be cloned');
+      
       if (isQuotaError) {
-        setSaveStatus('error');
+        useVisualEditorState.getState().setSaveStatus('error');
         if (lastSaveErrorRef.current !== 'quota') {
           lastSaveErrorRef.current = 'quota';
           toast.error('Storage quota exceeded. Try removing old projects.');
+        }
+        return;
+      }
+      
+      if (isDataError) {
+        useVisualEditorState.getState().setSaveStatus('error');
+        if (lastSaveErrorRef.current !== 'data_error') {
+          lastSaveErrorRef.current = 'data_error';
+          toast.error('Save failed: Invalid data structure');
         }
         return;
       }
@@ -163,7 +173,7 @@ export function useVisualProjectSession() {
         saveProject(showToast, retryCount + 1);
       }, backoffMs);
     }
-  }, [projectId, projectName, pages, audioFile, setProjectId, setLastSaved, setIsDirty, setSaveStatus]);
+  }, []); // No dependencies - uses fresh state from store
 
   // Schedule auto-save
   const scheduleAutoSave = useCallback(() => {
@@ -172,7 +182,18 @@ export function useVisualProjectSession() {
     }
     
     autoSaveTimeoutRef.current = setTimeout(async () => {
-      if (useVisualEditorState.getState().isDirty && useVisualEditorState.getState().pages.length > 0) {
+      const state = useVisualEditorState.getState();
+      
+      // Skip save if drag is active - reschedule instead
+      if (state.isActiveDrag) {
+        console.log('[AutoSave] Skipped - drag active, rescheduling');
+        autoSaveTimeoutRef.current = setTimeout(() => {
+          scheduleAutoSave();
+        }, AUTO_SAVE_DELAY);
+        return;
+      }
+      
+      if (state.isDirty && state.pages.length > 0) {
         await saveProject(false);
         console.log('[AutoSave] Project saved');
       }
@@ -181,6 +202,7 @@ export function useVisualProjectSession() {
 
   // Load project
   const loadProject = useCallback(async (id: string) => {
+    const { setIsLoading, loadProjectData } = useVisualEditorState.getState();
     setIsLoading(true);
     
     try {
@@ -220,9 +242,9 @@ export function useVisualProjectSession() {
       toast.error('Failed to load project');
       return false;
     } finally {
-      setIsLoading(false);
+      useVisualEditorState.getState().setIsLoading(false);
     }
-  }, [loadProjectData, setIsLoading]);
+  }, []);
 
   // Restore last session on mount (only if auto-resume is enabled)
   useEffect(() => {
@@ -238,7 +260,7 @@ export function useVisualProjectSession() {
       const lastProjectId = localStorage.getItem(LAST_PROJECT_KEY);
       
       if (lastProjectId) {
-        setIsLoading(true);
+        useVisualEditorState.getState().setIsLoading(true);
         const success = await loadProject(lastProjectId);
         
         if (!success) {
@@ -246,12 +268,12 @@ export function useVisualProjectSession() {
           localStorage.removeItem(LAST_PROJECT_KEY);
           setStartupMode('welcome');
         }
-        setIsLoading(false);
+        useVisualEditorState.getState().setIsLoading(false);
       }
     };
     
     restoreSession();
-  }, [loadProject, setIsLoading, setStartupMode]);
+  }, [loadProject, setStartupMode]);
 
   // Auto-save when dirty
   useEffect(() => {
@@ -282,15 +304,16 @@ export function useVisualProjectSession() {
 
   // Create new project
   const createNewProject = useCallback(async (name = 'Untitled Project') => {
-    reset();
-    setProjectName(name);
-    setProjectId(null);
-    setLastSaved(null);
-    setIsDirty(false);
+    const state = useVisualEditorState.getState();
+    state.reset();
+    state.setProjectName(name);
+    state.setProjectId(null);
+    state.setLastSaved(null);
+    state.setIsDirty(false);
     localStorage.removeItem(LAST_PROJECT_KEY);
     setStartupMode('editor');
     toast.success('New project created');
-  }, [reset, setProjectName, setProjectId, setLastSaved, setIsDirty, setStartupMode]);
+  }, [setStartupMode]);
   
   // Load project and switch to editor mode
   const loadProjectAndEdit = useCallback(async (id: string) => {

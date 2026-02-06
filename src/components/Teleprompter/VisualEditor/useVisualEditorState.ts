@@ -48,6 +48,9 @@ interface VisualEditorState {
   // Drawing
   isDrawing: boolean;
   
+  // Drag state (for save locking)
+  isActiveDrag: boolean;
+  
   // Playback
   playbackTime: number;
   isPlaying: boolean;
@@ -99,6 +102,7 @@ interface VisualEditorState {
   
   // Actions - Drawing
   setDrawing: (isDrawing: boolean) => void;
+  setActiveDrag: (active: boolean) => void;
   
   // Actions - Playback
   setPlaybackTime: (time: number) => void;
@@ -156,6 +160,7 @@ const initialState = {
   zoom: 1,
   pan: { x: 0, y: 0 },
   isDrawing: false,
+  isActiveDrag: false,
   playbackTime: 0,
   isPlaying: false,
   playbackSpeed: 1,
@@ -452,6 +457,10 @@ export const useVisualEditorState = create<VisualEditorState>((set, get) => ({
   // Drawing
   setDrawing: (isDrawing) => {
     set({ isDrawing });
+  },
+  
+  setActiveDrag: (active) => {
+    set({ isActiveDrag: active });
   },
   
   // Playback
