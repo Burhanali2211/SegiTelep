@@ -1,6 +1,7 @@
 import React, { memo, useCallback, useRef, useEffect, useState } from 'react';
 import { useVisualEditorState, formatTime } from './useVisualEditorState';
 import { Button } from '@/components/ui/button';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { 
   Play, 
   Pause, 
@@ -9,6 +10,8 @@ import {
   Gauge,
   Upload,
   X,
+  Volume2,
+  VolumeX,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -21,9 +24,12 @@ export const AudioWaveform = memo<AudioWaveformProps>(({ className }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const animationRef = useRef<number | null>(null);
+  const isSeekingRef = useRef(false);
   
   const [waveformData, setWaveformData] = useState<number[]>([]);
   const [canvasWidth, setCanvasWidth] = useState(0);
+  const [isMuted, setIsMuted] = useState(false);
+  const [isAudioReady, setIsAudioReady] = useState(false);
   
   const audioFile = useVisualEditorState((s) => s.audioFile);
   const playbackTime = useVisualEditorState((s) => s.playbackTime);
@@ -39,16 +45,38 @@ export const AudioWaveform = memo<AudioWaveformProps>(({ className }) => {
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   
-  // Load audio and generate waveform
+  // Create and setup audio element
   useEffect(() => {
     if (!audioFile?.data) {
       setWaveformData([]);
+      setIsAudioReady(false);
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current = null;
+      }
       return;
     }
     
     const audio = new Audio(audioFile.data);
+    audio.preload = 'auto';
+    
+    audio.onloadedmetadata = () => {
+      setIsAudioReady(true);
+    };
+    
+    audio.onended = () => {
+      setPlaying(false);
+      setPlaybackTime(0);
+    };
+    
+    audio.onerror = (e) => {
+      console.error('Audio error:', e);
+      setIsAudioReady(false);
+    };
+    
     audioRef.current = audio;
     
+    // Generate waveform data
     const audioContext = new AudioContext();
     
     fetch(audioFile.data)
@@ -56,7 +84,7 @@ export const AudioWaveform = memo<AudioWaveformProps>(({ className }) => {
       .then(buffer => audioContext.decodeAudioData(buffer))
       .then(audioBuffer => {
         const rawData = audioBuffer.getChannelData(0);
-        const samples = 200;
+        const samples = 150;
         const blockSize = Math.floor(rawData.length / samples);
         const filteredData: number[] = [];
         
@@ -72,34 +100,38 @@ export const AudioWaveform = memo<AudioWaveformProps>(({ className }) => {
         const normalized = filteredData.map(v => v / maxVal);
         setWaveformData(normalized);
       })
-      .catch(console.error);
+      .catch(console.error)
+      .finally(() => {
+        audioContext.close();
+      });
     
     return () => {
       audio.pause();
+      audio.src = '';
     };
-  }, [audioFile?.data]);
+  }, [audioFile?.data, setPlaying, setPlaybackTime]);
   
-  // Resize canvas
+  // Resize canvas observer
   useEffect(() => {
     if (!containerRef.current) return;
     
-    const updateSize = () => {
-      const rect = containerRef.current?.getBoundingClientRect();
-      if (rect) setCanvasWidth(rect.width);
-    };
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        setCanvasWidth(entry.contentRect.width);
+      }
+    });
     
-    updateSize();
-    window.addEventListener('resize', updateSize);
-    return () => window.removeEventListener('resize', updateSize);
+    observer.observe(containerRef.current);
+    return () => observer.disconnect();
   }, []);
   
-  // Draw waveform
+  // Draw waveform visualization
   useEffect(() => {
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext('2d');
     if (!canvas || !ctx || canvasWidth === 0) return;
     
-    const height = 32;
+    const height = 36;
     const dpr = window.devicePixelRatio || 1;
     canvas.width = canvasWidth * dpr;
     canvas.height = height * dpr;
@@ -107,108 +139,161 @@ export const AudioWaveform = memo<AudioWaveformProps>(({ className }) => {
     canvas.style.height = `${height}px`;
     ctx.scale(dpr, dpr);
     
-    // Background
-    ctx.fillStyle = 'hsl(var(--muted))';
+    // Clear and fill background
+    ctx.fillStyle = 'hsl(var(--muted) / 0.5)';
     ctx.fillRect(0, 0, canvasWidth, height);
     
-    if (waveformData.length === 0) return;
-    
-    const barWidth = canvasWidth / waveformData.length;
     const duration = audioFile?.duration || 1;
-    const progress = playbackTime / duration;
+    const progress = Math.min(playbackTime / duration, 1);
     
-    // Draw segments as colored regions
+    // Draw segment regions
     const segments = currentPage?.segments || [];
     segments.forEach(segment => {
       if (segment.isHidden) return;
       const startX = (segment.startTime / duration) * canvasWidth;
       const endX = (segment.endTime / duration) * canvasWidth;
-      ctx.fillStyle = 'hsla(var(--primary), 0.15)';
+      ctx.fillStyle = 'hsla(var(--primary), 0.12)';
       ctx.fillRect(startX, 0, endX - startX, height);
+      
+      // Draw segment start marker
+      ctx.strokeStyle = 'hsla(var(--primary), 0.4)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(startX, 0);
+      ctx.lineTo(startX, height);
+      ctx.stroke();
     });
     
     // Draw waveform bars
-    waveformData.forEach((val, i) => {
-      const x = i * barWidth;
-      const barHeight = val * (height - 6);
-      const y = (height - barHeight) / 2;
+    if (waveformData.length > 0) {
+      const barWidth = canvasWidth / waveformData.length;
+      const barGap = 1;
       
-      const isPlayed = i / waveformData.length < progress;
-      ctx.fillStyle = isPlayed ? 'hsl(var(--primary))' : 'hsl(var(--muted-foreground) / 0.5)';
-      ctx.fillRect(x, y, barWidth - 1, barHeight);
-    });
+      waveformData.forEach((val, i) => {
+        const x = i * barWidth;
+        const barHeight = Math.max(2, val * (height - 8));
+        const y = (height - barHeight) / 2;
+        
+        const barProgress = i / waveformData.length;
+        const isPlayed = barProgress < progress;
+        
+        // Gradient effect for played section
+        if (isPlayed) {
+          ctx.fillStyle = 'hsl(var(--primary))';
+        } else {
+          ctx.fillStyle = 'hsl(var(--muted-foreground) / 0.35)';
+        }
+        
+        ctx.fillRect(x, y, barWidth - barGap, barHeight);
+      });
+    } else {
+      // No waveform data - show simple progress bar
+      ctx.fillStyle = 'hsl(var(--muted-foreground) / 0.2)';
+      ctx.fillRect(0, height / 2 - 2, canvasWidth, 4);
+      ctx.fillStyle = 'hsl(var(--primary))';
+      ctx.fillRect(0, height / 2 - 2, canvasWidth * progress, 4);
+    }
     
     // Draw playhead
     const playheadX = progress * canvasWidth;
-    ctx.strokeStyle = 'hsl(var(--destructive))';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(playheadX, 0);
-    ctx.lineTo(playheadX, height);
-    ctx.stroke();
+    ctx.fillStyle = 'hsl(var(--destructive))';
+    ctx.fillRect(playheadX - 1, 0, 2, height);
+    
+    // Draw time markers
+    const timeMarkerCount = Math.min(5, Math.floor(duration / 30));
+    if (timeMarkerCount > 0) {
+      ctx.fillStyle = 'hsl(var(--muted-foreground) / 0.3)';
+      ctx.font = '8px monospace';
+      for (let i = 1; i <= timeMarkerCount; i++) {
+        const markerTime = (duration / (timeMarkerCount + 1)) * i;
+        const markerX = (markerTime / duration) * canvasWidth;
+        ctx.fillRect(markerX, height - 3, 1, 3);
+      }
+    }
   }, [waveformData, canvasWidth, playbackTime, audioFile?.duration, currentPage?.segments]);
   
-  // Playback sync
+  // Handle playback state changes
   useEffect(() => {
     const audio = audioRef.current;
-    if (!audio) return;
+    if (!audio || !isAudioReady) return;
+    
+    audio.playbackRate = playbackSpeed;
+    audio.muted = isMuted;
     
     if (isPlaying) {
-      audio.currentTime = playbackTime;
-      audio.playbackRate = playbackSpeed;
-      audio.play().catch(() => {});
+      // Sync audio time if significantly out of sync
+      if (Math.abs(audio.currentTime - playbackTime) > 0.1) {
+        audio.currentTime = playbackTime;
+      }
       
-      const update = () => {
-        setPlaybackTime(audio.currentTime);
-        if (!audio.paused) {
-          animationRef.current = requestAnimationFrame(update);
+      audio.play().catch((e) => {
+        console.error('Playback failed:', e);
+        setPlaying(false);
+      });
+      
+      // Animation loop for time updates
+      const updateTime = () => {
+        if (audioRef.current && !audioRef.current.paused && !isSeekingRef.current) {
+          setPlaybackTime(audioRef.current.currentTime);
+        }
+        if (isPlaying) {
+          animationRef.current = requestAnimationFrame(updateTime);
         }
       };
-      animationRef.current = requestAnimationFrame(update);
+      animationRef.current = requestAnimationFrame(updateTime);
     } else {
       audio.pause();
       if (animationRef.current) {
         cancelAnimationFrame(animationRef.current);
+        animationRef.current = null;
       }
     }
     
     return () => {
       if (animationRef.current) {
         cancelAnimationFrame(animationRef.current);
+        animationRef.current = null;
       }
     };
-  }, [isPlaying, playbackSpeed, setPlaybackTime]);
+  }, [isPlaying, playbackSpeed, isMuted, isAudioReady, setPlaying, setPlaybackTime, playbackTime]);
   
   // Seek on canvas click
   const handleCanvasClick = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!audioFile?.duration) return;
+    const duration = audioFile?.duration;
+    if (!duration) return;
     
     const rect = canvasRef.current?.getBoundingClientRect();
     if (!rect) return;
     
     const x = e.clientX - rect.left;
-    const progress = x / rect.width;
-    const newTime = progress * audioFile.duration;
+    const clickProgress = Math.max(0, Math.min(1, x / rect.width));
+    const newTime = clickProgress * duration;
+    
+    isSeekingRef.current = true;
     setPlaybackTime(newTime);
     
     if (audioRef.current) {
       audioRef.current.currentTime = newTime;
     }
     
-    // Check if clicked on a segment marker
+    // Check if clicked on a segment
     const segments = currentPage?.segments || [];
     const clickedSegment = segments.find(seg => {
-      const startX = (seg.startTime / audioFile.duration) * rect.width;
-      const endX = (seg.endTime / audioFile.duration) * rect.width;
+      const startX = (seg.startTime / duration) * rect.width;
+      const endX = (seg.endTime / duration) * rect.width;
       return x >= startX && x <= endX;
     });
     
     if (clickedSegment) {
       selectSegment(clickedSegment.id, 'single');
     }
+    
+    setTimeout(() => {
+      isSeekingRef.current = false;
+    }, 50);
   }, [audioFile?.duration, currentPage?.segments, setPlaybackTime, selectSegment]);
   
-  // Upload handler
+  // File upload handler
   const handleUploadAudio = useCallback(() => {
     fileInputRef.current?.click();
   }, []);
@@ -229,33 +314,45 @@ export const AudioWaveform = memo<AudioWaveformProps>(({ className }) => {
             data,
             duration: audio.duration,
           });
+          setPlaybackTime(0);
         };
       }
     };
     reader.readAsDataURL(file);
     e.target.value = '';
-  }, [setAudioFile]);
+  }, [setAudioFile, setPlaybackTime]);
   
   const handleRemoveAudio = useCallback(() => {
     if (audioRef.current) {
       audioRef.current.pause();
+      audioRef.current.src = '';
       audioRef.current = null;
     }
     setAudioFile(null);
     setPlaybackTime(0);
     setPlaying(false);
+    setIsAudioReady(false);
   }, [setAudioFile, setPlaybackTime, setPlaying]);
   
   const handleTogglePlay = useCallback(() => {
+    if (!isAudioReady) return;
     setPlaying(!isPlaying);
-  }, [isPlaying, setPlaying]);
+  }, [isPlaying, isAudioReady, setPlaying]);
   
   const handleSeek = useCallback((delta: number) => {
-    const newTime = Math.max(0, Math.min(playbackTime + delta, audioFile?.duration || 0));
+    const duration = audioFile?.duration || 0;
+    const newTime = Math.max(0, Math.min(playbackTime + delta, duration));
+    
+    isSeekingRef.current = true;
     setPlaybackTime(newTime);
+    
     if (audioRef.current) {
       audioRef.current.currentTime = newTime;
     }
+    
+    setTimeout(() => {
+      isSeekingRef.current = false;
+    }, 50);
   }, [playbackTime, audioFile?.duration, setPlaybackTime]);
   
   const cycleSpeed = useCallback(() => {
@@ -265,8 +362,15 @@ export const AudioWaveform = memo<AudioWaveformProps>(({ className }) => {
     setPlaybackSpeed(speeds[nextIndex]);
   }, [playbackSpeed, setPlaybackSpeed]);
   
+  const toggleMute = useCallback(() => {
+    setIsMuted(!isMuted);
+    if (audioRef.current) {
+      audioRef.current.muted = !isMuted;
+    }
+  }, [isMuted]);
+  
   return (
-    <div className={cn('flex items-center gap-2 px-2 py-1 bg-muted/20 border-t border-border h-10', className)}>
+    <div className={cn('flex items-center gap-1.5 px-2 py-1.5 bg-muted/30 border-t border-border', className)}>
       <input
         ref={fileInputRef}
         type="file"
@@ -277,62 +381,106 @@ export const AudioWaveform = memo<AudioWaveformProps>(({ className }) => {
       
       {!audioFile ? (
         <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={handleUploadAudio}>
-          <Upload size={12} className="mr-1" />
+          <Upload size={12} className="mr-1.5" />
           Load Audio
         </Button>
       ) : (
         <>
-          {/* Compact playback controls */}
+          {/* Playback controls */}
           <div className="flex items-center">
-            <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleSeek(-5)}>
-              <SkipBack size={12} />
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleSeek(-5)}>
+                  <SkipBack size={11} />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="top">-5s</TooltipContent>
+            </Tooltip>
+            
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              className="h-7 w-7" 
+              onClick={handleTogglePlay}
+              disabled={!isAudioReady}
+            >
+              {isPlaying ? <Pause size={13} /> : <Play size={13} />}
             </Button>
             
-            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={handleTogglePlay}>
-              {isPlaying ? <Pause size={14} /> : <Play size={14} />}
-            </Button>
-            
-            <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleSeek(5)}>
-              <SkipForward size={12} />
-            </Button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleSeek(5)}>
+                  <SkipForward size={11} />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="top">+5s</TooltipContent>
+            </Tooltip>
           </div>
           
-          {/* Compact time display */}
-          <span className="text-[10px] font-mono text-muted-foreground min-w-[70px]">
-            {formatTime(playbackTime)} / {formatTime(audioFile.duration)}
-          </span>
+          {/* Time display - precise MM:SS.CC format */}
+          <div className="flex flex-col items-end min-w-[85px]">
+            <span className="text-[11px] font-mono font-medium tabular-nums text-foreground leading-tight">
+              {formatTime(playbackTime)}
+            </span>
+            <span className="text-[9px] font-mono text-muted-foreground tabular-nums leading-tight">
+              / {formatTime(audioFile.duration)}
+            </span>
+          </div>
           
-          {/* Waveform */}
-          <div ref={containerRef} className="flex-1 min-w-0">
+          {/* Waveform visualization */}
+          <div ref={containerRef} className="flex-1 min-w-[100px]">
             <canvas
               ref={canvasRef}
               onClick={handleCanvasClick}
-              className="cursor-pointer rounded-sm"
+              className="cursor-pointer rounded w-full"
             />
           </div>
           
-          {/* Speed control button */}
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-6 px-2 text-[10px] font-mono gap-1"
-            onClick={cycleSpeed}
-            title="Click to cycle playback speed"
-          >
-            <Gauge size={10} />
-            {playbackSpeed}x
-          </Button>
+          {/* Mute button */}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6"
+                onClick={toggleMute}
+              >
+                {isMuted ? <VolumeX size={11} /> : <Volume2 size={11} />}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="top">{isMuted ? 'Unmute' : 'Mute'}</TooltipContent>
+          </Tooltip>
+          
+          {/* Speed control */}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-6 px-1.5 text-[10px] font-mono gap-0.5"
+                onClick={cycleSpeed}
+              >
+                <Gauge size={9} />
+                {playbackSpeed}x
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="top">Playback speed</TooltipContent>
+          </Tooltip>
           
           {/* Remove audio */}
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-6 w-6 text-muted-foreground hover:text-destructive"
-            onClick={handleRemoveAudio}
-            title="Remove audio"
-          >
-            <X size={12} />
-          </Button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6 text-muted-foreground hover:text-destructive"
+                onClick={handleRemoveAudio}
+              >
+                <X size={11} />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="top">Remove audio</TooltipContent>
+          </Tooltip>
         </>
       )}
     </div>
