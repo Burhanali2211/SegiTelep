@@ -8,12 +8,14 @@ import {
   getAllVisualProjects,
   VisualProject,
 } from '@/core/storage/VisualProjectStorage';
+import { safeSerialize } from '@/utils/serializationHelpers';
 
 const LAST_PROJECT_KEY = 'lastVisualProjectId';
 const STARTUP_MODE_KEY = 'teleprompter-startup-mode';
 const AUTO_RESUME_KEY = 'teleprompter-auto-resume';
 const SESSION_TIMEOUT_MS = 60 * 60 * 1000; // 1 hour
 const AUTO_SAVE_DELAY = 3000; // 3 seconds
+const MAX_SAVE_RETRIES = 3;
 
 export type StartupMode = 'welcome' | 'editor';
 
@@ -76,17 +78,36 @@ export function useVisualProjectSession() {
     setStartupModeState(mode);
   }, []);
 
-  // Save project to IndexedDB
-  const saveProject = useCallback(async (showToast = true) => {
+  // Track save attempts to prevent infinite retry loops
+  const saveAttemptRef = useRef(0);
+  const lastSaveErrorRef = useRef<string | null>(null);
+
+  // Save project to IndexedDB with retry logic and safe serialization
+  const saveProject = useCallback(async (showToast = true, retryCount = 0) => {
     if (pages.length === 0) return;
+    
+    // Prevent infinite retry loops
+    if (retryCount >= MAX_SAVE_RETRIES) {
+      console.error(`[Save] Max retries (${MAX_SAVE_RETRIES}) exceeded, aborting`);
+      setSaveStatus('error');
+      if (showToast && lastSaveErrorRef.current !== 'max_retries') {
+        lastSaveErrorRef.current = 'max_retries';
+        toast.error('Save failed after multiple attempts. Please try again later.');
+      }
+      return;
+    }
     
     setSaveStatus('saving');
     
     try {
+      // Safely serialize pages to ensure no non-serializable data
+      const safePages = safeSerialize(pages);
+      const safeAudioFile = audioFile ? safeSerialize(audioFile) : null;
+      
       let id = projectId;
       
       if (!id) {
-        const newProject = await createVisualProject(projectName, pages, audioFile);
+        const newProject = await createVisualProject(projectName, safePages, safeAudioFile);
         id = newProject.id;
         setProjectId(id);
       } else {
@@ -95,8 +116,8 @@ export function useVisualProjectSession() {
           name: projectName,
           createdAt: Date.now(),
           modifiedAt: Date.now(),
-          pages,
-          audioFile,
+          pages: safePages,
+          audioFile: safeAudioFile,
         };
         await saveVisualProject(project);
       }
@@ -108,6 +129,8 @@ export function useVisualProjectSession() {
       setLastSaved(now);
       setIsDirty(false);
       setSaveStatus('saved');
+      saveAttemptRef.current = 0;
+      lastSaveErrorRef.current = null;
       
       if (showToast) {
         toast.success('Project saved', { duration: 2000 });
@@ -117,9 +140,28 @@ export function useVisualProjectSession() {
       setTimeout(() => setSaveStatus('idle'), 2000);
       
     } catch (error) {
-      console.error('Failed to save project:', error);
-      setSaveStatus('error');
-      toast.error('Failed to save project');
+      console.error(`[Save] Attempt ${retryCount + 1} failed:`, error);
+      
+      // Check if it's a quota error
+      const isQuotaError = error instanceof Error && (
+        error.name === 'QuotaExceededError' ||
+        error.message.includes('quota')
+      );
+      
+      if (isQuotaError) {
+        setSaveStatus('error');
+        if (lastSaveErrorRef.current !== 'quota') {
+          lastSaveErrorRef.current = 'quota';
+          toast.error('Storage quota exceeded. Try removing old projects.');
+        }
+        return;
+      }
+      
+      // Retry with exponential backoff for transient errors
+      const backoffMs = Math.min(1000 * Math.pow(2, retryCount), 8000);
+      setTimeout(() => {
+        saveProject(showToast, retryCount + 1);
+      }, backoffMs);
     }
   }, [projectId, projectName, pages, audioFile, setProjectId, setLastSaved, setIsDirty, setSaveStatus]);
 
