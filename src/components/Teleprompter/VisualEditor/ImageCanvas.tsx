@@ -61,7 +61,7 @@ export const ImageCanvas = memo<ImageCanvasProps>(({ className }) => {
     img.src = currentPage.data;
   }, [currentPage?.data]);
   
-  // Calculate display size - image fills container and can be scrolled
+  // Calculate display size - maintain aspect ratio, fit within container
   useEffect(() => {
     if (!containerRef.current || !imageRef.current || !imageLoaded) return;
     
@@ -74,14 +74,23 @@ export const ImageCanvas = memo<ImageCanvasProps>(({ className }) => {
       
       setContainerSize({ width: rect.width, height: rect.height });
       
-      // Calculate image size to fit width, allowing vertical scroll
-      const imgAspect = img.width / img.height;
+      const imgAspect = img.naturalWidth / img.naturalHeight;
+      const containerAspect = rect.width / rect.height;
       
-      // Fit to container width
-      const w = rect.width;
-      const h = w / imgAspect;
+      let displayWidth: number;
+      let displayHeight: number;
       
-      setImageDisplaySize({ width: w, height: h });
+      if (imgAspect > containerAspect) {
+        // Image is wider than container - fit to width
+        displayWidth = rect.width;
+        displayHeight = rect.width / imgAspect;
+      } else {
+        // Image is taller than container - fit to height
+        displayHeight = rect.height;
+        displayWidth = rect.height * imgAspect;
+      }
+      
+      setImageDisplaySize({ width: displayWidth, height: displayHeight });
     };
     
     updateSize();
@@ -142,13 +151,20 @@ export const ImageCanvas = memo<ImageCanvasProps>(({ className }) => {
     return { x: snappedX, y: snappedY };
   }, [containerSize, imageDisplaySize, zoom]);
   
-  // Reset pan when zoom changes or image loads to snap to top-left
+  // Reset pan when zoom changes or image loads to center the image
   useEffect(() => {
-    if (imageLoaded && containerSize.width > 0) {
-      const snapped = applyMagneticSnap({ x: 0, y: 0 });
+    if (imageLoaded && containerSize.width > 0 && imageDisplaySize.width > 0) {
+      // Center the image in the container
+      const scaledWidth = imageDisplaySize.width * zoom;
+      const scaledHeight = imageDisplaySize.height * zoom;
+      
+      const centerX = (containerSize.width - scaledWidth) / 2;
+      const centerY = (containerSize.height - scaledHeight) / 2;
+      
+      const snapped = applyMagneticSnap({ x: centerX, y: centerY });
       setPan(snapped);
     }
-  }, [imageLoaded, zoom, containerSize.width]);
+  }, [imageLoaded, zoom, containerSize.width, containerSize.height, imageDisplaySize.width, imageDisplaySize.height]);
   
   // Get percentage coords from pointer event relative to image
   const getPercentCoords = useCallback((e: React.PointerEvent | PointerEvent) => {

@@ -220,29 +220,43 @@ export const useVisualEditorState = create<VisualEditorState>((set, get) => ({
   },
   
   setCurrentPage: (index) => {
-    set({ currentPageIndex: index, selectedSegmentIds: new Set() });
+    // Reset view state when switching pages for consistent experience
+    set({ 
+      currentPageIndex: index, 
+      selectedSegmentIds: new Set(),
+      zoom: 1,
+      pan: { x: 0, y: 0 },
+    });
   },
   
   // Segments
   addSegment: (pageIndex, region) => {
-    const { pages, audioFile } = get();
+    const { pages } = get();
     const page = pages[pageIndex];
     if (!page) return;
     
-    const existingSegments = page.segments;
-    const lastEndTime = existingSegments.length > 0
-      ? Math.max(...existingSegments.map(s => s.endTime))
-      : 0;
+    // Calculate global segment count across ALL pages
+    const totalGlobalSegments = pages.reduce((acc, p) => acc + p.segments.length, 0);
+    
+    // Find the last end time across ALL pages (for continuity)
+    let lastEndTime = 0;
+    pages.forEach(p => {
+      p.segments.forEach(s => {
+        if (s.endTime > lastEndTime) {
+          lastEndTime = s.endTime;
+        }
+      });
+    });
     
     const newSegment: VisualSegment = {
       id: uuidv4(),
       pageIndex,
       region,
-      label: `Segment ${existingSegments.length + 1}`,
+      label: `Segment ${totalGlobalSegments + 1}`,
       startTime: lastEndTime,
       endTime: lastEndTime + 5, // Default 5 second duration
       isHidden: false,
-      order: existingSegments.length,
+      order: page.segments.length,
     };
     
     set((state) => ({
