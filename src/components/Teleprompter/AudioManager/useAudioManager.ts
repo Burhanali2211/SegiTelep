@@ -1,5 +1,12 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { AudioFile, AudioManagerState, AUDIO_STORAGE_KEY, SUPPORTED_AUDIO_TYPES, MAX_FILE_SIZE } from './types';
+import { AudioFile, AudioManagerState, SUPPORTED_AUDIO_TYPES, MAX_FILE_SIZE } from './types';
+import { 
+  getAllAudioFiles, 
+  saveAudioFile, 
+  deleteAudioFile as deleteAudioFromStorage,
+  renameAudioFile as renameAudioInStorage,
+  isDesktopAudioStorage 
+} from '@/core/storage/AudioStorage';
 import { toast } from 'sonner';
 
 export function useAudioManager() {
@@ -13,27 +20,19 @@ export function useAudioManager() {
   
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
-  // Load audio files from localStorage on mount
+  // Load audio files from storage on mount
   useEffect(() => {
-    const stored = localStorage.getItem(AUDIO_STORAGE_KEY);
-    if (stored) {
+    const loadFiles = async () => {
+      setState(prev => ({ ...prev, isLoading: true }));
       try {
-        const files = JSON.parse(stored) as AudioFile[];
-        setState(prev => ({ ...prev, audioFiles: files }));
+        const files = await getAllAudioFiles();
+        setState(prev => ({ ...prev, audioFiles: files, isLoading: false }));
       } catch (e) {
         console.error('Failed to load audio files:', e);
+        setState(prev => ({ ...prev, isLoading: false }));
       }
-    }
-  }, []);
-
-  // Save audio files to localStorage
-  const saveToStorage = useCallback((files: AudioFile[]) => {
-    try {
-      localStorage.setItem(AUDIO_STORAGE_KEY, JSON.stringify(files));
-    } catch (e) {
-      console.error('Failed to save audio files:', e);
-      toast.error('Failed to save audio library. Storage may be full.');
-    }
+    };
+    loadFiles();
   }, []);
 
   // Add audio file
@@ -44,9 +43,9 @@ export function useAudioManager() {
       return null;
     }
 
-    // Validate file size
-    if (file.size > MAX_FILE_SIZE) {
-      toast.error(`File too large. Maximum size is 50MB.`);
+    // Validate file size (only for web storage)
+    if (!isDesktopAudioStorage() && file.size > MAX_FILE_SIZE) {
+      toast.error(`File too large. Maximum size is 50MB for web storage.`);
       return null;
     }
 
@@ -60,7 +59,7 @@ export function useAudioManager() {
         
         // Get audio duration
         const audio = new Audio(data);
-        audio.onloadedmetadata = () => {
+        audio.onloadedmetadata = async () => {
           const newFile: AudioFile = {
             id: `audio_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
             name: file.name.replace(/\.[^/.]+$/, ''),
@@ -71,14 +70,21 @@ export function useAudioManager() {
             createdAt: Date.now(),
           };
 
-          setState(prev => {
-            const newFiles = [...prev.audioFiles, newFile];
-            saveToStorage(newFiles);
-            return { ...prev, audioFiles: newFiles, isLoading: false };
-          });
-
-          toast.success(`Added: ${newFile.name}`);
-          resolve(newFile);
+          try {
+            await saveAudioFile(newFile);
+            setState(prev => ({
+              ...prev,
+              audioFiles: [...prev.audioFiles, newFile],
+              isLoading: false,
+            }));
+            toast.success(`Added: ${newFile.name}`);
+            resolve(newFile);
+          } catch (e) {
+            console.error('Failed to save audio file:', e);
+            toast.error('Failed to save audio file. Storage may be full.');
+            setState(prev => ({ ...prev, isLoading: false }));
+            resolve(null);
+          }
         };
 
         audio.onerror = () => {
@@ -96,40 +102,46 @@ export function useAudioManager() {
 
       reader.readAsDataURL(file);
     });
-  }, [saveToStorage]);
+  }, []);
 
   // Delete audio file
-  const deleteAudioFile = useCallback((id: string) => {
+  const deleteAudioFile = useCallback(async (id: string) => {
     // Stop if playing
     if (state.playingId === id && audioRef.current) {
       audioRef.current.pause();
       audioRef.current = null;
     }
 
-    setState(prev => {
-      const newFiles = prev.audioFiles.filter(f => f.id !== id);
-      saveToStorage(newFiles);
-      return {
+    try {
+      await deleteAudioFromStorage(id);
+      setState(prev => ({
         ...prev,
-        audioFiles: newFiles,
+        audioFiles: prev.audioFiles.filter(f => f.id !== id),
         playingId: prev.playingId === id ? null : prev.playingId,
         selectedAudioId: prev.selectedAudioId === id ? null : prev.selectedAudioId,
-      };
-    });
-
-    toast.success('Audio file removed');
-  }, [state.playingId, saveToStorage]);
+      }));
+      toast.success('Audio file removed');
+    } catch (e) {
+      console.error('Failed to delete audio file:', e);
+      toast.error('Failed to delete audio file');
+    }
+  }, [state.playingId]);
 
   // Rename audio file
-  const renameAudioFile = useCallback((id: string, newName: string) => {
-    setState(prev => {
-      const newFiles = prev.audioFiles.map(f =>
-        f.id === id ? { ...f, name: newName } : f
-      );
-      saveToStorage(newFiles);
-      return { ...prev, audioFiles: newFiles };
-    });
-  }, [saveToStorage]);
+  const renameAudioFile = useCallback(async (id: string, newName: string) => {
+    try {
+      await renameAudioInStorage(id, newName);
+      setState(prev => ({
+        ...prev,
+        audioFiles: prev.audioFiles.map(f =>
+          f.id === id ? { ...f, name: newName } : f
+        ),
+      }));
+    } catch (e) {
+      console.error('Failed to rename audio file:', e);
+      toast.error('Failed to rename audio file');
+    }
+  }, []);
 
   // Play/pause audio
   const togglePlayback = useCallback((audioFile: AudioFile) => {
