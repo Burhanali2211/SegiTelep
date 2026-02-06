@@ -1,4 +1,4 @@
-import { useCallback, useRef, useSyncExternalStore } from 'react';
+import { useCallback, useState } from 'react';
 import { ImagePage, useVisualEditorState } from './useVisualEditorState';
 import { safeSerialize } from '@/utils/serializationHelpers';
 
@@ -8,38 +8,20 @@ interface UndoRedoState {
 
 const MAX_HISTORY = 50;
 
-// External store for undo/redo state to enable proper reactivity
-const undoRedoStore = {
-  undoStack: [] as UndoRedoState[],
-  redoStack: [] as UndoRedoState[],
-  listeners: new Set<() => void>(),
-  
-  subscribe(listener: () => void) {
-    undoRedoStore.listeners.add(listener);
-    return () => undoRedoStore.listeners.delete(listener);
-  },
-  
-  notify() {
-    undoRedoStore.listeners.forEach(l => l());
-  },
-  
-  getSnapshot() {
-    return {
-      canUndo: undoRedoStore.undoStack.length > 0,
-      canRedo: undoRedoStore.redoStack.length > 0,
-    };
-  },
-};
+// Simple module-level storage for undo/redo stacks
+const undoStack: UndoRedoState[] = [];
+const redoStack: UndoRedoState[] = [];
 
 export const useUndoRedo = () => {
   const pages = useVisualEditorState((s) => s.pages);
   
-  // Subscribe to undo/redo state changes for reactivity
-  const { canUndo, canRedo } = useSyncExternalStore(
-    undoRedoStore.subscribe,
-    undoRedoStore.getSnapshot,
-    undoRedoStore.getSnapshot
-  );
+  // Track stack lengths with useState for reactivity
+  const [stackLengths, setStackLengths] = useState({ undo: 0, redo: 0 });
+  
+  // Update stack lengths helper
+  const updateStackLengths = useCallback(() => {
+    setStackLengths({ undo: undoStack.length, redo: redoStack.length });
+  }, []);
   
   const saveState = useCallback(() => {
     try {
@@ -48,59 +30,62 @@ export const useUndoRedo = () => {
         pages: safeSerialize(pages),
       };
       
-      undoRedoStore.undoStack.push(currentState);
+      undoStack.push(currentState);
       
-      if (undoRedoStore.undoStack.length > MAX_HISTORY) {
-        undoRedoStore.undoStack.shift();
+      if (undoStack.length > MAX_HISTORY) {
+        undoStack.shift();
       }
       
       // Clear redo stack on new action
-      undoRedoStore.redoStack = [];
-      undoRedoStore.notify();
+      redoStack.length = 0;
+      updateStackLengths();
     } catch (error) {
       console.error('[UndoRedo] Failed to save state:', error);
     }
-  }, [pages]);
+  }, [pages, updateStackLengths]);
   
   const undo = useCallback(() => {
-    if (undoRedoStore.undoStack.length === 0) return;
+    if (undoStack.length === 0) return;
     
     try {
       const currentPages = useVisualEditorState.getState().pages;
       const currentState: UndoRedoState = {
         pages: safeSerialize(currentPages),
       };
-      undoRedoStore.redoStack.push(currentState);
+      redoStack.push(currentState);
       
-      const prevState = undoRedoStore.undoStack.pop();
+      const prevState = undoStack.pop();
       if (prevState) {
         useVisualEditorState.setState({ pages: prevState.pages, isDirty: true });
       }
-      undoRedoStore.notify();
+      updateStackLengths();
     } catch (error) {
       console.error('[UndoRedo] Failed to undo:', error);
     }
-  }, []);
+  }, [updateStackLengths]);
   
   const redo = useCallback(() => {
-    if (undoRedoStore.redoStack.length === 0) return;
+    if (redoStack.length === 0) return;
     
     try {
       const currentPages = useVisualEditorState.getState().pages;
       const currentState: UndoRedoState = {
         pages: safeSerialize(currentPages),
       };
-      undoRedoStore.undoStack.push(currentState);
+      undoStack.push(currentState);
       
-      const nextState = undoRedoStore.redoStack.pop();
+      const nextState = redoStack.pop();
       if (nextState) {
         useVisualEditorState.setState({ pages: nextState.pages, isDirty: true });
       }
-      undoRedoStore.notify();
+      updateStackLengths();
     } catch (error) {
       console.error('[UndoRedo] Failed to redo:', error);
     }
-  }, []);
+  }, [updateStackLengths]);
+  
+  const canUndo = stackLengths.undo > 0;
+  const canRedo = stackLengths.redo > 0;
   
   return {
     saveState,
