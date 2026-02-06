@@ -9,6 +9,9 @@ import {
 } from '@/core/storage/AudioStorage';
 import { toast } from 'sonner';
 
+// Audio playback error recovery
+const MAX_PLAYBACK_RETRIES = 2;
+
 export function useAudioManager() {
   const [state, setState] = useState<AudioManagerState>({
     audioFiles: [],
@@ -19,6 +22,21 @@ export function useAudioManager() {
   });
   
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const playbackRetryRef = useRef(0);
+
+  // Cleanup audio element safely
+  const cleanupAudio = useCallback(() => {
+    if (audioRef.current) {
+      try {
+        audioRef.current.pause();
+        audioRef.current.src = '';
+        audioRef.current.load();
+      } catch (e) {
+        // Ignore cleanup errors
+      }
+      audioRef.current = null;
+    }
+  }, []);
 
   // Load audio files from storage on mount
   useEffect(() => {
@@ -33,7 +51,12 @@ export function useAudioManager() {
       }
     };
     loadFiles();
-  }, []);
+    
+    // Cleanup on unmount
+    return () => {
+      cleanupAudio();
+    };
+  }, [cleanupAudio]);
 
   // Add audio file
   const addAudioFile = useCallback(async (file: File): Promise<AudioFile | null> => {
@@ -107,9 +130,8 @@ export function useAudioManager() {
   // Delete audio file
   const deleteAudioFile = useCallback(async (id: string) => {
     // Stop if playing
-    if (state.playingId === id && audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current = null;
+    if (state.playingId === id) {
+      cleanupAudio();
     }
 
     try {
@@ -125,7 +147,7 @@ export function useAudioManager() {
       console.error('Failed to delete audio file:', e);
       toast.error('Failed to delete audio file');
     }
-  }, [state.playingId]);
+  }, [state.playingId, cleanupAudio]);
 
   // Rename audio file
   const renameAudioFile = useCallback(async (id: string, newName: string) => {
@@ -143,39 +165,64 @@ export function useAudioManager() {
     }
   }, []);
 
-  // Play/pause audio
+  // Play/pause audio with error recovery
   const togglePlayback = useCallback((audioFile: AudioFile) => {
     if (state.playingId === audioFile.id) {
       // Stop playing
-      if (audioRef.current) {
-        audioRef.current.pause();
-        audioRef.current = null;
-      }
+      cleanupAudio();
       setState(prev => ({ ...prev, playingId: null }));
+      playbackRetryRef.current = 0;
     } else {
       // Start playing
-      if (audioRef.current) {
-        audioRef.current.pause();
-      }
+      cleanupAudio();
+      playbackRetryRef.current = 0;
 
-      const audio = new Audio(audioFile.data);
+      const audio = new Audio();
+      
+      // Set up error handling before loading
+      audio.onerror = (e) => {
+        console.error('Audio playback error:', e);
+        
+        // Retry playback a few times
+        if (playbackRetryRef.current < MAX_PLAYBACK_RETRIES) {
+          playbackRetryRef.current++;
+          console.log(`[Audio] Retry attempt ${playbackRetryRef.current}`);
+          setTimeout(() => togglePlayback(audioFile), 500);
+        } else {
+          setState(prev => ({ ...prev, playingId: null }));
+          toast.error('Failed to play audio. The file may be corrupted.');
+          playbackRetryRef.current = 0;
+        }
+      };
+      
+      audio.onended = () => {
+        setState(prev => ({ ...prev, playingId: null }));
+        playbackRetryRef.current = 0;
+      };
+      
+      audio.oncanplaythrough = () => {
+        audio.play().catch((err) => {
+          console.error('Audio play() failed:', err);
+          setState(prev => ({ ...prev, playingId: null }));
+        });
+      };
+      
+      // Set volume and source
       audio.volume = state.volume / 100;
-      audio.onended = () => setState(prev => ({ ...prev, playingId: null }));
-      audio.play();
+      audio.src = audioFile.data;
+      audio.load();
 
       audioRef.current = audio;
       setState(prev => ({ ...prev, playingId: audioFile.id }));
     }
-  }, [state.playingId, state.volume]);
+  }, [state.playingId, state.volume, cleanupAudio]);
 
   // Stop all playback
   const stopPlayback = useCallback(() => {
-    if (audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current = null;
-    }
+    cleanupAudio();
     setState(prev => ({ ...prev, playingId: null }));
-  }, []);
+    playbackRetryRef.current = 0;
+  }, [cleanupAudio]);
 
   // Set volume
   const setVolume = useCallback((volume: number) => {
@@ -199,15 +246,6 @@ export function useAudioManager() {
   const getAudioById = useCallback((id: string): AudioFile | undefined => {
     return state.audioFiles.find(f => f.id === id);
   }, [state.audioFiles]);
-
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      if (audioRef.current) {
-        audioRef.current.pause();
-      }
-    };
-  }, []);
 
   return {
     ...state,

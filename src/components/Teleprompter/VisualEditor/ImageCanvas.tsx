@@ -335,19 +335,58 @@ export const ImageCanvas = memo<ImageCanvasProps>(({ className }) => {
   }, [isDrawing, currentDraw, addSegment, currentPageIndex, isPanning, saveState, setDrawing, applyMagneticSnap, pan, setPan]);
   
   // Wheel for scrolling (vertical pan) and Ctrl+wheel for zoom
-  const handleWheel = useCallback((e: React.WheelEvent) => {
-    if (e.ctrlKey || e.metaKey) {
-      e.preventDefault();
-      const delta = e.deltaY > 0 ? -0.1 : 0.1;
-      useVisualEditorState.getState().setZoom(zoom + delta);
-    } else {
-      // Regular scroll - pan vertically
-      e.preventDefault();
-      const newPan = { x: pan.x, y: pan.y - e.deltaY };
-      const snapped = applyMagneticSnap(newPan);
-      setPan(snapped);
-    }
-  }, [zoom, pan, applyMagneticSnap, setPan]);
+  // Use native event listener to handle passive event correctly
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    
+    const handleWheelNative = (e: WheelEvent) => {
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+        const delta = e.deltaY > 0 ? -0.1 : 0.1;
+        useVisualEditorState.getState().setZoom(useVisualEditorState.getState().zoom + delta);
+      } else {
+        // Regular scroll - pan vertically
+        e.preventDefault();
+        const currentPan = useVisualEditorState.getState().pan;
+        const newPan = { x: currentPan.x, y: currentPan.y - e.deltaY };
+        
+        // Apply magnetic snap inline
+        const scaledWidth = imageDisplaySize.width * useVisualEditorState.getState().zoom;
+        const scaledHeight = imageDisplaySize.height * useVisualEditorState.getState().zoom;
+        
+        let snappedX = newPan.x;
+        let snappedY = newPan.y;
+        
+        const minX = containerSize.width - scaledWidth;
+        const maxX = 0;
+        const minY = containerSize.height - scaledHeight;
+        const maxY = 0;
+        
+        if (Math.abs(snappedX - maxX) < SNAP_THRESHOLD) snappedX = maxX;
+        if (Math.abs(snappedX - minX) < SNAP_THRESHOLD && scaledWidth > containerSize.width) snappedX = minX;
+        if (Math.abs(snappedY - maxY) < SNAP_THRESHOLD) snappedY = maxY;
+        
+        if (scaledWidth <= containerSize.width) {
+          snappedX = (containerSize.width - scaledWidth) / 2;
+        } else {
+          snappedX = Math.max(minX, Math.min(maxX, snappedX));
+        }
+        
+        if (scaledHeight <= containerSize.height) {
+          snappedY = (containerSize.height - scaledHeight) / 2;
+        } else {
+          snappedY = Math.max(minY, Math.min(maxY, snappedY));
+        }
+        
+        useVisualEditorState.getState().setPan({ x: snappedX, y: snappedY });
+      }
+    };
+    
+    // Add with { passive: false } to allow preventDefault
+    container.addEventListener('wheel', handleWheelNative, { passive: false });
+    return () => container.removeEventListener('wheel', handleWheelNative);
+  }, [containerSize, imageDisplaySize]);
   
   if (!currentPage) {
     return (
@@ -374,7 +413,6 @@ export const ImageCanvas = memo<ImageCanvasProps>(({ className }) => {
         isPanning && 'cursor-grabbing',
         className
       )}
-      onWheel={handleWheel}
     >
       <div
         className="absolute"
