@@ -467,88 +467,114 @@ export const LeftControlPanel = memo<LeftControlPanelProps>(({ className }) => {
               </div>
             ) : (
               <div className="space-y-1">
-                {pages.map((page, pageIndex) => (
-                  <React.Fragment key={page.id}>
-                    {/* Page header for multi-page */}
-                    {pages.length > 1 && page.segments.length > 0 && (
-                      <div className={cn(
-                        'text-[10px] font-semibold px-2 py-1.5 rounded-md mb-1',
-                        pageIndex === currentPageIndex 
-                          ? 'text-primary bg-primary/10' 
-                          : 'text-muted-foreground bg-muted/30'
-                      )}>
-                        Page {pageIndex + 1}
-                      </div>
-                    )}
+                {/* Calculate global segment offset for numbering */}
+                {(() => {
+                  let globalIndex = 0;
+                  return pages.map((page, pageIndex) => {
+                    const pageSegments = page.segments.map((segment, localIndex) => {
+                      const globalNum = globalIndex + localIndex + 1;
+                      return { segment, globalNum, pageIndex };
+                    });
+                    globalIndex += page.segments.length;
                     
-                    {/* Segments */}
-                    {page.segments.map((segment) => {
-                      const isSelected = selectedSegmentIds.has(segment.id);
-                      const isPlaying = playbackTime >= segment.startTime && playbackTime < segment.endTime;
-                      
-                      return (
-                        <button
-                          key={segment.id}
-                          onClick={(e) => handleSegmentClick(e, segment, pageIndex)}
-                          onDoubleClick={() => handlePlaySegment(segment)}
-                          className={cn(
-                            'w-full flex items-center gap-2 px-2.5 py-2 rounded-lg transition-all duration-150 text-left group',
-                            isPlaying && 'bg-destructive/15 ring-1 ring-destructive/30',
-                            isSelected && !isPlaying && 'bg-primary/15 ring-1 ring-primary/30',
-                            !isSelected && !isPlaying && 'hover:bg-muted/50'
-                          )}
-                        >
-                          {/* Drag handle indicator */}
+                    return (
+                      <React.Fragment key={page.id}>
+                        {/* Page header for multi-page */}
+                        {pages.length > 1 && page.segments.length > 0 && (
                           <div className={cn(
-                            'w-1 h-8 rounded-full transition-colors',
-                            isPlaying ? 'bg-destructive' : isSelected ? 'bg-primary' : 'bg-muted-foreground/20'
-                          )} />
+                            'flex items-center justify-between text-[10px] font-semibold px-2 py-1.5 rounded-md mb-1',
+                            pageIndex === currentPageIndex 
+                              ? 'text-primary bg-primary/10' 
+                              : 'text-muted-foreground bg-muted/30'
+                          )}>
+                            <span>Page {pageIndex + 1}</span>
+                            <span className="font-normal text-muted-foreground">
+                              {page.segments.length} region{page.segments.length !== 1 ? 's' : ''}
+                            </span>
+                          </div>
+                        )}
+                        
+                        {/* Segments with global numbers */}
+                        {pageSegments.map(({ segment, globalNum }) => {
+                          const isSelected = selectedSegmentIds.has(segment.id);
+                          const isPlaying = playbackTime >= segment.startTime && playbackTime < segment.endTime;
+                          const isCurrentPage = pageIndex === currentPageIndex;
                           
-                          {/* Content */}
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-1.5">
-                              <span className={cn(
-                                'text-[11px] font-medium truncate',
-                                segment.isHidden && 'opacity-50'
-                              )}>
-                                {segment.label}
-                              </span>
-                              {segment.isHidden && (
-                                <EyeOff size={10} className="text-muted-foreground shrink-0" />
+                          return (
+                            <button
+                              key={segment.id}
+                              onClick={(e) => handleSegmentClick(e, segment, pageIndex)}
+                              onDoubleClick={() => handlePlaySegment(segment)}
+                              className={cn(
+                                'w-full flex items-center gap-2 px-2.5 py-2 rounded-lg transition-all duration-150 text-left group',
+                                isPlaying && 'bg-destructive/15 ring-1 ring-destructive/30',
+                                isSelected && !isPlaying && 'bg-primary/15 ring-1 ring-primary/30',
+                                !isSelected && !isPlaying && 'hover:bg-muted/50',
+                                !isCurrentPage && 'opacity-60'
                               )}
-                            </div>
-                            <div className="flex items-center gap-1 text-[10px] text-muted-foreground font-mono">
-                              <Clock size={9} />
-                              {formatTime(segment.startTime)} - {formatTime(segment.endTime)}
-                            </div>
-                          </div>
-                          
-                          {/* Actions */}
-                          <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handlePlaySegment(segment);
-                              }}
-                              className="w-6 h-6 rounded flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
                             >
-                              <Play size={12} />
+                              {/* Global number badge */}
+                              <div className={cn(
+                                'flex items-center justify-center w-6 h-6 rounded-md text-[10px] font-bold shrink-0',
+                                isPlaying ? 'bg-destructive text-destructive-foreground' 
+                                  : isSelected ? 'bg-primary text-primary-foreground' 
+                                  : 'bg-muted text-muted-foreground'
+                              )}>
+                                {globalNum}
+                              </div>
+                              
+                              {/* Content */}
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-1.5">
+                                  <span className={cn(
+                                    'text-[11px] font-medium truncate',
+                                    segment.isHidden && 'opacity-50'
+                                  )}>
+                                    {segment.label}
+                                  </span>
+                                  {segment.isHidden && (
+                                    <EyeOff size={10} className="text-muted-foreground shrink-0" />
+                                  )}
+                                  {!isCurrentPage && pages.length > 1 && (
+                                    <span className="text-[9px] text-muted-foreground">
+                                      (P{pageIndex + 1})
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-1 text-[10px] text-muted-foreground font-mono">
+                                  <Clock size={9} />
+                                  {formatTime(segment.startTime)} - {formatTime(segment.endTime)}
+                                </div>
+                              </div>
+                              
+                              {/* Actions */}
+                              <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handlePlaySegment(segment);
+                                  }}
+                                  className="w-6 h-6 rounded flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
+                                >
+                                  <Play size={12} />
+                                </button>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    toggleSegmentVisibility(segment.id);
+                                  }}
+                                  className="w-6 h-6 rounded flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
+                                >
+                                  {segment.isHidden ? <EyeOff size={12} /> : <Eye size={12} />}
+                                </button>
+                              </div>
                             </button>
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                toggleSegmentVisibility(segment.id);
-                              }}
-                              className="w-6 h-6 rounded flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
-                            >
-                              {segment.isHidden ? <EyeOff size={12} /> : <Eye size={12} />}
-                            </button>
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </React.Fragment>
-                ))}
+                          );
+                        })}
+                      </React.Fragment>
+                    );
+                  });
+                })()}
               </div>
             )}
           </section>
