@@ -16,6 +16,7 @@ export const ImageCanvas = memo<ImageCanvasProps>(({ className }) => {
   const imageRef = useRef<HTMLImageElement | null>(null);
   
   const [imageLoaded, setImageLoaded] = useState(false);
+  const [imageNaturalSize, setImageNaturalSize] = useState({ width: 0, height: 0 });
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
   const [imageDisplaySize, setImageDisplaySize] = useState({ width: 0, height: 0 });
   
@@ -46,27 +47,35 @@ export const ImageCanvas = memo<ImageCanvasProps>(({ className }) => {
   
   const { saveState } = useUndoRedo();
   
-  // Load image when page changes
+  // Load image when page changes - capture natural dimensions
   useEffect(() => {
     if (!currentPage?.data) {
       setImageLoaded(false);
+      setImageNaturalSize({ width: 0, height: 0 });
       return;
     }
     
     const img = new Image();
     img.onload = () => {
+      // Capture natural dimensions immediately on load
+      const naturalWidth = img.naturalWidth || img.width;
+      const naturalHeight = img.naturalHeight || img.height;
+      
       imageRef.current = img;
+      setImageNaturalSize({ width: naturalWidth, height: naturalHeight });
       setImageLoaded(true);
+    };
+    img.onerror = () => {
+      setImageLoaded(false);
     };
     img.src = currentPage.data;
   }, [currentPage?.data]);
   
   // Calculate display size - maintain aspect ratio, fit within container
   useEffect(() => {
-    if (!containerRef.current || !imageRef.current || !imageLoaded) return;
+    if (!containerRef.current || !imageLoaded || imageNaturalSize.width === 0) return;
     
     const container = containerRef.current;
-    const img = imageRef.current;
     
     const updateSize = () => {
       const rect = container.getBoundingClientRect();
@@ -74,7 +83,8 @@ export const ImageCanvas = memo<ImageCanvasProps>(({ className }) => {
       
       setContainerSize({ width: rect.width, height: rect.height });
       
-      const imgAspect = img.naturalWidth / img.naturalHeight;
+      // Use stored natural dimensions for accurate aspect ratio
+      const imgAspect = imageNaturalSize.width / imageNaturalSize.height;
       const containerAspect = rect.width / rect.height;
       
       let displayWidth: number;
@@ -85,7 +95,7 @@ export const ImageCanvas = memo<ImageCanvasProps>(({ className }) => {
         displayWidth = rect.width;
         displayHeight = rect.width / imgAspect;
       } else {
-        // Image is taller than container - fit to height
+        // Image is taller/portrait - fit to height
         displayHeight = rect.height;
         displayWidth = rect.height * imgAspect;
       }
@@ -97,7 +107,7 @@ export const ImageCanvas = memo<ImageCanvasProps>(({ className }) => {
     const observer = new ResizeObserver(updateSize);
     observer.observe(container);
     return () => observer.disconnect();
-  }, [imageLoaded]);
+  }, [imageLoaded, imageNaturalSize]);
   
   // Magnetic snap function - snaps pan position to edges
   const applyMagneticSnap = useCallback((newPan: { x: number; y: number }) => {
@@ -381,15 +391,20 @@ export const ImageCanvas = memo<ImageCanvasProps>(({ className }) => {
           top: pan.y,
         }}
       >
-        {/* Image */}
+        {/* Image - maintains aspect ratio */}
         <img
           id="visual-editor-image"
           src={currentPage.data}
           alt=""
-          className="select-none pointer-events-none"
+          className="select-none pointer-events-none block flex-shrink-0"
           style={{
-            width: imageDisplaySize.width,
-            height: imageDisplaySize.height,
+            width: imageDisplaySize.width || 'auto',
+            height: imageDisplaySize.height || 'auto',
+            objectFit: 'fill', // Use fill since we calculated exact dimensions
+            maxWidth: 'none',
+            maxHeight: 'none',
+            minWidth: 0,
+            minHeight: 0,
           }}
           draggable={false}
         />
