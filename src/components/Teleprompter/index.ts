@@ -6,6 +6,7 @@ export { ProjectManager } from './ProjectManager';
 export { SettingsPanel } from './SettingsPanel';
 export { ImageSegmentEditor } from './ImageSegmentEditor';
 export { PdfSegmentEditor } from './PdfSegmentEditor';
-export { AudioManager } from './AudioManager';
+export { AudioManagerDialog } from './AudioManager';
 export { MiniPreview } from './MiniPreview';
 export { TextSegmentEditor } from './editors';
+export { RemoteControlDialog } from './RemoteControl';

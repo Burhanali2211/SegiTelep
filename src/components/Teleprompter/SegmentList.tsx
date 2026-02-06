@@ -24,7 +24,7 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { ImageSegmentEditor } from './ImageSegmentEditor';
 import { PdfSegmentEditor } from './PdfSegmentEditor';
-import { AudioManager } from './AudioManager';
+import { AudioManagerDialog } from './AudioManager';
 
 interface SegmentItemProps {
   segment: Segment;
@@ -283,7 +283,7 @@ export const SegmentList = memo<SegmentListProps>(({ onPlaySegment, editorType =
       {/* Dialogs */}
       <ImageSegmentEditor open={showImageEditor} onOpenChange={setShowImageEditor} />
       <PdfSegmentEditor open={showPdfEditor} onOpenChange={setShowPdfEditor} />
-      <AudioManager open={showAudioManager} onOpenChange={setShowAudioManager} />
+      <AudioManagerDialog open={showAudioManager} onOpenChange={setShowAudioManager} />
     </div>
   );
 });

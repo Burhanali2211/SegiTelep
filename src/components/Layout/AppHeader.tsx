@@ -27,6 +27,9 @@ interface AppHeaderProps {
   onOpenStatistics: () => void;
   onOpenCountdown: () => void;
   onOpenAbout: () => void;
+  onOpenAudioManager: () => void;
+  onOpenRemoteControl: () => void;
+  onOpenVoiceInput: () => void;
   onPlay: () => void;
   onGoHome: () => void;
   
@@ -58,6 +61,9 @@ export const AppHeader = memo<AppHeaderProps>(({
   onOpenStatistics,
   onOpenCountdown,
   onOpenAbout,
+  onOpenAudioManager,
+  onOpenRemoteControl,
+  onOpenVoiceInput,
   onPlay,
   onGoHome,
   recentProjects = [],
@@ -87,6 +93,9 @@ export const AppHeader = memo<AppHeaderProps>(({
           onOpenStatistics={onOpenStatistics}
           onOpenCountdown={onOpenCountdown}
           onOpenAbout={onOpenAbout}
+          onOpenAudioManager={onOpenAudioManager}
+          onOpenRemoteControl={onOpenRemoteControl}
+          onOpenVoiceInput={onOpenVoiceInput}
           onPlay={onPlay}
           onGoHome={onGoHome}
           recentProjects={recentProjects}

@@ -1,6 +1,6 @@
 # ProTeleprompter Development Plan
 
-## Status: Phase 2 Complete ✅
+## Status: Phase 3 Complete ✅
 
 ---
 
@@ -19,6 +19,22 @@
 - Countdown Settings Dialog for pre-roll configuration
 - About Dialog with app information
 
+### ✅ Tools Menu Features (Phase 3)
+- **Audio Manager**: Refactored into modular components (AudioManager/)
+  - Upload audio files (MP3, WAV, OGG, M4A up to 50MB)
+  - Preview/playback with volume control
+  - Rename and delete files
+  - Assign audio to segments
+- **Remote Control**: BroadcastChannel-based cross-tab control
+  - QR code for mobile access
+  - Play/Pause/Stop, Next/Previous, Speed controls
+  - Connection status indicator
+- **Voice Input**: Web Speech API integration
+  - Speech-to-text transcription
+  - Voice commands for playback control
+  - Multi-language support (13 languages)
+  - Insert transcription into segments
+
 ---
 
 ## Architecture
@@ -28,12 +44,15 @@
 | Component | Purpose |
 |-----------|---------|
 | `AppHeader.tsx` | Unified header wrapper combining menu bar + toolbar |
-| `MainMenuBar.tsx` | Professional menu system (File, Edit, View, Playback, Tools, Help) |
+| `MainMenuBar.tsx` | Professional menu system |
 | `SecondaryToolbar.tsx` | Quick actions bar with project controls |
 | `WelcomeDashboard.tsx` | Startup screen with recent projects |
 | `ScriptStatisticsDialog.tsx` | Word count, duration, segment statistics |
 | `CountdownSettingsDialog.tsx` | Pre-playback countdown configuration |
 | `AboutDialog.tsx` | Application information |
+| `AudioManager/*` | Modular audio management (7 files) |
+| `RemoteControl/*` | Remote control system (6 files) |
+| `VoiceInput/*` | Voice input system (6 files) |
 
 ### Menu Structure
 
@@ -41,8 +60,22 @@
 - **Edit**: Undo/Redo, Copy/Paste, Duplicate, Delete, Select All
 - **View**: Sidebar toggle, Zoom, Text/Visual mode, Theme (future)
 - **Playback**: Play/Pause/Stop, Navigation, Speed, Mirror, Fullscreen
-- **Tools**: Statistics, Calculator, Templates, Shortcuts, Remote (future)
+- **Tools**: Statistics, Audio Manager, Remote Control, Voice Input, Shortcuts
 - **Help**: Guide, Shortcuts, Docs, About
+
+---
+
+## Voice Commands Supported
+
+| Command | Triggers | Action |
+|---------|----------|--------|
+| Play | "play", "start", "go", "begin" | Start playback |
+| Pause | "pause", "wait", "hold" | Pause playback |
+| Stop | "stop", "end", "finish" | Stop playback |
+| Next | "next", "forward", "skip" | Next segment |
+| Previous | "previous", "back", "before" | Previous segment |
+| Faster | "faster", "speed up", "quicker" | Increase speed |
+| Slower | "slower", "speed down" | Decrease speed |
 
 ---
 
@@ -52,8 +85,7 @@
 - [ ] Export as PDF
 - [ ] Export as Video
 - [ ] External display support
-- [ ] Remote control via mobile
-- [ ] Voice input
+- [ ] Segment Timer Calculator
 - [ ] Template library
 
 ---
@@ -68,3 +100,6 @@
 - [x] Countdown settings persist in localStorage
 - [x] About dialog displays version info
 - [x] Recent projects appear in File menu
+- [x] Audio Manager opens from Tools menu
+- [x] Remote Control opens with QR code and controls
+- [x] Voice Input opens with recording interface

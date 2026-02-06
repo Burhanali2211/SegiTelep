@@ -15,6 +15,9 @@ import { AppHeader } from '@/components/Layout';
 import { ScriptStatisticsDialog } from '@/components/Teleprompter/ScriptStatisticsDialog';
 import { CountdownSettingsDialog } from '@/components/Teleprompter/CountdownSettingsDialog';
 import { AboutDialog } from '@/components/Teleprompter/AboutDialog';
+import { AudioManagerDialog } from '@/components/Teleprompter/AudioManager';
+import { RemoteControlDialog } from '@/components/Teleprompter/RemoteControl';
+import { VoiceInputDialog } from '@/components/Teleprompter/VoiceInput';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -69,6 +72,9 @@ const Index = () => {
   const [showStatistics, setShowStatistics] = useState(false);
   const [showCountdown, setShowCountdown] = useState(false);
   const [showAbout, setShowAbout] = useState(false);
+  const [showAudioManager, setShowAudioManager] = useState(false);
+  const [showRemoteControl, setShowRemoteControl] = useState(false);
+  const [showVoiceInput, setShowVoiceInput] = useState(false);
   
   const [initialized, setInitialized] = useState(false);
   const [editorType, setEditorType] = useState<EditorType>('text');
@@ -324,6 +330,9 @@ Delete this text and start writing your own script!`,
           onOpenStatistics={() => setShowStatistics(true)}
           onOpenCountdown={() => setShowCountdown(true)}
           onOpenAbout={() => setShowAbout(true)}
+          onOpenAudioManager={() => setShowAudioManager(true)}
+          onOpenRemoteControl={() => setShowRemoteControl(true)}
+          onOpenVoiceInput={() => setShowVoiceInput(true)}
           onPlay={handlePlay}
           onGoHome={handleGoHome}
           recentProjects={recentProjects}
@@ -343,6 +352,9 @@ Delete this text and start writing your own script!`,
         <ScriptStatisticsDialog open={showStatistics} onOpenChange={setShowStatistics} />
         <CountdownSettingsDialog open={showCountdown} onOpenChange={setShowCountdown} />
         <AboutDialog open={showAbout} onOpenChange={setShowAbout} />
+        <AudioManagerDialog open={showAudioManager} onOpenChange={setShowAudioManager} />
+        <RemoteControlDialog open={showRemoteControl} onOpenChange={setShowRemoteControl} />
+        <VoiceInputDialog open={showVoiceInput} onOpenChange={setShowVoiceInput} />
       </div>
     );
   }
@@ -381,6 +393,9 @@ Delete this text and start writing your own script!`,
         onOpenStatistics={() => setShowStatistics(true)}
         onOpenCountdown={() => setShowCountdown(true)}
         onOpenAbout={() => setShowAbout(true)}
+        onOpenAudioManager={() => setShowAudioManager(true)}
+        onOpenRemoteControl={() => setShowRemoteControl(true)}
+        onOpenVoiceInput={() => setShowVoiceInput(true)}
         onPlay={handlePlay}
         onGoHome={handleGoHome}
         recentProjects={recentProjects}
@@ -429,6 +444,9 @@ Delete this text and start writing your own script!`,
       <ScriptStatisticsDialog open={showStatistics} onOpenChange={setShowStatistics} />
       <CountdownSettingsDialog open={showCountdown} onOpenChange={setShowCountdown} />
       <AboutDialog open={showAbout} onOpenChange={setShowAbout} />
+      <AudioManagerDialog open={showAudioManager} onOpenChange={setShowAudioManager} />
+      <RemoteControlDialog open={showRemoteControl} onOpenChange={setShowRemoteControl} />
+      <VoiceInputDialog open={showVoiceInput} onOpenChange={setShowVoiceInput} />
     </div>
   );
 };
