@@ -60,9 +60,11 @@ import {
   Info,
   ExternalLink,
   Clock,
+  Check,
 } from 'lucide-react';
 import { useTeleprompterStore } from '@/store/teleprompterStore';
 import { useVisualEditorState } from '@/components/Teleprompter/VisualEditor/useVisualEditorState';
+import { useTheme } from '@/hooks/useTheme';
 import { cn } from '@/lib/utils';
 
 interface MainMenuBarProps {
@@ -79,6 +81,10 @@ interface MainMenuBarProps {
   onOpenAudioManager: () => void;
   onOpenRemoteControl: () => void;
   onOpenVoiceInput: () => void;
+  onOpenTimerCalculator: () => void;
+  onOpenTemplates: () => void;
+  onExportPDF: () => void;
+  onOpenExternalDisplay: () => void;
   onPlay: () => void;
   onGoHome: () => void;
   recentProjects?: Array<{ id: string; name: string }>;
@@ -102,6 +108,10 @@ export const MainMenuBar = memo<MainMenuBarProps>(({
   onOpenAudioManager,
   onOpenRemoteControl,
   onOpenVoiceInput,
+  onOpenTimerCalculator,
+  onOpenTemplates,
+  onExportPDF,
+  onOpenExternalDisplay,
   onPlay,
   onGoHome,
   recentProjects = [],
@@ -128,6 +138,9 @@ export const MainMenuBar = memo<MainMenuBarProps>(({
   // Visual editor state
   const zoom = useVisualEditorState((s) => s.zoom);
   const setZoom = useVisualEditorState((s) => s.setZoom);
+  
+  // Theme
+  const { theme, setTheme } = useTheme();
   
   const handlePlayPause = useCallback(() => {
     if (playback.isPlaying && !playback.isPaused) {
@@ -195,14 +208,14 @@ export const MainMenuBar = memo<MainMenuBarProps>(({
           </MenubarItem>
           
           <MenubarSub>
-            <MenubarSubTrigger disabled>
+            <MenubarSubTrigger>
               <Download size={16} className="mr-2" />
               Export as...
             </MenubarSubTrigger>
             <MenubarSubContent>
-              <MenubarItem disabled>
+              <MenubarItem onClick={onExportPDF}>
                 <FileText size={16} className="mr-2" />
-                PDF (Coming Soon)
+                PDF
               </MenubarItem>
               <MenubarItem disabled>
                 <Video size={16} className="mr-2" />
@@ -347,18 +360,30 @@ export const MainMenuBar = memo<MainMenuBarProps>(({
               Theme
             </MenubarSubTrigger>
             <MenubarSubContent>
-              <MenubarItem disabled>
+              <MenubarCheckboxItem 
+                checked={theme === 'light'}
+                onCheckedChange={() => setTheme('light')}
+              >
                 <Sun size={16} className="mr-2" />
-                Light (Coming Soon)
-              </MenubarItem>
-              <MenubarItem disabled>
+                Light
+                {theme === 'light' && <Check size={14} className="ml-auto" />}
+              </MenubarCheckboxItem>
+              <MenubarCheckboxItem 
+                checked={theme === 'dark'}
+                onCheckedChange={() => setTheme('dark')}
+              >
                 <Moon size={16} className="mr-2" />
-                Dark (Coming Soon)
-              </MenubarItem>
-              <MenubarItem disabled>
+                Dark
+                {theme === 'dark' && <Check size={14} className="ml-auto" />}
+              </MenubarCheckboxItem>
+              <MenubarCheckboxItem 
+                checked={theme === 'system'}
+                onCheckedChange={() => setTheme('system')}
+              >
                 <Monitor size={16} className="mr-2" />
-                System (Coming Soon)
-              </MenubarItem>
+                System
+                {theme === 'system' && <Check size={14} className="ml-auto" />}
+              </MenubarCheckboxItem>
             </MenubarSubContent>
           </MenubarSub>
         </MenubarContent>
@@ -436,9 +461,9 @@ export const MainMenuBar = memo<MainMenuBarProps>(({
             <MenubarShortcut>F</MenubarShortcut>
           </MenubarItem>
           
-          <MenubarItem disabled>
+          <MenubarItem onClick={onOpenExternalDisplay}>
             <Monitor size={16} className="mr-2" />
-            External Display (Coming Soon)
+            External Display
           </MenubarItem>
           
           <MenubarSeparator />
@@ -470,9 +495,9 @@ export const MainMenuBar = memo<MainMenuBarProps>(({
             Script Statistics
           </MenubarItem>
           
-          <MenubarItem disabled>
+          <MenubarItem onClick={onOpenTimerCalculator}>
             <Calculator size={16} className="mr-2" />
-            Segment Timer Calculator (Coming Soon)
+            Segment Timer Calculator
           </MenubarItem>
           
           <MenubarSeparator />
@@ -484,15 +509,10 @@ export const MainMenuBar = memo<MainMenuBarProps>(({
           
           <MenubarSeparator />
           
-          <MenubarSub>
-            <MenubarSubTrigger disabled>
-              <LayoutTemplate size={16} className="mr-2" />
-              Templates
-            </MenubarSubTrigger>
-            <MenubarSubContent>
-              <MenubarItem disabled>Coming Soon</MenubarItem>
-            </MenubarSubContent>
-          </MenubarSub>
+          <MenubarItem onClick={onOpenTemplates}>
+            <LayoutTemplate size={16} className="mr-2" />
+            Templates
+          </MenubarItem>
           
           <MenubarSeparator />
           

@@ -18,6 +18,10 @@ import { AboutDialog } from '@/components/Teleprompter/AboutDialog';
 import { AudioManagerDialog } from '@/components/Teleprompter/AudioManager';
 import { RemoteControlDialog } from '@/components/Teleprompter/RemoteControl';
 import { VoiceInputDialog } from '@/components/Teleprompter/VoiceInput';
+import { SegmentTimerCalculator } from '@/components/Teleprompter/SegmentTimerCalculator';
+import { TemplatesDialog } from '@/components/Teleprompter/TemplatesDialog';
+import { exportToPDF } from '@/utils/exportPDF';
+import { openExternalDisplay } from '@/utils/externalDisplay';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -75,6 +79,8 @@ const Index = () => {
   const [showAudioManager, setShowAudioManager] = useState(false);
   const [showRemoteControl, setShowRemoteControl] = useState(false);
   const [showVoiceInput, setShowVoiceInput] = useState(false);
+  const [showTimerCalculator, setShowTimerCalculator] = useState(false);
+  const [showTemplates, setShowTemplates] = useState(false);
   
   const [initialized, setInitialized] = useState(false);
   const [editorType, setEditorType] = useState<EditorType>('text');
@@ -333,6 +339,10 @@ Delete this text and start writing your own script!`,
           onOpenAudioManager={() => setShowAudioManager(true)}
           onOpenRemoteControl={() => setShowRemoteControl(true)}
           onOpenVoiceInput={() => setShowVoiceInput(true)}
+          onOpenTimerCalculator={() => setShowTimerCalculator(true)}
+          onOpenTemplates={() => setShowTemplates(true)}
+          onExportPDF={() => exportToPDF()}
+          onOpenExternalDisplay={() => openExternalDisplay()}
           onPlay={handlePlay}
           onGoHome={handleGoHome}
           recentProjects={recentProjects}
