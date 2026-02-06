@@ -71,7 +71,7 @@ export const ImageCanvas = memo<ImageCanvasProps>(({ className }) => {
     img.src = currentPage.data;
   }, [currentPage?.data]);
   
-  // Calculate display size - maintain aspect ratio, fit within container
+  // Calculate display size - ALWAYS fill container width, allow vertical scroll for portrait images
   useEffect(() => {
     if (!containerRef.current || !imageLoaded || imageNaturalSize.width === 0) return;
     
@@ -85,20 +85,12 @@ export const ImageCanvas = memo<ImageCanvasProps>(({ className }) => {
       
       // Use stored natural dimensions for accurate aspect ratio
       const imgAspect = imageNaturalSize.width / imageNaturalSize.height;
-      const containerAspect = rect.width / rect.height;
       
-      let displayWidth: number;
-      let displayHeight: number;
-      
-      if (imgAspect > containerAspect) {
-        // Image is wider than container - fit to width
-        displayWidth = rect.width;
-        displayHeight = rect.width / imgAspect;
-      } else {
-        // Image is taller/portrait - fit to height
-        displayHeight = rect.height;
-        displayWidth = rect.height * imgAspect;
-      }
+      // ALWAYS fill container width - this ensures left/right edge snapping works
+      // For portrait images, this makes them taller than the container (scrollable)
+      // For landscape images, they fit within the container height
+      const displayWidth = rect.width;
+      const displayHeight = rect.width / imgAspect;
       
       setImageDisplaySize({ width: displayWidth, height: displayHeight });
     };
