@@ -1,5 +1,6 @@
 import React, { memo, useEffect, useState, useCallback } from 'react';
 import { useVisualEditorState, SaveStatus } from './useVisualEditorState';
+import { useTeleprompterStore } from '@/store/teleprompterStore';
 import { useUndoRedo } from './useUndoRedo';
 import { ImageCanvas } from './ImageCanvas';
 import { TimelineStrip } from './TimelineStrip';
@@ -111,6 +112,9 @@ export const VisualEditor = memo<VisualEditorProps>(({ className, onOpenPreview 
   const [showPlayer, setShowPlayer] = useState(false);
   const [showProjectList, setShowProjectList] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
+  
+  // Get sidebar collapsed state from main store
+  const segmentListCollapsed = useTeleprompterStore((s) => s.editor.segmentListCollapsed);
   
   // Session management
   const { 
@@ -399,8 +403,10 @@ export const VisualEditor = memo<VisualEditorProps>(({ className, onOpenPreview 
       />
       
       <div className={cn('flex h-full bg-background overflow-hidden', className)}>
-        {/* Left Control Panel */}
-        <LeftControlPanel className="w-56 shrink-0" />
+        {/* Left Control Panel - Collapsible */}
+        {!segmentListCollapsed && (
+          <LeftControlPanel className="w-56 shrink-0" />
+        )}
         
         {/* Main Canvas Area */}
         <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
