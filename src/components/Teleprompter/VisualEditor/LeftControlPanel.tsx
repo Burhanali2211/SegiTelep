@@ -64,23 +64,74 @@ export const LeftControlPanel = memo<LeftControlPanelProps>(({ className }) => {
     fileInputRef.current?.click();
   }, []);
   
-  const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+  // Process image to handle EXIF orientation and get correct dimensions
+  const processImage = useCallback((file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const dataUrl = event.target?.result as string;
+        if (!dataUrl) {
+          reject(new Error('Failed to read file'));
+          return;
+        }
+        
+        // Create image to check if we need to handle orientation
+        const img = new Image();
+        img.onload = () => {
+          // Create canvas to normalize the image (handles EXIF orientation in modern browsers)
+          const canvas = document.createElement('canvas');
+          const ctx = canvas.getContext('2d');
+          if (!ctx) {
+            // Fallback to original if canvas fails
+            resolve(dataUrl);
+            return;
+          }
+          
+          // Set canvas to the image's natural dimensions
+          // Modern browsers automatically handle EXIF orientation
+          canvas.width = img.naturalWidth;
+          canvas.height = img.naturalHeight;
+          
+          // Draw image - browsers handle orientation automatically
+          ctx.drawImage(img, 0, 0);
+          
+          // Convert back to data URL with good quality
+          const normalizedDataUrl = canvas.toDataURL('image/jpeg', 0.92);
+          resolve(normalizedDataUrl);
+        };
+        img.onerror = () => {
+          // Fallback to original if image load fails
+          resolve(dataUrl);
+        };
+        img.src = dataUrl;
+      };
+      reader.onerror = () => reject(new Error('Failed to read file'));
+      reader.readAsDataURL(file);
+    });
+  }, []);
+  
+  const handleFileChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files) return;
     
-    Array.from(files).forEach((file) => {
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        const data = event.target?.result as string;
-        if (data) {
-          addPage(data);
-        }
-      };
-      reader.readAsDataURL(file);
-    });
+    for (const file of Array.from(files)) {
+      try {
+        const processedData = await processImage(file);
+        addPage(processedData);
+      } catch (error) {
+        console.error('Failed to process image:', error);
+        // Fallback: try adding without processing
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          const data = event.target?.result as string;
+          if (data) addPage(data);
+        };
+        reader.readAsDataURL(file);
+      }
+    }
     
     e.target.value = '';
-  }, [addPage]);
+  }, [addPage, processImage]);
   
   const handlePlaySegment = useCallback((segment: VisualSegment) => {
     setPlaybackTime(segment.startTime);
