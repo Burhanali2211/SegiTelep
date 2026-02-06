@@ -4,6 +4,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
 } from '@/components/ui/dialog';
 import { useTeleprompterStore } from '@/store/teleprompterStore';
 import { useVisualEditorState } from '@/components/Teleprompter/VisualEditor/useVisualEditorState';
@@ -110,6 +111,9 @@ export const ScriptStatisticsDialog = memo<ScriptStatisticsDialogProps>(({ open,
             <BarChart3 size={20} className="text-primary" />
             Script Statistics
           </DialogTitle>
+          <DialogDescription>
+            Overview of your script content in both text and visual modes
+          </DialogDescription>
         </DialogHeader>
         
         <div className="space-y-4 py-2">

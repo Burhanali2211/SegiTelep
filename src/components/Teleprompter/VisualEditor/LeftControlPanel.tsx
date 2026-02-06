@@ -408,11 +408,14 @@ export const LeftControlPanel = memo<LeftControlPanelProps>(({ className }) => {
               <div className="space-y-2">
                 <div className="grid grid-cols-3 gap-1.5">
                   {pages.map((page, index) => (
-                    <button
+                    <div
                       key={page.id}
                       onClick={() => setCurrentPage(index)}
+                      role="button"
+                      tabIndex={0}
+                      onKeyDown={(e) => e.key === 'Enter' && setCurrentPage(index)}
                       className={cn(
-                        'relative aspect-square rounded-lg overflow-hidden transition-all duration-200 group',
+                        'relative aspect-square rounded-lg overflow-hidden transition-all duration-200 group cursor-pointer',
                         'ring-2 ring-offset-1 ring-offset-card',
                         index === currentPageIndex 
                           ? 'ring-primary scale-[1.02]' 
@@ -461,7 +464,7 @@ export const LeftControlPanel = memo<LeftControlPanelProps>(({ className }) => {
                           <Trash2 size={10} />
                         </button>
                       )}
-                    </button>
+                    </div>
                   ))}
                 </div>
                 

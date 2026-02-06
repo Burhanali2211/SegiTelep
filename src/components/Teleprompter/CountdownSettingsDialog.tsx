@@ -4,6 +4,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
   DialogFooter,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -79,6 +80,9 @@ export const CountdownSettingsDialog = memo<CountdownSettingsDialogProps>(({ ope
             <Timer size={20} className="text-primary" />
             Countdown Settings
           </DialogTitle>
+          <DialogDescription>
+            Configure countdown timer before playback starts
+          </DialogDescription>
         </DialogHeader>
         
         <div className="space-y-4 py-4">
