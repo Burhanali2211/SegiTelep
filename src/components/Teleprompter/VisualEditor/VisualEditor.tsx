@@ -27,6 +27,7 @@ import {
   Keyboard,
   Cloud,
   CloudOff,
+  RectangleHorizontal,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { exportVisualProject, importVisualProject } from '@/core/storage/VisualProjectStorage';
@@ -37,7 +38,30 @@ import {
   DropdownMenuTrigger,
   DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
 import { toast } from 'sonner';
+
+// Aspect ratio presets
+const ASPECT_RATIO_PRESETS = [
+  { value: 'free', label: 'Free Draw', description: 'No constraint' },
+  { value: '16:9', label: '16:9', description: '1920×1080 (HD)' },
+  { value: '4:3', label: '4:3', description: '1024×768' },
+  { value: '1:1', label: '1:1', description: 'Square' },
+  { value: '9:16', label: '9:16', description: 'Portrait' },
+  { value: '21:9', label: '21:9', description: 'Ultrawide' },
+  { value: 'custom', label: 'Custom', description: 'Set your own' },
+];
 
 interface VisualEditorProps {
   className?: string;
@@ -121,6 +145,12 @@ export const VisualEditor = memo<VisualEditorProps>(({ className, onOpenPreview 
   const setCurrentPage = useVisualEditorState((s) => s.setCurrentPage);
   const currentPageIndex = useVisualEditorState((s) => s.currentPageIndex);
   const setDrawing = useVisualEditorState((s) => s.setDrawing);
+  
+  // Aspect ratio state
+  const aspectRatioConstraint = useVisualEditorState((s) => s.aspectRatioConstraint);
+  const customAspectRatio = useVisualEditorState((s) => s.customAspectRatio);
+  const setAspectRatioConstraint = useVisualEditorState((s) => s.setAspectRatioConstraint);
+  const setCustomAspectRatio = useVisualEditorState((s) => s.setCustomAspectRatio);
   
   const { saveState, undo, redo } = useUndoRedo();
   
@@ -393,6 +423,71 @@ export const VisualEditor = memo<VisualEditorProps>(({ className, onOpenPreview 
                 Unsaved
               </span>
             )}
+            
+            {/* Aspect ratio selector */}
+            <div className="flex items-center gap-1.5 ml-2">
+              <RectangleHorizontal size={14} className="text-muted-foreground" />
+              <Select
+                value={aspectRatioConstraint || 'free'}
+                onValueChange={(val) => setAspectRatioConstraint(val === 'free' ? null : val)}
+              >
+                <SelectTrigger className="h-7 w-[100px] text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {ASPECT_RATIO_PRESETS.map((preset) => (
+                    <SelectItem key={preset.value} value={preset.value}>
+                      <div className="flex flex-col">
+                        <span>{preset.label}</span>
+                        <span className="text-[10px] text-muted-foreground">{preset.description}</span>
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              
+              {/* Custom ratio input */}
+              {aspectRatioConstraint === 'custom' && (
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" size="sm" className="h-7 text-xs">
+                      {customAspectRatio.width}×{customAspectRatio.height}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-48 p-3">
+                    <div className="space-y-2">
+                      <p className="text-xs font-medium">Custom Aspect Ratio</p>
+                      <div className="flex items-center gap-2">
+                        <Input
+                          type="number"
+                          value={customAspectRatio.width}
+                          onChange={(e) => setCustomAspectRatio({ 
+                            ...customAspectRatio, 
+                            width: parseInt(e.target.value) || 1 
+                          })}
+                          className="h-7 w-16 text-xs"
+                          min={1}
+                        />
+                        <span className="text-muted-foreground">×</span>
+                        <Input
+                          type="number"
+                          value={customAspectRatio.height}
+                          onChange={(e) => setCustomAspectRatio({ 
+                            ...customAspectRatio, 
+                            height: parseInt(e.target.value) || 1 
+                          })}
+                          className="h-7 w-16 text-xs"
+                          min={1}
+                        />
+                      </div>
+                      <p className="text-[10px] text-muted-foreground">
+                        Ratio: {(customAspectRatio.width / customAspectRatio.height).toFixed(2)}
+                      </p>
+                    </div>
+                  </PopoverContent>
+                </Popover>
+              )}
+            </div>
             
             <div className="flex-1" />
             
