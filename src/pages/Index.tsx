@@ -406,6 +406,10 @@ Delete this text and start writing your own script!`,
         onOpenAudioManager={() => setShowAudioManager(true)}
         onOpenRemoteControl={() => setShowRemoteControl(true)}
         onOpenVoiceInput={() => setShowVoiceInput(true)}
+        onOpenTimerCalculator={() => setShowTimerCalculator(true)}
+        onOpenTemplates={() => setShowTemplates(true)}
+        onExportPDF={() => exportToPDF()}
+        onOpenExternalDisplay={() => openExternalDisplay()}
         onPlay={handlePlay}
         onGoHome={handleGoHome}
         recentProjects={recentProjects}
