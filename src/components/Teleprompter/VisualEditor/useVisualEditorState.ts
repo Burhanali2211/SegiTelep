@@ -59,6 +59,10 @@ interface VisualEditorState {
   // Audio
   audioFile: { id: string; name: string; data: string; duration: number } | null;
   
+  // Aspect ratio constraint for drawing
+  aspectRatioConstraint: string | null; // null = free, "16:9", "4:3", "1:1", "9:16", "custom"
+  customAspectRatio: { width: number; height: number };
+  
   // Actions - Project
   setProjectId: (id: string | null) => void;
   setProjectName: (name: string) => void;
@@ -114,6 +118,10 @@ interface VisualEditorState {
   // Actions - Audio
   setAudioFile: (file: { id: string; name: string; data: string; duration: number } | null) => void;
   
+  // Actions - Aspect ratio
+  setAspectRatioConstraint: (ratio: string | null) => void;
+  setCustomAspectRatio: (ratio: { width: number; height: number }) => void;
+  
   // Helpers
   getCurrentPage: () => ImagePage | undefined;
   getSelectedSegments: () => VisualSegment[];
@@ -153,6 +161,8 @@ const initialState = {
   playbackSpeed: 1,
   chainTimesMode: false,
   audioFile: null as { id: string; name: string; data: string; duration: number } | null,
+  aspectRatioConstraint: '16:9' as string | null,
+  customAspectRatio: { width: 1280, height: 720 },
 };
 
 export const useVisualEditorState = create<VisualEditorState>((set, get) => ({
@@ -491,6 +501,15 @@ export const useVisualEditorState = create<VisualEditorState>((set, get) => ({
   // Audio
   setAudioFile: (file) => {
     set({ audioFile: file, isDirty: true });
+  },
+  
+  // Aspect ratio
+  setAspectRatioConstraint: (ratio) => {
+    set({ aspectRatioConstraint: ratio });
+  },
+  
+  setCustomAspectRatio: (ratio) => {
+    set({ customAspectRatio: ratio });
   },
   
   // Helpers

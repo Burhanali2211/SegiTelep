@@ -34,6 +34,8 @@ export const ImageCanvas = memo<ImageCanvasProps>(({ className }) => {
   const selectedSegmentIds = useVisualEditorState((s) => s.selectedSegmentIds);
   const playbackTime = useVisualEditorState((s) => s.playbackTime);
   const currentPageIndex = useVisualEditorState((s) => s.currentPageIndex);
+  const aspectRatioConstraint = useVisualEditorState((s) => s.aspectRatioConstraint);
+  const customAspectRatio = useVisualEditorState((s) => s.customAspectRatio);
   
   const addSegment = useVisualEditorState((s) => s.addSegment);
   const updateSegment = useVisualEditorState((s) => s.updateSegment);
@@ -163,6 +165,30 @@ export const ImageCanvas = memo<ImageCanvasProps>(({ className }) => {
     };
   }, []);
   
+  // Get aspect ratio value from constraint
+  const getAspectRatioValue = useCallback(() => {
+    if (!aspectRatioConstraint) return null;
+    
+    const presets: Record<string, number> = {
+      '16:9': 16 / 9,
+      '4:3': 4 / 3,
+      '1:1': 1,
+      '9:16': 9 / 16,
+      '3:4': 3 / 4,
+      '21:9': 21 / 9,
+    };
+    
+    if (presets[aspectRatioConstraint]) {
+      return presets[aspectRatioConstraint];
+    }
+    
+    if (aspectRatioConstraint === 'custom' && customAspectRatio) {
+      return customAspectRatio.width / customAspectRatio.height;
+    }
+    
+    return null;
+  }, [aspectRatioConstraint, customAspectRatio]);
+  
   // Find segment at coords
   const findSegmentAtCoords = useCallback((coords: { x: number; y: number }): VisualSegment | null => {
     if (!currentPage) return null;
@@ -224,13 +250,40 @@ export const ImageCanvas = memo<ImageCanvasProps>(({ className }) => {
     if (!isDrawing || !drawStart) return;
     
     const coords = getPercentCoords(e);
-    const x = Math.min(drawStart.x, coords.x);
-    const y = Math.min(drawStart.y, coords.y);
-    const width = Math.abs(coords.x - drawStart.x);
-    const height = Math.abs(coords.y - drawStart.y);
+    const aspectRatio = getAspectRatioValue();
+    let width = Math.abs(coords.x - drawStart.x);
+    let height = Math.abs(coords.y - drawStart.y);
     
-    setCurrentDraw({ x, y, width, height });
-  }, [isDrawing, drawStart, isPanning, panStart, getPercentCoords, setPan]);
+    // Apply aspect ratio constraint
+    if (aspectRatio && imageRef.current) {
+      // Convert to actual pixel proportions considering image dimensions
+      const imageAspect = imageRef.current.width / imageRef.current.height;
+      const adjustedRatio = aspectRatio / imageAspect;
+      
+      // Constrain height based on width
+      const constrainedHeight = width / adjustedRatio;
+      
+      // Use the dimension that gives smallest area (user controls size by dragging)
+      if (constrainedHeight <= Math.abs(coords.y - drawStart.y) * 1.5) {
+        height = constrainedHeight;
+      } else {
+        // Constrain width based on height
+        width = height * adjustedRatio;
+      }
+    }
+    
+    // Calculate position (handle negative drag directions)
+    const x = coords.x < drawStart.x ? drawStart.x - width : drawStart.x;
+    const y = coords.y < drawStart.y ? drawStart.y - height : drawStart.y;
+    
+    // Clamp to image bounds
+    const clampedX = Math.max(0, Math.min(100 - width, x));
+    const clampedY = Math.max(0, Math.min(100 - height, y));
+    const clampedWidth = Math.min(width, 100 - clampedX);
+    const clampedHeight = Math.min(height, 100 - clampedY);
+    
+    setCurrentDraw({ x: clampedX, y: clampedY, width: clampedWidth, height: clampedHeight });
+  }, [isDrawing, drawStart, isPanning, panStart, getPercentCoords, setPan, getAspectRatioValue]);
   
   const handlePointerUp = useCallback((e: React.PointerEvent) => {
     (e.target as HTMLElement).releasePointerCapture(e.pointerId);
