@@ -234,15 +234,41 @@ async function getAllProjectsNative(): Promise<VisualProject[]> {
 
 // ============= IndexedDB Storage (Web Fallback) =============
 
+// Safe serializer for IndexedDB - removes any non-cloneable objects
+function sanitizeForIDB<T>(obj: T): T {
+  if (obj === null || obj === undefined) return obj;
+  if (typeof obj !== 'object') return obj;
+  
+  try {
+    // Use JSON round-trip to strip non-serializable values
+    return JSON.parse(JSON.stringify(obj, (key, value) => {
+      // Skip functions and DOM objects
+      if (typeof value === 'function') return undefined;
+      if (value instanceof Event) return undefined;
+      if (value instanceof Element) return undefined;
+      if (value instanceof Window) return undefined;
+      if (value && typeof value === 'object') {
+        const name = value.constructor?.name;
+        if (name && (name.includes('Event') || name.includes('Element') || name.includes('Node'))) {
+          return undefined;
+        }
+      }
+      return value;
+    }));
+  } catch {
+    // If serialization fails, return a deep clone attempt
+    return deepClone(obj);
+  }
+}
+
 async function saveProjectWeb(project: VisualProject): Promise<void> {
   const db = await getDB();
-  // Data is already serialized by safeSerialize before reaching here
-  // No need to deepClone again - it causes issues with large image data
-  const updated = {
+  // Sanitize to ensure no non-cloneable objects reach IndexedDB
+  const sanitized = sanitizeForIDB({
     ...project,
     modifiedAt: Date.now(),
-  };
-  await db.put('visualProjects', updated);
+  });
+  await db.put('visualProjects', sanitized);
 }
 
 async function loadProjectWeb(id: string): Promise<VisualProject | undefined> {
