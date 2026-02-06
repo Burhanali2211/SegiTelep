@@ -1,300 +1,328 @@
 
-# Desktop Application Startup and Playback Improvements Plan
+# Professional Header and Navigation System Redesign
 
-## ✅ IMPLEMENTATION COMPLETE
+## Overview
 
-All phases have been implemented successfully.
-
----
-
-## Changes Made
-
-### Phase 1: Welcome Dashboard ✅
-- Created `WelcomeDashboard.tsx` with recent projects list, thumbnails, and metadata
-- Keyboard shortcuts: `N` for new, `↑↓` to navigate, `Enter` to open
-- Auto-resume checkbox persisted to localStorage
-
-### Phase 2: Duration Calculation ✅
-- Fixed `totalDuration` in `FullscreenPlayer.tsx` to calculate from visible segments
-- Duration now shows `00:00.00` when empty
-- Uses `Math.max(lastSegmentEndTime, audioFile.duration)` when audio exists
-
-### Phase 3: Playback Auto-Stop ✅
-- Verified auto-stop logic at `elapsed >= totalDuration`
-- Playback resets to beginning after completion
-- Audio stops and resets with visual segments
-
-### Phase 4: Session Restoration Flow ✅
-- Added `StartupMode` type (`'welcome'` | `'editor'`)
-- Added `AUTO_RESUME_KEY` localStorage preference
-- Session only auto-restores when preference is enabled
-
-### Phase 5: Integration ✅
-- `VisualEditor` shows `WelcomeDashboard` when `startupMode === 'welcome'`
-- Exported `WelcomeDashboard` from index
+Transform the current basic header into a professional desktop-style navigation with organized menus, quick actions, and future-ready feature placeholders. This will make the application feel like a complete professional teleprompter tool.
 
 ---
 
+## Current State Analysis
+
+The existing header has:
+- Basic hamburger menu with 4-5 items scattered
+- Logo and app name
+- Text/Visual mode tabs
+- Project name display
+- A few icon buttons (Settings, Shortcuts, Open)
+
+**Problems:**
+- Features are scattered across dropdown and icon buttons
+- No organized menu structure (File, Edit, View, etc.)
+- No dedicated pages for settings, templates, help
+- Missing professional teleprompter features
+- No way to access advanced features
+
 ---
 
-## Implementation Plan
-
-### Phase 1: Welcome Dashboard / Startup Screen
-
-**New Component: `WelcomeDashboard.tsx`**
-
-Create a professional startup screen that displays:
+## Proposed Header Structure
 
 ```text
-+--------------------------------------------------+
-|                                                  |
-|        Welcome to ProTeleprompter                |
-|                                                  |
-|   +------------------------------------------+   |
-|   |   Recent Projects                        |   |
-|   +------------------------------------------+   |
-|   | [Thumb] Project Name 1      2h ago    >  |   |
-|   | [Thumb] Project Name 2      1d ago    >  |   |
-|   | [Thumb] Project Name 3      3d ago    >  |   |
-|   +------------------------------------------+   |
-|                                                  |
-|   [ + New Project ]  [ Open Existing ]           |
-|                                                  |
-|   [ ] Resume last session automatically          |
-|                                                  |
-+--------------------------------------------------+
++-----------------------------------------------------------------------------------------+
+| [Logo] ProTeleprompter    | File | Edit | View | Playback | Tools | Help |    [Search] |
+|                           |      |      |      |          |       |      |    [User]   |
++-----------------------------------------------------------------------------------------+
+| [< Home] | Project: My Script [*] | [Text Mode] [Visual Mode] |  [Play] [Settings] [?] |
++-----------------------------------------------------------------------------------------+
 ```
 
-Features:
-- Recent projects with thumbnails (first page image)
-- Project metadata (last modified, page count, segment count)
-- "New Project" button to start fresh
-- "Open Existing" button to browse all projects
-- Optional "Resume last session" checkbox (persisted preference)
-- Keyboard shortcuts: `N` for new, `Enter` to open selected
+### Main Menu Bar
 
-**Files to Create:**
-- `src/components/Teleprompter/VisualEditor/WelcomeDashboard.tsx`
+**File Menu:**
+- New Project (Ctrl+N)
+- Open Project (Ctrl+O)
+- Open Recent > (submenu with recent 5 projects)
+- Save (Ctrl+S)
+- Save As...
+- Import Project
+- Export Project
+- Export as PDF (future)
+- Export as Video (future placeholder)
+- ─────────────
+- Project Settings
+- Exit
 
-**Files to Modify:**
-- `src/pages/Index.tsx` - Add startup flow state machine
-- `src/hooks/useVisualProjectSession.ts` - Add preference for auto-resume
+**Edit Menu:**
+- Undo (Ctrl+Z)
+- Redo (Ctrl+Shift+Z)
+- ─────────────
+- Cut (Ctrl+X)
+- Copy (Ctrl+C)
+- Paste (Ctrl+V)
+- Duplicate (Ctrl+D)
+- Delete (Del)
+- ─────────────
+- Select All (Ctrl+A)
+- Deselect All (Esc)
+
+**View Menu:**
+- Toggle Sidebar (Ctrl+B)
+- Toggle Preview Panel
+- ─────────────
+- Zoom In (+)
+- Zoom Out (-)
+- Fit to Window
+- ─────────────
+- Text Mode
+- Visual Mode
+- Expand Editor
+- ─────────────
+- Theme > Dark / Light / System (future)
+
+**Playback Menu:**
+- Play/Pause (Space)
+- Stop (Esc)
+- ─────────────
+- Previous Segment
+- Next Segment
+- ─────────────
+- Speed Presets > (submenu)
+- Countdown Settings
+- ─────────────
+- Fullscreen Player (F)
+- External Display (future)
+- ─────────────
+- Mirror Mode (M)
+- Show Guide Line
+
+**Tools Menu:**
+- Segment Timer Calculator
+- Script Statistics
+- ─────────────
+- Audio Manager
+- ─────────────
+- Templates > (future)
+- ─────────────
+- Keyboard Shortcuts (?)
+- Remote Control (future placeholder)
+- Voice Input (future placeholder)
+
+**Help Menu:**
+- Welcome Guide
+- Keyboard Shortcuts
+- ─────────────
+- Documentation (link)
+- Video Tutorials (link)
+- ─────────────
+- Check for Updates (future)
+- About ProTeleprompter
 
 ---
 
-### Phase 2: Fix Duration Calculation
+## Secondary Toolbar
 
-**Current Problem in `FullscreenPlayer.tsx`:**
-```typescript
-const totalDuration = React.useMemo(() => {
-  if (allSegments.length === 0) return 0;
-  const maxSegmentEnd = Math.max(...allSegments.map(s => s.endTime));
-  return audioFile?.duration ? Math.max(maxSegmentEnd, audioFile.duration) : maxSegmentEnd;
-}, [allSegments, audioFile?.duration]);
+Below the main menu, a contextual toolbar with:
+
+```text
+| [← Home] | Project: [Name Input] [*unsaved] | [Text Mode | Visual Mode] | Spacer | [▶ Play] [⚙] [?] |
 ```
 
-**Fix:**
-1. Calculate `lastSegmentEndTime` from the maximum `endTime` across ALL visible segments
-2. Use `lastSegmentEndTime` as the base duration
-3. Only extend with audio duration if audio is longer
-4. Add safeguard for empty segments (show 0:00 not hardcoded value)
-
-**Update formula:**
-```typescript
-const totalDuration = React.useMemo(() => {
-  const visibleSegments = allSegments.filter(s => !s.isHidden);
-  if (visibleSegments.length === 0) return 0;
-  
-  const lastSegmentEndTime = Math.max(...visibleSegments.map(s => s.endTime));
-  
-  // Use audio duration only if it's longer than segments
-  if (audioFile?.duration && audioFile.duration > lastSegmentEndTime) {
-    return audioFile.duration;
-  }
-  
-  return lastSegmentEndTime;
-}, [allSegments, audioFile?.duration]);
-```
-
-**Files to Modify:**
-- `src/components/Teleprompter/VisualEditor/FullscreenPlayer.tsx`
-- `src/components/Teleprompter/VisualEditor/AudioWaveform.tsx` (for consistency)
+- **Home button**: Returns to Welcome Dashboard
+- **Project name**: Editable inline
+- **Mode switcher**: Text/Visual tabs
+- **Play button**: Quick access to fullscreen player
+- **Settings**: Opens project settings dialog
+- **Help**: Opens keyboard shortcuts
 
 ---
 
-### Phase 3: Fix Segment Playback Auto-Stop
+## New Components to Create
 
-**Problem:** Playback may not stop correctly when the last segment ends.
+### 1. `AppHeader.tsx` - Main Header Component
+The main header with menu bar and toolbar
 
-**Solution in `FullscreenPlayer.tsx`:**
+### 2. `MainMenuBar.tsx` - Menu System
+Implements File, Edit, View, Playback, Tools, Help menus using `@radix-ui/react-menubar`
 
-1. **Auto-stop at total duration:**
-```typescript
-// In the animate() function
-if (elapsed >= totalDuration) {
-  setPlaybackState('idle');
-  pausedTimeRef.current = 0;
-  setCurrentTime(0);
-  setCurrentSegmentIndex(0);
-  // Stop audio
-  if (audio) {
-    audio.pause();
-    audio.currentTime = 0;
-  }
-  return; // Exit animation loop
-}
-```
+### 3. `SecondaryToolbar.tsx` - Quick Actions Bar
+Project controls, mode switcher, play button
 
-2. **Handle case when last segment ends but audio continues:**
-- If segments end before audio, show black screen but continue playing audio
-- If audio ends before segments, segments continue displaying in timed sequence
+### 4. `ScriptStatisticsDialog.tsx` - Script Stats Tool
+Shows word count, estimated reading time, segment count, etc.
 
-3. **Add "loop" option (optional enhancement):**
-- User preference to loop playback
-- When enabled, restart from beginning instead of stopping
-
-**Files to Modify:**
-- `src/components/Teleprompter/VisualEditor/FullscreenPlayer.tsx`
+### 5. `CountdownSettingsDialog.tsx` - Countdown Preferences
+Configure countdown duration, enable/disable, sound effects
 
 ---
 
-### Phase 4: Session Restoration Flow
+## New Feature Dialogs
 
-**Improve `useVisualProjectSession.ts`:**
-
-1. Add startup mode preference:
-```typescript
-type StartupMode = 'welcome' | 'auto-resume' | 'last-project';
+### Script Statistics Dialog
+```text
++------------------------------------------+
+|  Script Statistics                       |
++------------------------------------------+
+|  Total Segments: 12                      |
+|  Total Words: 2,450                      |
+|  Estimated Duration: 15:30               |
+|  Average Speed: 120 wpm                  |
+|                                          |
+|  Pages: 5                                |
+|  Visual Segments: 8                      |
+|  Text Segments: 4                        |
++------------------------------------------+
 ```
 
-2. Store preference in localStorage:
-```typescript
-const STARTUP_MODE_KEY = 'teleprompter-startup-mode';
+### Countdown Settings Dialog
+```text
++------------------------------------------+
+|  Countdown Settings                      |
++------------------------------------------+
+|  [x] Enable countdown before playback    |
+|  Duration: [3] seconds                   |
+|  [ ] Play sound on countdown             |
+|  [ ] Show segment preview during count   |
++------------------------------------------+
 ```
-
-3. Expose loading state to UI:
-```typescript
-return {
-  ...existing,
-  startupMode,
-  setStartupMode,
-  hasStoredSession: !!localStorage.getItem(LAST_PROJECT_KEY),
-};
-```
-
-**Files to Modify:**
-- `src/hooks/useVisualProjectSession.ts`
 
 ---
 
-### Phase 5: Performance Optimizations for Low-End Windows
+## Implementation Phases
 
-1. **Lazy loading of heavy components:**
-```typescript
-const FullscreenPlayer = React.lazy(() => import('./FullscreenPlayer'));
-const WelcomeDashboard = React.lazy(() => import('./WelcomeDashboard'));
-```
+### Phase 1: Core Menu Bar Structure
+1. Create `MainMenuBar.tsx` with all menu items
+2. Create `SecondaryToolbar.tsx` for quick actions
+3. Create `AppHeader.tsx` to combine both
+4. Update `Index.tsx` to use new header
 
-2. **Image optimization:**
-- Add image compression on upload (already using EXIF normalization)
-- Limit thumbnail sizes for project list
-- Use `loading="lazy"` for non-visible images
+### Phase 2: Menu Functionality
+1. Wire up existing actions (save, open, settings)
+2. Implement View menu actions (zoom, sidebar toggle)
+3. Implement Playback menu actions
+4. Add keyboard shortcuts for all menu items
 
-3. **Memory management:**
-- Clear unused image data when switching pages
-- Implement LRU cache for loaded images
-- Release audio resources when not playing
+### Phase 3: New Feature Dialogs
+1. Create `ScriptStatisticsDialog.tsx`
+2. Create `CountdownSettingsDialog.tsx`
+3. Create `AboutDialog.tsx`
 
-4. **Canvas optimization:**
-- Use `requestAnimationFrame` efficiently (already done)
-- Reduce canvas redraws when not playing
-- Batch segment marker rendering
+### Phase 4: Future Placeholders
+1. Add disabled menu items with "Coming Soon" tooltips
+2. Template system placeholder
+3. Multi-display placeholder
+4. Voice input placeholder
 
 ---
 
 ## Technical Details
 
-### New State for Startup Flow
-
-Add to `useVisualEditorState.ts` or create new store:
-```typescript
-interface AppStartupState {
-  showWelcome: boolean;
-  startupMode: 'welcome' | 'auto-resume';
-  isRestoring: boolean;
-  restoredProjectId: string | null;
-}
-```
-
-### Startup Flow Sequence
-
-```text
-App Launch
-    |
-    v
-Check startup preference
-    |
-    +-- auto-resume = true --> Restore last session --> Editor
-    |
-    +-- auto-resume = false --> Show Welcome Dashboard
-                                     |
-                                     +-- Select project --> Load --> Editor
-                                     |
-                                     +-- New project --> Editor (empty)
-```
-
-### Duration Display Fixes
-
-| Scenario | Duration Shown |
-|----------|---------------|
-| No segments | 00:00.00 |
-| 3 segments (last ends at 15s) | 00:15.00 |
-| 3 segments (15s) + Audio (45s) | 00:45.00 |
-| 3 segments (45s) + Audio (15s) | 00:45.00 |
-
----
-
-## Files to Be Modified
-
-| File | Changes |
-|------|---------|
-| `src/pages/Index.tsx` | Add startup flow, welcome dashboard integration |
-| `src/components/Teleprompter/VisualEditor/VisualEditor.tsx` | Integrate welcome dashboard |
-| `src/components/Teleprompter/VisualEditor/FullscreenPlayer.tsx` | Fix duration calculation, auto-stop |
-| `src/hooks/useVisualProjectSession.ts` | Add startup preferences |
-
-## New Files to Be Created
+### Files to Create
 
 | File | Purpose |
 |------|---------|
-| `src/components/Teleprompter/VisualEditor/WelcomeDashboard.tsx` | Startup welcome screen |
+| `src/components/Layout/AppHeader.tsx` | Main header wrapper |
+| `src/components/Layout/MainMenuBar.tsx` | Menu bar with dropdowns |
+| `src/components/Layout/SecondaryToolbar.tsx` | Quick action toolbar |
+| `src/components/Layout/index.ts` | Barrel export |
+| `src/components/Teleprompter/ScriptStatisticsDialog.tsx` | Script stats |
+| `src/components/Teleprompter/CountdownSettingsDialog.tsx` | Countdown config |
+| `src/components/Teleprompter/AboutDialog.tsx` | About dialog |
+
+### Files to Modify
+
+| File | Changes |
+|------|---------|
+| `src/pages/Index.tsx` | Replace header with new `AppHeader` component |
+| `src/components/Teleprompter/VisualEditor/VisualEditor.tsx` | Remove duplicate header in visual mode |
+| `src/hooks/useVisualProjectSession.ts` | Add navigation to home function |
+
+### Menu Implementation
+
+Using `@radix-ui/react-menubar` which is already available in the project:
+
+```typescript
+import {
+  Menubar,
+  MenubarContent,
+  MenubarItem,
+  MenubarMenu,
+  MenubarSeparator,
+  MenubarShortcut,
+  MenubarTrigger,
+  MenubarSub,
+  MenubarSubContent,
+  MenubarSubTrigger,
+} from "@/components/ui/menubar";
+```
+
+### State Management
+
+Add to teleprompter store:
+- `showAbout: boolean`
+- `showStatistics: boolean`
+- `showCountdownSettings: boolean`
+
+### Keyboard Shortcut Registry
+
+Create a centralized shortcut handler:
+```typescript
+const GLOBAL_SHORTCUTS = {
+  'ctrl+n': 'newProject',
+  'ctrl+o': 'openProject',
+  'ctrl+s': 'save',
+  'ctrl+shift+s': 'saveAs',
+  // ... etc
+};
+```
+
+---
+
+## Visual Design
+
+### Header Styling
+- Height: 40px for menu bar + 44px for toolbar = 84px total
+- Background: `bg-card` with `border-b`
+- Menu items: Ghost buttons with hover state
+- Active menu: Primary color highlight
+
+### Menu Dropdowns
+- Width: Auto (min 200px)
+- Icons: 16px Lucide icons
+- Shortcuts: Right-aligned, muted color
+- Separators: `<MenubarSeparator />`
+
+### Icons for Menu Items
+
+| Feature | Icon |
+|---------|------|
+| New Project | `FilePlus` |
+| Open Project | `FolderOpen` |
+| Save | `Save` |
+| Import | `Upload` |
+| Export | `Download` |
+| Undo | `Undo2` |
+| Redo | `Redo2` |
+| Copy | `Copy` |
+| Paste | `Clipboard` |
+| Play | `Play` |
+| Pause | `Pause` |
+| Fullscreen | `Maximize` |
+| Settings | `Settings` |
+| Help | `HelpCircle` |
+| About | `Info` |
 
 ---
 
 ## Testing Checklist
 
-After implementation, verify:
-
-1. **Startup Flow:**
-   - [ ] App launches to Welcome Dashboard (first time)
-   - [ ] Recent projects display with thumbnails
-   - [ ] "New Project" creates empty project
-   - [ ] "Open Existing" shows full project list
-   - [ ] Auto-resume preference persists across sessions
-
-2. **Duration Display:**
-   - [ ] Empty project shows 00:00.00
-   - [ ] Duration updates as segments are added
-   - [ ] Duration reflects last segment end time
-   - [ ] Audio duration extends total if longer than segments
-
-3. **Playback:**
-   - [ ] Segments advance at correct times
-   - [ ] Playback stops when last segment ends
-   - [ ] Playback stops when audio ends (if audio present)
-   - [ ] Restart works correctly after completion
-
-4. **Performance:**
-   - [ ] Smooth scrolling on low-end hardware
-   - [ ] No memory leaks on project switching
-   - [ ] Canvas renders at 60 FPS during playback
+After implementation:
+1. [ ] All menu items are clickable and perform actions
+2. [ ] Keyboard shortcuts work for all menu items
+3. [ ] Visual mode header is replaced with unified header
+4. [ ] Home button navigates to Welcome Dashboard
+5. [ ] Mode switcher works correctly
+6. [ ] Play button opens fullscreen player
+7. [ ] Recent projects submenu shows correct projects
+8. [ ] Statistics dialog shows accurate counts
+9. [ ] Countdown settings persist correctly
+10. [ ] Disabled items show "Coming Soon" tooltip
