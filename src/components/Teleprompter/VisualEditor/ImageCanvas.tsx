@@ -452,6 +452,9 @@ export const ImageCanvas = memo<ImageCanvasProps>(({ className }) => {
 
 ImageCanvas.displayName = 'ImageCanvas';
 
+// Magnetic snap threshold in percentage (relative to image)
+const SEGMENT_SNAP_THRESHOLD_PERCENT = 1.5; // ~1.5% of image dimension
+
 // Interactive segment box with drag and resize
 interface SegmentBoxProps {
   segment: VisualSegment;
@@ -461,7 +464,8 @@ interface SegmentBoxProps {
 
 const SegmentBox = memo<SegmentBoxProps>(({ segment, isSelected, isPlaying }) => {
   const [isDragging, setIsDragging] = useState(false);
-  const [isResizing, setIsResizing] = useState<'top' | 'bottom' | null>(null);
+  const [isResizing, setIsResizing] = useState<'top' | 'bottom' | 'left' | 'right' | null>(null);
+  const [snappedEdges, setSnappedEdges] = useState<{ left: boolean; right: boolean; top: boolean }>({ left: false, right: false, top: false });
   const dragDataRef = useRef<{
     startX: number;
     startY: number;
@@ -472,15 +476,37 @@ const SegmentBox = memo<SegmentBoxProps>(({ segment, isSelected, isPlaying }) =>
   const selectSegment = useVisualEditorState((s) => s.selectSegment);
   const { saveState } = useUndoRedo();
   
-  const getPercentCoords = useCallback((e: PointerEvent) => {
-    const imageEl = document.getElementById('visual-editor-image');
-    if (!imageEl) return { x: 0, y: 0 };
+  // Magnetic snap function for segment edges - snaps to LEFT, RIGHT, TOP but NOT BOTTOM
+  const applySegmentSnap = useCallback((region: Region): { region: Region; snapped: { left: boolean; right: boolean; top: boolean } } => {
+    let { x, y, width, height } = region;
+    const snapped = { left: false, right: false, top: false };
     
-    const rect = imageEl.getBoundingClientRect();
-    const x = ((e.clientX - rect.left) / rect.width) * 100;
-    const y = ((e.clientY - rect.top) / rect.height) * 100;
+    // Snap LEFT edge to 0
+    if (Math.abs(x) < SEGMENT_SNAP_THRESHOLD_PERCENT) {
+      x = 0;
+      snapped.left = true;
+    }
     
-    return { x, y };
+    // Snap RIGHT edge to 100
+    const rightEdge = x + width;
+    if (Math.abs(100 - rightEdge) < SEGMENT_SNAP_THRESHOLD_PERCENT) {
+      x = 100 - width;
+      snapped.right = true;
+    }
+    
+    // Snap TOP edge to 0
+    if (Math.abs(y) < SEGMENT_SNAP_THRESHOLD_PERCENT) {
+      y = 0;
+      snapped.top = true;
+    }
+    
+    // NO snapping for bottom edge (intentionally omitted)
+    
+    // Ensure bounds
+    x = Math.max(0, Math.min(100 - width, x));
+    y = Math.max(0, Math.min(100 - height, y));
+    
+    return { region: { x, y, width, height }, snapped };
   }, []);
   
   // Handle segment click/selection
@@ -517,7 +543,7 @@ const SegmentBox = memo<SegmentBoxProps>(({ segment, isSelected, isPlaying }) =>
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
   }, [segment, isSelected, selectSegment, saveState]);
   
-  // Handle drag move
+  // Handle drag move with magnetic snapping
   const handleDragMove = useCallback((e: React.PointerEvent) => {
     if (!isDragging || !dragDataRef.current) return;
     
@@ -528,23 +554,34 @@ const SegmentBox = memo<SegmentBoxProps>(({ segment, isSelected, isPlaying }) =>
     const dx = ((e.clientX - dragDataRef.current.startX) / rect.width) * 100;
     const dy = ((e.clientY - dragDataRef.current.startY) / rect.height) * 100;
     
-    const newX = Math.max(0, Math.min(100 - segment.region.width, dragDataRef.current.region.x + dx));
-    const newY = Math.max(0, Math.min(100 - segment.region.height, dragDataRef.current.region.y + dy));
+    const rawX = dragDataRef.current.region.x + dx;
+    const rawY = dragDataRef.current.region.y + dy;
+    
+    // Apply magnetic snapping
+    const { region: snappedRegion, snapped } = applySegmentSnap({
+      x: rawX,
+      y: rawY,
+      width: segment.region.width,
+      height: segment.region.height,
+    });
+    
+    setSnappedEdges(snapped);
     
     updateSegment(segment.id, {
-      region: { ...segment.region, x: newX, y: newY },
+      region: snappedRegion,
     });
-  }, [isDragging, segment, updateSegment]);
+  }, [isDragging, segment, updateSegment, applySegmentSnap]);
   
   // Handle drag end
   const handleDragEnd = useCallback((e: React.PointerEvent) => {
     (e.target as HTMLElement).releasePointerCapture(e.pointerId);
     setIsDragging(false);
+    setSnappedEdges({ left: false, right: false, top: false });
     dragDataRef.current = null;
   }, []);
   
-  // Handle resize start
-  const handleResizeStart = useCallback((edge: 'top' | 'bottom', e: React.PointerEvent) => {
+  // Handle resize start - now supports all 4 edges
+  const handleResizeStart = useCallback((edge: 'top' | 'bottom' | 'left' | 'right', e: React.PointerEvent) => {
     e.stopPropagation();
     e.preventDefault();
     
@@ -559,7 +596,7 @@ const SegmentBox = memo<SegmentBoxProps>(({ segment, isSelected, isPlaying }) =>
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
   }, [segment.region, saveState]);
   
-  // Handle resize move
+  // Handle resize move with magnetic snapping
   const handleResizeMove = useCallback((e: React.PointerEvent) => {
     if (!isResizing || !dragDataRef.current) return;
     
@@ -567,26 +604,57 @@ const SegmentBox = memo<SegmentBoxProps>(({ segment, isSelected, isPlaying }) =>
     if (!imageEl) return;
     
     const rect = imageEl.getBoundingClientRect();
+    const dx = ((e.clientX - dragDataRef.current.startX) / rect.width) * 100;
     const dy = ((e.clientY - dragDataRef.current.startY) / rect.height) * 100;
     
+    let newRegion = { ...segment.region };
+    const newSnapped = { left: false, right: false, top: false };
+    
     if (isResizing === 'top') {
-      const newY = Math.max(0, Math.min(dragDataRef.current.region.y + dragDataRef.current.region.height - 5, dragDataRef.current.region.y + dy));
+      let newY = dragDataRef.current.region.y + dy;
+      // Snap top edge to 0
+      if (Math.abs(newY) < SEGMENT_SNAP_THRESHOLD_PERCENT) {
+        newY = 0;
+        newSnapped.top = true;
+      }
+      newY = Math.max(0, Math.min(dragDataRef.current.region.y + dragDataRef.current.region.height - 5, newY));
       const newHeight = dragDataRef.current.region.height - (newY - dragDataRef.current.region.y);
-      updateSegment(segment.id, {
-        region: { ...segment.region, y: newY, height: newHeight },
-      });
-    } else {
+      newRegion = { ...newRegion, y: newY, height: newHeight };
+    } else if (isResizing === 'bottom') {
+      // No snapping for bottom
       const newHeight = Math.max(5, Math.min(100 - dragDataRef.current.region.y, dragDataRef.current.region.height + dy));
-      updateSegment(segment.id, {
-        region: { ...segment.region, height: newHeight },
-      });
+      newRegion = { ...newRegion, height: newHeight };
+    } else if (isResizing === 'left') {
+      let newX = dragDataRef.current.region.x + dx;
+      // Snap left edge to 0
+      if (Math.abs(newX) < SEGMENT_SNAP_THRESHOLD_PERCENT) {
+        newX = 0;
+        newSnapped.left = true;
+      }
+      newX = Math.max(0, Math.min(dragDataRef.current.region.x + dragDataRef.current.region.width - 5, newX));
+      const newWidth = dragDataRef.current.region.width - (newX - dragDataRef.current.region.x);
+      newRegion = { ...newRegion, x: newX, width: newWidth };
+    } else if (isResizing === 'right') {
+      let newWidth = dragDataRef.current.region.width + dx;
+      const rightEdge = dragDataRef.current.region.x + newWidth;
+      // Snap right edge to 100
+      if (Math.abs(100 - rightEdge) < SEGMENT_SNAP_THRESHOLD_PERCENT) {
+        newWidth = 100 - dragDataRef.current.region.x;
+        newSnapped.right = true;
+      }
+      newWidth = Math.max(5, Math.min(100 - dragDataRef.current.region.x, newWidth));
+      newRegion = { ...newRegion, width: newWidth };
     }
+    
+    setSnappedEdges(newSnapped);
+    updateSegment(segment.id, { region: newRegion });
   }, [isResizing, segment, updateSegment]);
   
   // Handle resize end
   const handleResizeEnd = useCallback((e: React.PointerEvent) => {
     (e.target as HTMLElement).releasePointerCapture(e.pointerId);
     setIsResizing(null);
+    setSnappedEdges({ left: false, right: false, top: false });
     dragDataRef.current = null;
   }, []);
   
@@ -614,7 +682,18 @@ const SegmentBox = memo<SegmentBoxProps>(({ segment, isSelected, isPlaying }) =>
       onPointerUp={handleDragEnd}
       onPointerCancel={handleDragEnd}
     >
-      {/* Top resize handle */}
+      {/* Snap indicator lines */}
+      {snappedEdges.left && (
+        <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-blue-500 animate-pulse" />
+      )}
+      {snappedEdges.right && (
+        <div className="absolute right-0 top-0 bottom-0 w-0.5 bg-blue-500 animate-pulse" />
+      )}
+      {snappedEdges.top && (
+        <div className="absolute top-0 left-0 right-0 h-0.5 bg-blue-500 animate-pulse" />
+      )}
+      
+      {/* Top resize handle - with snap */}
       <div
         className="absolute -top-1 left-2 right-2 h-3 cursor-ns-resize hover:bg-primary/30 z-10"
         onPointerDown={(e) => handleResizeStart('top', e)}
@@ -623,10 +702,28 @@ const SegmentBox = memo<SegmentBoxProps>(({ segment, isSelected, isPlaying }) =>
         onPointerCancel={handleResizeEnd}
       />
       
-      {/* Bottom resize handle */}
+      {/* Bottom resize handle - NO snap */}
       <div
         className="absolute -bottom-1 left-2 right-2 h-3 cursor-ns-resize hover:bg-primary/30 z-10"
         onPointerDown={(e) => handleResizeStart('bottom', e)}
+        onPointerMove={handleResizeMove}
+        onPointerUp={handleResizeEnd}
+        onPointerCancel={handleResizeEnd}
+      />
+      
+      {/* Left resize handle - with snap */}
+      <div
+        className="absolute -left-1 top-2 bottom-2 w-3 cursor-ew-resize hover:bg-primary/30 z-10"
+        onPointerDown={(e) => handleResizeStart('left', e)}
+        onPointerMove={handleResizeMove}
+        onPointerUp={handleResizeEnd}
+        onPointerCancel={handleResizeEnd}
+      />
+      
+      {/* Right resize handle - with snap */}
+      <div
+        className="absolute -right-1 top-2 bottom-2 w-3 cursor-ew-resize hover:bg-primary/30 z-10"
+        onPointerDown={(e) => handleResizeStart('right', e)}
         onPointerMove={handleResizeMove}
         onPointerUp={handleResizeEnd}
         onPointerCancel={handleResizeEnd}
