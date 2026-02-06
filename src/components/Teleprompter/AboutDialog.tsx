@@ -4,6 +4,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Monitor, Heart, ExternalLink, Github, Mail } from 'lucide-react';
@@ -24,14 +25,14 @@ export const AboutDialog = memo<AboutDialogProps>(({ open, onOpenChange }) => {
             <Monitor size={32} className="text-primary" />
           </div>
           <DialogTitle className="text-xl">ProTeleprompter</DialogTitle>
+          <DialogDescription>
+            Professional teleprompter for content creators
+          </DialogDescription>
         </DialogHeader>
         
         <div className="text-center space-y-4 py-4">
           <div>
             <p className="text-sm text-muted-foreground">Version 1.0.0</p>
-            <p className="text-xs text-muted-foreground mt-1">
-              Professional teleprompter for content creators
-            </p>
           </div>
           
           <div className="py-4 border-y border-border">

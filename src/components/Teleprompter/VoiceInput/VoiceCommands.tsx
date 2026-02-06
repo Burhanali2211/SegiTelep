@@ -25,9 +25,9 @@ export const VoiceCommands = memo<VoiceCommandsProps>(({ className }) => {
               {config.description}
             </span>
             <div className="flex flex-wrap gap-1">
-              {config.triggers.map((trigger) => (
+              {config.triggers.map((trigger, index) => (
                 <Badge 
-                  key={trigger} 
+                  key={`${config.command}-${trigger}-${index}`} 
                   variant="secondary"
                   className="text-xs"
                 >

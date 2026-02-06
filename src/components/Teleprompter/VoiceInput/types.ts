@@ -32,7 +32,7 @@ export const DEFAULT_VOICE_COMMANDS: VoiceCommandConfig[] = [
   { command: 'next', triggers: ['next', 'forward', 'skip'], description: 'Next segment' },
   { command: 'previous', triggers: ['previous', 'back', 'before'], description: 'Previous segment' },
   { command: 'faster', triggers: ['faster', 'speed up', 'quicker'], description: 'Increase speed' },
-  { command: 'slower', triggers: ['slower', 'speed down', 'slower'], description: 'Decrease speed' },
+  { command: 'slower', triggers: ['slower', 'slow down', 'decrease'], description: 'Decrease speed' },
 ];
 
 export const SUPPORTED_LANGUAGES = [

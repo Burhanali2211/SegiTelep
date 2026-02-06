@@ -4,6 +4,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
   DialogFooter,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -61,6 +62,11 @@ export const AudioManagerDialog = memo<AudioManagerDialogProps>(({
             <Music size={20} className="text-primary" />
             {isAssignMode ? 'Assign Audio to Segment' : 'Audio Library'}
           </DialogTitle>
+          <DialogDescription>
+            {isAssignMode 
+              ? 'Select an audio file to assign to this segment'
+              : 'Upload and manage your audio files for teleprompter segments'}
+          </DialogDescription>
         </DialogHeader>
 
         <div className="flex-1 overflow-hidden flex flex-col gap-4">

@@ -38,12 +38,18 @@ async function getDB(): Promise<IDBPDatabase<VisualProjectDB>> {
   return dbInstance;
 }
 
+// Deep clone helper to ensure data is serializable for IndexedDB
+function deepClone<T>(obj: T): T {
+  return JSON.parse(JSON.stringify(obj));
+}
+
 export async function saveVisualProject(project: VisualProject): Promise<void> {
   const db = await getDB();
-  const updated = {
+  // Deep clone to ensure no non-serializable objects (like PointerEvent) are included
+  const updated = deepClone({
     ...project,
     modifiedAt: Date.now(),
-  };
+  });
   await db.put('visualProjects', updated);
 }
 
