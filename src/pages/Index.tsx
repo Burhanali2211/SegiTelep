@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo, forwardRef } from 'react';
+import React, { useEffect, useState, useMemo, forwardRef, useCallback } from 'react';
 import { useTeleprompterStore } from '@/store/teleprompterStore';
 import { createProject, getAllProjects, loadProject } from '@/core/storage/ProjectStorage';
 import { isVisualSegment } from '@/types/teleprompter.types';
@@ -11,14 +11,17 @@ import {
 } from '@/components/Teleprompter';
 import { VisualEditor } from '@/components/Teleprompter/VisualEditor';
 import { MiniPreview } from '@/components/Teleprompter/MiniPreview';
+import { AppHeader } from '@/components/Layout';
+import { ScriptStatisticsDialog } from '@/components/Teleprompter/ScriptStatisticsDialog';
+import { CountdownSettingsDialog } from '@/components/Teleprompter/CountdownSettingsDialog';
+import { AboutDialog } from '@/components/Teleprompter/AboutDialog';
 import { Button } from '@/components/ui/button';
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import {
   Tooltip,
   TooltipContent,
@@ -30,25 +33,16 @@ import {
   ResizableHandle,
 } from '@/components/ui/resizable';
 import {
-  Tabs,
-  TabsList,
-  TabsTrigger,
-} from '@/components/ui/tabs';
-import {
-  Menu,
-  FolderOpen,
-  Save,
-  Settings,
-  Monitor,
   Keyboard,
   PanelLeftClose,
   PanelLeft,
-  Maximize2,
   Minimize2,
-  FileText,
-  Image,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { exportVisualProject, importVisualProject } from '@/core/storage/VisualProjectStorage';
+import { useVisualProjectSession, getRecentProjects } from '@/hooks/useVisualProjectSession';
+import { useVisualEditorState } from '@/components/Teleprompter/VisualEditor/useVisualEditorState';
+import { toast } from 'sonner';
 
 const KEYBOARD_SHORTCUTS = [
   { key: 'Space', action: 'Play / Pause' },
@@ -60,16 +54,25 @@ const KEYBOARD_SHORTCUTS = [
   { key: 'F', action: 'Fullscreen' },
   { key: 'Esc', action: 'Exit / Stop' },
   { key: 'Ctrl+S', action: 'Save project' },
+  { key: 'Ctrl+N', action: 'New project' },
+  { key: 'Ctrl+O', action: 'Open project' },
+  { key: '?', action: 'Show shortcuts' },
 ];
 
 type EditorType = 'text' | 'visual';
 
 const Index = () => {
+  // Dialog states
   const [showProjectManager, setShowProjectManager] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [showStatistics, setShowStatistics] = useState(false);
+  const [showCountdown, setShowCountdown] = useState(false);
+  const [showAbout, setShowAbout] = useState(false);
+  
   const [initialized, setInitialized] = useState(false);
   const [editorType, setEditorType] = useState<EditorType>('text');
+  const [recentProjects, setRecentProjects] = useState<Array<{ id: string; name: string }>>([]);
   
   const project = useTeleprompterStore((s) => s.project);
   const selectedSegmentId = useTeleprompterStore((s) => s.editor.selectedSegmentId);
@@ -83,6 +86,26 @@ const Index = () => {
   const setLayoutMode = useTeleprompterStore((s) => s.setLayoutMode);
   const toggleSegmentListCollapsed = useTeleprompterStore((s) => s.toggleSegmentListCollapsed);
   const togglePreviewCollapsed = useTeleprompterStore((s) => s.togglePreviewCollapsed);
+  
+  // Visual editor session
+  const {
+    saveProject: saveVisualProject,
+    loadProject: loadVisualProject,
+    createNewProject: createNewVisualProject,
+    projectId: visualProjectId,
+    isDirty: visualIsDirty,
+    saveStatus,
+    isLoading: visualIsLoading,
+    startupMode,
+    setStartupMode,
+  } = useVisualProjectSession();
+  
+  // Visual editor state
+  const visualProjectName = useVisualEditorState((s) => s.projectName);
+  const setVisualProjectName = useVisualEditorState((s) => s.setProjectName);
+  const lastSaved = useVisualEditorState((s) => s.lastSaved);
+  const pages = useVisualEditorState((s) => s.pages);
+  const audioFile = useVisualEditorState((s) => s.audioFile);
   
   // Determine which editor to show based on selected segment type
   const selectedSegment = useMemo(() => {
@@ -108,6 +131,15 @@ const Index = () => {
     }
   }, [showVisualEditor, layoutMode, setLayoutMode]);
   
+  // Fetch recent projects
+  useEffect(() => {
+    const fetchRecent = async () => {
+      const projects = await getRecentProjects(5);
+      setRecentProjects(projects.map(p => ({ id: p.id, name: p.name })));
+    };
+    fetchRecent();
+  }, []);
+  
   // Initialize - load most recent project or create new
   useEffect(() => {
     const init = async () => {
@@ -129,18 +161,46 @@ const Index = () => {
     init();
   }, [setProject]);
   
-  // Keyboard shortcut for save
+  // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+      // Ignore if typing in input
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+        return;
+      }
+      
+      const ctrl = e.ctrlKey || e.metaKey;
+      
+      if (ctrl && e.key === 's') {
         e.preventDefault();
-        saveCurrentProject();
+        if (showVisualEditor) {
+          saveVisualProject();
+        } else {
+          saveCurrentProject();
+        }
+      }
+      
+      if (ctrl && e.key === 'n') {
+        e.preventDefault();
+        if (showVisualEditor) {
+          createNewVisualProject();
+        }
+      }
+      
+      if (ctrl && e.key === 'o') {
+        e.preventDefault();
+        setShowProjectManager(true);
+      }
+      
+      if (e.key === '?' || (e.shiftKey && e.key === '/')) {
+        e.preventDefault();
+        setShowShortcuts(true);
       }
     };
     
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [saveCurrentProject]);
+  }, [saveCurrentProject, saveVisualProject, createNewVisualProject, showVisualEditor]);
   
   // Add first segment if project is empty
   useEffect(() => {
@@ -167,6 +227,64 @@ Delete this text and start writing your own script!`,
     }
   }, [project?.id, project?.segments.length, addSegment]);
   
+  // Export handler
+  const handleExport = useCallback(() => {
+    if (pages.length === 0) {
+      toast.error('Add at least one image before exporting');
+      return;
+    }
+    
+    exportVisualProject({
+      id: visualProjectId || 'exported',
+      name: visualProjectName,
+      createdAt: Date.now(),
+      modifiedAt: Date.now(),
+      pages,
+      audioFile,
+    });
+    toast.success('Project exported');
+  }, [visualProjectId, visualProjectName, pages, audioFile]);
+  
+  // Import handler
+  const handleImport = useCallback(async () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.visualprompt.json,.json';
+    
+    input.onchange = async (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (!file) return;
+      
+      try {
+        const imported = await importVisualProject(file);
+        await loadVisualProject(imported.id);
+        toast.success(`Imported: ${imported.name}`);
+      } catch (error) {
+        toast.error('Failed to import project. Invalid file format.');
+      }
+    };
+    
+    input.click();
+  }, [loadVisualProject]);
+  
+  // Go home handler
+  const handleGoHome = useCallback(() => {
+    setStartupMode('welcome');
+  }, [setStartupMode]);
+  
+  // Check if can play
+  const totalSegments = pages.reduce((acc, p) => acc + p.segments.filter(s => !s.isHidden).length, 0);
+  const canPlay = totalSegments > 0 || (project?.segments.length ?? 0) > 0;
+  
+  // Placeholder for play action (opens fullscreen in visual mode)
+  const handlePlay = useCallback(() => {
+    if (showVisualEditor) {
+      // Trigger fullscreen in VisualEditor via layout mode or directly
+      // For now, we'll just switch to visual expanded mode
+      setLayoutMode('visual-expanded');
+    }
+  }, [showVisualEditor, setLayoutMode]);
+  
   if (!initialized) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
@@ -178,111 +296,43 @@ Delete this text and start writing your own script!`,
     );
   }
 
-  // Type Selector Component
-  const TypeSelector = () => (
-    <Tabs value={editorType} onValueChange={(v) => setEditorType(v as EditorType)} className="ml-4">
-      <TabsList className="h-8">
-        <TabsTrigger value="text" className="text-xs h-7 px-3">
-          <FileText size={14} className="mr-1.5" />
-          Text Mode
-        </TabsTrigger>
-        <TabsTrigger value="visual" className="text-xs h-7 px-3">
-          <Image size={14} className="mr-1.5" />
-          Visual Mode
-        </TabsTrigger>
-      </TabsList>
-    </Tabs>
-  );
-
   // Visual Mode Layout - Optimized for region editing
   if (layoutMode === 'visual-expanded') {
     return (
       <div className="h-screen flex flex-col bg-background overflow-hidden">
-        {/* Header */}
-        <header className="flex items-center justify-between px-4 py-2 border-b border-border bg-card">
-          <div className="flex items-center gap-3">
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon">
-                  <Menu size={20} />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start">
-                <DropdownMenuItem onClick={() => setShowProjectManager(true)}>
-                  <FolderOpen size={16} className="mr-2" />
-                  Open Project
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={saveCurrentProject} disabled={!hasUnsavedChanges}>
-                  <Save size={16} className="mr-2" />
-                  Save
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => setShowShortcuts(true)}>
-                  <Keyboard size={16} className="mr-2" />
-                  Keyboard Shortcuts
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => setShowSettings(true)}>
-                  <Settings size={16} className="mr-2" />
-                  Project Settings
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-            
-            <div className="flex items-center gap-2">
-              <Monitor size={20} className="text-primary" />
-              <span className="font-semibold text-lg">ProTeleprompter</span>
-            </div>
-            
-            <TypeSelector />
-            
-            {project && (
-              <div className="flex items-center gap-2 ml-4 text-sm text-muted-foreground">
-                <span className="font-medium text-foreground">{project.name}</span>
-                {hasUnsavedChanges && (
-                  <span className="text-xs px-1.5 py-0.5 bg-accent/20 text-accent rounded">
-                    Unsaved
-                  </span>
-                )}
-              </div>
-            )}
-          </div>
-          
-          <div className="flex items-center gap-2">
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button 
-                  variant="ghost" 
-                  size="sm"
-                  onClick={toggleSegmentListCollapsed}
-                >
-                  {segmentListCollapsed ? <PanelLeft size={18} /> : <PanelLeftClose size={18} />}
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>{segmentListCollapsed ? 'Show Segments' : 'Hide Segments'}</TooltipContent>
-            </Tooltip>
-            
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button 
-                  variant="ghost" 
-                  size="sm"
-                  onClick={() => setLayoutMode('default')}
-                >
-                  <Minimize2 size={18} />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Exit Visual Mode</TooltipContent>
-            </Tooltip>
-            
-            <Button variant="ghost" size="icon" onClick={() => setShowProjectManager(true)}>
-              <FolderOpen size={18} />
-            </Button>
-          </div>
-        </header>
+        {/* Unified Header */}
+        <AppHeader
+          projectName={visualProjectName}
+          onProjectNameChange={setVisualProjectName}
+          hasUnsavedChanges={visualIsDirty}
+          saveStatus={saveStatus}
+          lastSaved={lastSaved}
+          editorType={editorType}
+          onEditorTypeChange={(type) => {
+            setEditorType(type);
+            if (type === 'text') {
+              setLayoutMode('default');
+            }
+          }}
+          onNewProject={createNewVisualProject}
+          onOpenProject={() => setShowProjectManager(true)}
+          onSave={saveVisualProject}
+          onExport={handleExport}
+          onImport={handleImport}
+          onOpenSettings={() => setShowSettings(true)}
+          onOpenShortcuts={() => setShowShortcuts(true)}
+          onOpenStatistics={() => setShowStatistics(true)}
+          onOpenCountdown={() => setShowCountdown(true)}
+          onOpenAbout={() => setShowAbout(true)}
+          onPlay={handlePlay}
+          onGoHome={handleGoHome}
+          recentProjects={recentProjects}
+          onOpenRecentProject={loadVisualProject}
+          canPlay={canPlay}
+        />
         
         {/* Main Content - Visual Optimized */}
         <main className="flex-1 min-h-0 flex overflow-hidden">
-          {/* Visual Editor - Takes full space with integrated sidebar */}
           <VisualEditor className="flex-1 min-h-0" />
         </main>
         
@@ -290,6 +340,9 @@ Delete this text and start writing your own script!`,
         <ProjectManager open={showProjectManager} onOpenChange={setShowProjectManager} />
         <SettingsPanel open={showSettings} onOpenChange={setShowSettings} />
         <KeyboardShortcutsDialog open={showShortcuts} onOpenChange={setShowShortcuts} />
+        <ScriptStatisticsDialog open={showStatistics} onOpenChange={setShowStatistics} />
+        <CountdownSettingsDialog open={showCountdown} onOpenChange={setShowCountdown} />
+        <AboutDialog open={showAbout} onOpenChange={setShowAbout} />
       </div>
     );
   }
@@ -297,95 +350,43 @@ Delete this text and start writing your own script!`,
   // Default Mode Layout - 3 Panel
   return (
     <div className="h-screen flex flex-col bg-background overflow-hidden">
-      {/* Header */}
-      <header className="flex items-center justify-between px-4 py-2 border-b border-border bg-card">
-        <div className="flex items-center gap-3">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon">
-                <Menu size={20} />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start">
-              <DropdownMenuItem onClick={() => setShowProjectManager(true)}>
-                <FolderOpen size={16} className="mr-2" />
-                Open Project
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={saveCurrentProject} disabled={!hasUnsavedChanges}>
-                <Save size={16} className="mr-2" />
-                Save
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => setShowShortcuts(true)}>
-                <Keyboard size={16} className="mr-2" />
-                Keyboard Shortcuts
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setShowSettings(true)}>
-                <Settings size={16} className="mr-2" />
-                Project Settings
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-          
-          <div className="flex items-center gap-2">
-            <Monitor size={20} className="text-primary" />
-            <span className="font-semibold text-lg">ProTeleprompter</span>
-          </div>
-          
-          <TypeSelector />
-          
-          {project && (
-            <div className="flex items-center gap-2 ml-4 text-sm text-muted-foreground">
-              <span className="font-medium text-foreground">{project.name}</span>
-              {hasUnsavedChanges && (
-                <span className="text-xs px-1.5 py-0.5 bg-accent/20 text-accent rounded">
-                  Unsaved
-                </span>
-              )}
-            </div>
-          )}
-        </div>
-        
-        <div className="flex items-center gap-2">
-          {showVisualEditor && (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button 
-                  variant="outline" 
-                  size="sm"
-                  onClick={() => setLayoutMode('visual-expanded')}
-                >
-                  <Maximize2 size={16} className="mr-2" />
-                  Expand Editor
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Maximize editor for region drawing</TooltipContent>
-            </Tooltip>
-          )}
-          
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button variant="ghost" size="icon" onClick={() => setShowSettings(true)}>
-                <Settings size={18} />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>Project Settings</TooltipContent>
-          </Tooltip>
-          
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button variant="ghost" size="icon" onClick={() => setShowShortcuts(true)}>
-                <Keyboard size={18} />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>Keyboard shortcuts</TooltipContent>
-          </Tooltip>
-          
-          <Button variant="ghost" size="icon" onClick={() => setShowProjectManager(true)}>
-            <FolderOpen size={18} />
-          </Button>
-        </div>
-      </header>
+      {/* Unified Header */}
+      <AppHeader
+        projectName={project?.name ?? 'Untitled'}
+        onProjectNameChange={(name) => {
+          if (project) {
+            useTeleprompterStore.getState().updateProjectName(name);
+          }
+        }}
+        hasUnsavedChanges={hasUnsavedChanges}
+        saveStatus={saveStatus}
+        lastSaved={lastSaved}
+        editorType={editorType}
+        onEditorTypeChange={(type) => {
+          setEditorType(type);
+          if (type === 'visual') {
+            setLayoutMode('visual-expanded');
+          }
+        }}
+        onNewProject={() => {
+          // For text mode, create new text project
+          createProject('New Script').then(setProject);
+        }}
+        onOpenProject={() => setShowProjectManager(true)}
+        onSave={saveCurrentProject}
+        onExport={handleExport}
+        onImport={handleImport}
+        onOpenSettings={() => setShowSettings(true)}
+        onOpenShortcuts={() => setShowShortcuts(true)}
+        onOpenStatistics={() => setShowStatistics(true)}
+        onOpenCountdown={() => setShowCountdown(true)}
+        onOpenAbout={() => setShowAbout(true)}
+        onPlay={handlePlay}
+        onGoHome={handleGoHome}
+        recentProjects={recentProjects}
+        onOpenRecentProject={loadVisualProject}
+        canPlay={canPlay}
+      />
       
       {/* Main Content */}
       <main className="flex-1 min-h-0 overflow-hidden">
@@ -425,6 +426,9 @@ Delete this text and start writing your own script!`,
       <ProjectManager open={showProjectManager} onOpenChange={setShowProjectManager} />
       <SettingsPanel open={showSettings} onOpenChange={setShowSettings} />
       <KeyboardShortcutsDialog open={showShortcuts} onOpenChange={setShowShortcuts} />
+      <ScriptStatisticsDialog open={showStatistics} onOpenChange={setShowStatistics} />
+      <CountdownSettingsDialog open={showCountdown} onOpenChange={setShowCountdown} />
+      <AboutDialog open={showAbout} onOpenChange={setShowAbout} />
     </div>
   );
 };
@@ -483,38 +487,27 @@ CollapsedSegmentList.displayName = 'CollapsedSegmentList';
 
 // Keyboard Shortcuts Dialog
 const KeyboardShortcutsDialog = ({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) => {
-  if (!open) return null;
-  
   return (
-    <div 
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/80"
-      onClick={() => onOpenChange(false)}
-    >
-      <div 
-        className="bg-card rounded-lg p-6 max-w-md w-full mx-4"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
-          <Keyboard size={20} />
-          Keyboard Shortcuts
-        </h2>
-        <div className="space-y-2">
-          {KEYBOARD_SHORTCUTS.map(({ key, action }) => (
-            <div key={key} className="flex items-center justify-between py-1.5">
-              <span className="text-muted-foreground">{action}</span>
-              <kbd className="kbd px-2">{key}</kbd>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Keyboard size={20} />
+            Keyboard Shortcuts
+          </DialogTitle>
+        </DialogHeader>
+        <div className="grid gap-2 py-4">
+          {KEYBOARD_SHORTCUTS.map((shortcut) => (
+            <div key={shortcut.key} className="flex items-center justify-between py-1.5 px-2 rounded hover:bg-muted">
+              <span className="text-sm text-muted-foreground">{shortcut.action}</span>
+              <kbd className="px-2 py-1 text-xs bg-muted rounded border shadow-sm font-mono">
+                {shortcut.key}
+              </kbd>
             </div>
           ))}
         </div>
-        <Button 
-          className="w-full mt-4" 
-          variant="secondary"
-          onClick={() => onOpenChange(false)}
-        >
-          Close
-        </Button>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 };
 
