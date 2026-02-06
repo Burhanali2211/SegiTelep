@@ -236,10 +236,12 @@ async function getAllProjectsNative(): Promise<VisualProject[]> {
 
 async function saveProjectWeb(project: VisualProject): Promise<void> {
   const db = await getDB();
-  const updated = deepClone({
+  // Data is already serialized by safeSerialize before reaching here
+  // No need to deepClone again - it causes issues with large image data
+  const updated = {
     ...project,
     modifiedAt: Date.now(),
-  });
+  };
   await db.put('visualProjects', updated);
 }
 

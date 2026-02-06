@@ -506,6 +506,7 @@ const SegmentBox = memo<SegmentBoxProps>(({ segment, isSelected, isPlaying }) =>
   
   const updateSegment = useVisualEditorState((s) => s.updateSegment);
   const selectSegment = useVisualEditorState((s) => s.selectSegment);
+  const setActiveDrag = useVisualEditorState((s) => s.setActiveDrag);
   const { saveState } = useUndoRedo();
   
   // Magnetic snap function for segment edges - snaps to LEFT, RIGHT, TOP but NOT BOTTOM
@@ -566,6 +567,7 @@ const SegmentBox = memo<SegmentBoxProps>(({ segment, isSelected, isPlaying }) =>
     
     saveState();
     setIsDragging(true);
+    setActiveDrag(true); // Lock autosave during drag
     dragDataRef.current = {
       startX: e.clientX,
       startY: e.clientY,
@@ -573,7 +575,7 @@ const SegmentBox = memo<SegmentBoxProps>(({ segment, isSelected, isPlaying }) =>
     };
     
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
-  }, [segment, isSelected, selectSegment, saveState]);
+  }, [segment, isSelected, selectSegment, saveState, setActiveDrag]);
   
   // Handle drag move with magnetic snapping
   const handleDragMove = useCallback((e: React.PointerEvent) => {
@@ -608,9 +610,10 @@ const SegmentBox = memo<SegmentBoxProps>(({ segment, isSelected, isPlaying }) =>
   const handleDragEnd = useCallback((e: React.PointerEvent) => {
     (e.target as HTMLElement).releasePointerCapture(e.pointerId);
     setIsDragging(false);
+    setActiveDrag(false); // Unlock autosave
     setSnappedEdges({ left: false, right: false, top: false });
     dragDataRef.current = null;
-  }, []);
+  }, [setActiveDrag]);
   
   // Handle resize start - now supports all 4 edges
   const handleResizeStart = useCallback((edge: 'top' | 'bottom' | 'left' | 'right', e: React.PointerEvent) => {
@@ -619,6 +622,7 @@ const SegmentBox = memo<SegmentBoxProps>(({ segment, isSelected, isPlaying }) =>
     
     saveState();
     setIsResizing(edge);
+    setActiveDrag(true); // Lock autosave during resize
     dragDataRef.current = {
       startX: e.clientX,
       startY: e.clientY,
@@ -626,7 +630,7 @@ const SegmentBox = memo<SegmentBoxProps>(({ segment, isSelected, isPlaying }) =>
     };
     
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
-  }, [segment.region, saveState]);
+  }, [segment.region, saveState, setActiveDrag]);
   
   // Handle resize move with magnetic snapping
   const handleResizeMove = useCallback((e: React.PointerEvent) => {
@@ -686,9 +690,10 @@ const SegmentBox = memo<SegmentBoxProps>(({ segment, isSelected, isPlaying }) =>
   const handleResizeEnd = useCallback((e: React.PointerEvent) => {
     (e.target as HTMLElement).releasePointerCapture(e.pointerId);
     setIsResizing(null);
+    setActiveDrag(false); // Unlock autosave
     setSnappedEdges({ left: false, right: false, top: false });
     dragDataRef.current = null;
-  }, []);
+  }, [setActiveDrag]);
   
   const borderColor = isPlaying ? 'rgb(239, 68, 68)' : isSelected ? 'rgb(250, 204, 21)' : 'rgb(34, 197, 94)';
   const bgColor = isPlaying ? 'rgba(239, 68, 68, 0.2)' : isSelected ? 'rgba(250, 204, 21, 0.15)' : 'rgba(34, 197, 94, 0.1)';
