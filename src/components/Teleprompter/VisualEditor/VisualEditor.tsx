@@ -431,69 +431,69 @@ export const VisualEditor = memo<VisualEditorProps>(({ className, onOpenPreview 
             )}
             
             {/* Aspect ratio selector */}
-            <div className="flex items-center gap-1.5 ml-2">
-              <RectangleHorizontal size={14} className="text-muted-foreground" />
-              <Select
-                value={aspectRatioConstraint || 'free'}
-                onValueChange={(val) => setAspectRatioConstraint(val === 'free' ? null : val)}
-              >
-                <SelectTrigger className="h-7 w-[100px] text-xs">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {ASPECT_RATIO_PRESETS.map((preset) => (
-                    <SelectItem key={preset.value} value={preset.value}>
-                      <div className="flex flex-col">
-                        <span>{preset.label}</span>
-                        <span className="text-[10px] text-muted-foreground">{preset.description}</span>
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              
-              {/* Custom ratio input */}
-              {aspectRatioConstraint === 'custom' && (
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button variant="outline" size="sm" className="h-7 text-xs">
-                      {customAspectRatio.width}×{customAspectRatio.height}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-48 p-3">
-                    <div className="space-y-2">
-                      <p className="text-xs font-medium">Custom Aspect Ratio</p>
-                      <div className="flex items-center gap-2">
-                        <Input
-                          type="number"
-                          value={customAspectRatio.width}
-                          onChange={(e) => setCustomAspectRatio({ 
-                            ...customAspectRatio, 
-                            width: parseInt(e.target.value) || 1 
-                          })}
-                          className="h-7 w-16 text-xs"
-                          min={1}
-                        />
-                        <span className="text-muted-foreground">×</span>
-                        <Input
-                          type="number"
-                          value={customAspectRatio.height}
-                          onChange={(e) => setCustomAspectRatio({ 
-                            ...customAspectRatio, 
-                            height: parseInt(e.target.value) || 1 
-                          })}
-                          className="h-7 w-16 text-xs"
-                          min={1}
-                        />
-                      </div>
-                      <p className="text-[10px] text-muted-foreground">
-                        Ratio: {(customAspectRatio.width / customAspectRatio.height).toFixed(2)}
-                      </p>
-                    </div>
-                  </PopoverContent>
-                </Popover>
-              )}
-            </div>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div className="flex items-center gap-1 ml-2">
+                  <Select
+                    value={aspectRatioConstraint || 'free'}
+                    onValueChange={(val) => setAspectRatioConstraint(val === 'free' ? null : val)}
+                  >
+                    <SelectTrigger className="h-7 w-20 text-xs gap-1 px-2">
+                      <RectangleHorizontal size={12} className="shrink-0 text-muted-foreground" />
+                      <SelectValue placeholder="Ratio" />
+                    </SelectTrigger>
+                    <SelectContent align="start">
+                      {ASPECT_RATIO_PRESETS.map((preset) => (
+                        <SelectItem key={preset.value} value={preset.value} className="text-xs">
+                          <span className="font-medium">{preset.label}</span>
+                          <span className="ml-2 text-muted-foreground">{preset.description}</span>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  
+                  {/* Custom ratio popover */}
+                  {aspectRatioConstraint === 'custom' && (
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button variant="ghost" size="sm" className="h-7 px-2 text-[10px] font-mono">
+                          {customAspectRatio.width}:{customAspectRatio.height}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-44 p-2" align="start">
+                        <p className="text-[10px] font-medium mb-2">Custom Ratio</p>
+                        <div className="flex items-center gap-1">
+                          <Input
+                            type="number"
+                            value={customAspectRatio.width}
+                            onChange={(e) => setCustomAspectRatio({ 
+                              ...customAspectRatio, 
+                              width: parseInt(e.target.value) || 1 
+                            })}
+                            className="h-6 w-14 text-xs px-2"
+                            min={1}
+                          />
+                          <span className="text-muted-foreground text-xs">:</span>
+                          <Input
+                            type="number"
+                            value={customAspectRatio.height}
+                            onChange={(e) => setCustomAspectRatio({ 
+                              ...customAspectRatio, 
+                              height: parseInt(e.target.value) || 1 
+                            })}
+                            className="h-6 w-14 text-xs px-2"
+                            min={1}
+                          />
+                        </div>
+                      </PopoverContent>
+                    </Popover>
+                  )}
+                </div>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">
+                Aspect ratio constraint for drawing
+              </TooltipContent>
+            </Tooltip>
             
             <div className="flex-1" />
             
