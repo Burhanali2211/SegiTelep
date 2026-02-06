@@ -10,6 +10,7 @@ import { AudioWaveform } from './AudioWaveform';
 import { FullscreenPlayer } from './FullscreenPlayer';
 import { ProjectListDialog } from './ProjectListDialog';
 import { KeyboardShortcutsOverlay } from './KeyboardShortcutsOverlay';
+import { WelcomeDashboard } from './WelcomeDashboard';
 import { useVisualProjectSession } from '@/hooks/useVisualProjectSession';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -119,12 +120,17 @@ export const VisualEditor = memo<VisualEditorProps>(({ className, onOpenPreview 
   // Session management
   const { 
     saveProject, 
-    loadProject, 
+    loadProject,
+    loadProjectAndEdit,
     createNewProject,
     projectId,
     isDirty,
     saveStatus,
     isLoading,
+    startupMode,
+    setStartupMode,
+    autoResumeEnabled,
+    setAutoResumeEnabled,
   } = useVisualProjectSession();
   
   // Local state for project name editing
@@ -380,6 +386,33 @@ export const VisualEditor = memo<VisualEditorProps>(({ className, onOpenPreview 
           </div>
         </div>
       </div>
+    );
+  }
+  
+  // Welcome Dashboard - show when startup mode is 'welcome'
+  if (startupMode === 'welcome') {
+    return (
+      <>
+        <ProjectListDialog
+          open={showProjectList}
+          onOpenChange={setShowProjectList}
+          onSelectProject={loadProjectAndEdit}
+          onNewProject={() => {
+            createNewProject();
+            setShowProjectList(false);
+          }}
+          currentProjectId={projectId}
+        />
+        
+        <WelcomeDashboard
+          onNewProject={createNewProject}
+          onOpenProject={loadProjectAndEdit}
+          onOpenProjectList={() => setShowProjectList(true)}
+          autoResumeEnabled={autoResumeEnabled}
+          onAutoResumeChange={setAutoResumeEnabled}
+          className={className}
+        />
+      </>
     );
   }
   

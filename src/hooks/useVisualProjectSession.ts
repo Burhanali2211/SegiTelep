@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, useState } from 'react';
 import { toast } from 'sonner';
 import { useVisualEditorState, ImagePage } from '@/components/Teleprompter/VisualEditor/useVisualEditorState';
 import {
@@ -10,12 +10,43 @@ import {
 } from '@/core/storage/VisualProjectStorage';
 
 const LAST_PROJECT_KEY = 'lastVisualProjectId';
+const STARTUP_MODE_KEY = 'teleprompter-startup-mode';
+const AUTO_RESUME_KEY = 'teleprompter-auto-resume';
 const SESSION_TIMEOUT_MS = 60 * 60 * 1000; // 1 hour
 const AUTO_SAVE_DELAY = 3000; // 3 seconds
+
+export type StartupMode = 'welcome' | 'editor';
+
+// Get auto-resume preference from localStorage
+export function getAutoResumePreference(): boolean {
+  const stored = localStorage.getItem(AUTO_RESUME_KEY);
+  return stored === 'true';
+}
+
+// Set auto-resume preference
+export function setAutoResumePreference(enabled: boolean): void {
+  localStorage.setItem(AUTO_RESUME_KEY, String(enabled));
+}
+
+// Check if there's a stored session to restore
+export function hasStoredSession(): boolean {
+  return !!localStorage.getItem(LAST_PROJECT_KEY);
+}
 
 export function useVisualProjectSession() {
   const autoSaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hasRestoredRef = useRef(false);
+  
+  // Startup mode state
+  const [startupMode, setStartupModeState] = useState<StartupMode>(() => {
+    // If auto-resume is enabled and there's a stored session, go to editor
+    if (getAutoResumePreference() && hasStoredSession()) {
+      return 'editor';
+    }
+    return 'welcome';
+  });
+  
+  const [autoResumeEnabled, setAutoResumeEnabledState] = useState(getAutoResumePreference);
   
   const projectId = useVisualEditorState((s) => s.projectId);
   const projectName = useVisualEditorState((s) => s.projectName);
@@ -33,6 +64,17 @@ export function useVisualProjectSession() {
   const setIsLoading = useVisualEditorState((s) => s.setIsLoading);
   const loadProjectData = useVisualEditorState((s) => s.loadProjectData);
   const reset = useVisualEditorState((s) => s.reset);
+  
+  // Update auto-resume preference
+  const setAutoResumeEnabled = useCallback((enabled: boolean) => {
+    setAutoResumePreference(enabled);
+    setAutoResumeEnabledState(enabled);
+  }, []);
+  
+  // Set startup mode
+  const setStartupMode = useCallback((mode: StartupMode) => {
+    setStartupModeState(mode);
+  }, []);
 
   // Save project to IndexedDB
   const saveProject = useCallback(async (showToast = true) => {
@@ -140,12 +182,17 @@ export function useVisualProjectSession() {
     }
   }, [loadProjectData, setIsLoading]);
 
-  // Restore last session on mount
+  // Restore last session on mount (only if auto-resume is enabled)
   useEffect(() => {
     if (hasRestoredRef.current) return;
     hasRestoredRef.current = true;
     
     const restoreSession = async () => {
+      // Only auto-restore if auto-resume is enabled
+      if (!getAutoResumePreference()) {
+        return;
+      }
+      
       const lastProjectId = localStorage.getItem(LAST_PROJECT_KEY);
       
       if (lastProjectId) {
@@ -155,13 +202,14 @@ export function useVisualProjectSession() {
         if (!success) {
           // Clear invalid project ID
           localStorage.removeItem(LAST_PROJECT_KEY);
+          setStartupMode('welcome');
         }
         setIsLoading(false);
       }
     };
     
     restoreSession();
-  }, [loadProject, setIsLoading]);
+  }, [loadProject, setIsLoading, setStartupMode]);
 
   // Auto-save when dirty
   useEffect(() => {
@@ -198,18 +246,34 @@ export function useVisualProjectSession() {
     setLastSaved(null);
     setIsDirty(false);
     localStorage.removeItem(LAST_PROJECT_KEY);
+    setStartupMode('editor');
     toast.success('New project created');
-  }, [reset, setProjectName, setProjectId, setLastSaved, setIsDirty]);
+  }, [reset, setProjectName, setProjectId, setLastSaved, setIsDirty, setStartupMode]);
+  
+  // Load project and switch to editor mode
+  const loadProjectAndEdit = useCallback(async (id: string) => {
+    const success = await loadProject(id);
+    if (success) {
+      setStartupMode('editor');
+    }
+    return success;
+  }, [loadProject, setStartupMode]);
 
   return {
     saveProject,
     loadProject,
+    loadProjectAndEdit,
     createNewProject,
     projectId,
     projectName,
     isDirty,
     saveStatus,
     isLoading,
+    startupMode,
+    setStartupMode,
+    autoResumeEnabled,
+    setAutoResumeEnabled,
+    hasStoredSession: hasStoredSession(),
   };
 }
 

@@ -57,11 +57,23 @@ export const FullscreenPlayer = memo<FullscreenPlayerProps>(({ onClose }) => {
       .sort((a, b) => a.startTime - b.startTime);
   }, [pages]);
   
+  // Calculate total duration from visible segments and audio
   const totalDuration = React.useMemo(() => {
-    if (allSegments.length === 0) return 0;
-    const maxSegmentEnd = Math.max(...allSegments.map(s => s.endTime));
-    // Use audio duration if longer
-    return audioFile?.duration ? Math.max(maxSegmentEnd, audioFile.duration) : maxSegmentEnd;
+    // Filter to visible segments only
+    const visibleSegments = allSegments.filter(s => !s.isHidden);
+    
+    // No segments = no duration
+    if (visibleSegments.length === 0) return 0;
+    
+    // Get the last segment end time
+    const lastSegmentEndTime = Math.max(...visibleSegments.map(s => s.endTime));
+    
+    // Use audio duration only if it's longer than segments
+    if (audioFile?.duration && audioFile.duration > lastSegmentEndTime) {
+      return audioFile.duration;
+    }
+    
+    return lastSegmentEndTime;
   }, [allSegments, audioFile?.duration]);
   
   const currentSegment = allSegments[currentSegmentIndex];
