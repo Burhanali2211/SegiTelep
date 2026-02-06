@@ -109,7 +109,7 @@ export const ImageCanvas = memo<ImageCanvasProps>(({ className }) => {
     return () => observer.disconnect();
   }, [imageLoaded, imageNaturalSize]);
   
-  // Magnetic snap function - snaps pan position to edges
+  // Magnetic snap function - snaps IMAGE pan position to LEFT, RIGHT, TOP edges (NOT bottom)
   const applyMagneticSnap = useCallback((newPan: { x: number; y: number }) => {
     const scaledWidth = imageDisplaySize.width * zoom;
     const scaledHeight = imageDisplaySize.height * zoom;
@@ -118,43 +118,45 @@ export const ImageCanvas = memo<ImageCanvasProps>(({ className }) => {
     let snappedY = newPan.y;
     
     // Calculate bounds - image can be dragged so edges align with viewport
-    const minX = containerSize.width - scaledWidth;
-    const maxX = 0;
-    const minY = containerSize.height - scaledHeight;
-    const maxY = 0;
+    const minX = containerSize.width - scaledWidth; // Right edge of image touches right of container
+    const maxX = 0; // Left edge of image touches left of container
+    const minY = containerSize.height - scaledHeight; // Bottom edge touches bottom
+    const maxY = 0; // Top edge touches top of container
     
-    // Snap to left edge (x = 0)
+    // Snap to LEFT edge (image's left aligns with container's left)
     if (Math.abs(snappedX - maxX) < SNAP_THRESHOLD) {
       snappedX = maxX;
     }
-    // Snap to right edge
+    
+    // Snap to RIGHT edge (image's right aligns with container's right)
     if (Math.abs(snappedX - minX) < SNAP_THRESHOLD && scaledWidth > containerSize.width) {
       snappedX = minX;
     }
     
-    // Snap to top edge (y = 0)
+    // Snap to TOP edge (image's top aligns with container's top)
     if (Math.abs(snappedY - maxY) < SNAP_THRESHOLD) {
       snappedY = maxY;
     }
-    // Snap to bottom edge
-    if (Math.abs(snappedY - minY) < SNAP_THRESHOLD && scaledHeight > containerSize.height) {
-      snappedY = minY;
-    }
     
-    // Constrain to valid bounds so image stays in view
+    // NO snapping for BOTTOM edge - intentionally omitted per user request
+    // This allows free scrolling at the bottom for portrait images
+    
+    // Constrain horizontal bounds so image stays in view
     if (scaledWidth <= containerSize.width) {
-      // Image fits - center it
+      // Image fits horizontally - center it
       snappedX = (containerSize.width - scaledWidth) / 2;
     } else {
-      // Image larger - allow panning but keep it in bounds
+      // Image wider than container - allow panning but keep edges visible
       snappedX = Math.max(minX, Math.min(maxX, snappedX));
     }
     
+    // Constrain vertical bounds - but allow more freedom at bottom
     if (scaledHeight <= containerSize.height) {
-      // Image fits - center it
+      // Image fits vertically - center it
       snappedY = (containerSize.height - scaledHeight) / 2;
     } else {
-      // Image larger - allow panning but keep it in bounds
+      // Image taller than container (portrait) - allow panning
+      // Keep image in bounds but no magnetic snap at bottom
       snappedY = Math.max(minY, Math.min(maxY, snappedY));
     }
     
