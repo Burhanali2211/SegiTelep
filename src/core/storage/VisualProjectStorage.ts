@@ -5,14 +5,14 @@ import { openDB, DBSchema, IDBPDatabase } from 'idb';
 import { v4 as uuidv4 } from 'uuid';
 import { 
   isTauriApp, 
-  getAppDataPath, 
   ensureDirectory, 
   readJsonFile, 
   writeJsonFile,
   readFileBytes,
   writeFileBytes,
-  deleteFile,
+  removeDirectoryRecursive,
   listFiles,
+  fileExists,
   dataUrlToBytes,
   bytesToDataUrl,
   getExtensionFromMimeType,
@@ -73,17 +73,12 @@ function deepClone<T>(obj: T): T {
 }
 
 // ============= Native Filesystem Storage (Tauri) =============
+// Uses relative paths under BaseDirectory.AppData
 
-async function getProjectsDir(): Promise<string> {
-  const appData = await getAppDataPath();
-  const projectsDir = `${appData}/projects`;
-  await ensureDirectory(projectsDir);
-  return projectsDir;
-}
+const PROJECTS_DIR = 'projects';
 
 async function getProjectDir(projectId: string): Promise<string> {
-  const projectsDir = await getProjectsDir();
-  const projectDir = `${projectsDir}/${projectId}`;
+  const projectDir = `${PROJECTS_DIR}/${projectId}`;
   await ensureDirectory(projectDir);
   await ensureDirectory(`${projectDir}/images`);
   await ensureDirectory(`${projectDir}/audio`);
@@ -93,7 +88,7 @@ async function getProjectDir(projectId: string): Promise<string> {
 async function saveProjectNative(project: VisualProject): Promise<void> {
   const projectDir = await getProjectDir(project.id);
   
-  // Save page images to files
+  // Save page images to files (store relative path in metadata)
   const pagesWithRefs = await Promise.all(project.pages.map(async (page, index) => {
     if (page.data.startsWith('data:')) {
       const { bytes, mimeType } = dataUrlToBytes(page.data);
@@ -103,9 +98,32 @@ async function saveProjectNative(project: VisualProject): Promise<void> {
       
       return {
         ...page,
-        data: `file://${imagePath}`, // Store file reference
+        data: imagePath, // Store relative path
         _mimeType: mimeType,
       };
+    }
+    if (page.data.startsWith('blob:')) {
+      try {
+        const res = await fetch(page.data);
+        const blob = await res.blob();
+        const dataUrl = await new Promise<string>((resolve, reject) => {
+          const r = new FileReader();
+          r.onload = () => resolve(r.result as string);
+          r.onerror = reject;
+          r.readAsDataURL(blob);
+        });
+        const { bytes, mimeType } = dataUrlToBytes(dataUrl);
+        const ext = getExtensionFromMimeType(mimeType);
+        const imagePath = `${projectDir}/images/page_${index}_${page.id}.${ext}`;
+        await writeFileBytes(imagePath, bytes);
+        return {
+          ...page,
+          data: imagePath,
+          _mimeType: mimeType,
+        };
+      } catch {
+        return page;
+      }
     }
     return page;
   }));
@@ -145,59 +163,125 @@ async function saveProjectNative(project: VisualProject): Promise<void> {
 
 async function loadProjectNative(projectId: string): Promise<VisualProject | undefined> {
   try {
-    const projectDir = await getProjectDir(projectId);
-    const metadata = await readJsonFile<any>(`${projectDir}/project.json`);
-    
-    // Load page images from files
-    const pages = await Promise.all(metadata.pages.map(async (page: any) => {
-      if (page.data.startsWith('file://')) {
-        const filePath = page.data.replace('file://', '');
-        const bytes = await readFileBytes(filePath);
-        const mimeType = page._mimeType || 'image/jpeg';
-        const dataUrl = bytesToDataUrl(bytes, mimeType);
-        return { ...page, data: dataUrl };
-      }
-      return page;
-    }));
-    
-    // Load audio file if present
-    let audioFile = null;
-    if (metadata.audioFile) {
-      const bytes = await readFileBytes(metadata.audioFile.path);
-      const dataUrl = bytesToDataUrl(bytes, metadata.audioFile.mimeType);
-      audioFile = {
-        id: metadata.audioFile.id,
-        name: metadata.audioFile.name,
-        data: dataUrl,
-        duration: metadata.audioFile.duration,
-      };
+    // #region agent log
+    // fetch('http://127.0.0.1:7242/ingest/784514f5-0201-4165-905e-642cc13d7946',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'VisualProjectStorage.ts:loadProjectNative',message:'loadProjectNative entry',data:{projectId,isTauri:isTauriApp()},timestamp:Date.now(),hypothesisId:'A,B'})}).catch(()=>{});
+    // #endregion
+    const projectDir = `${PROJECTS_DIR}/${projectId}`;
+    const projectJsonPath = `${projectDir}/project.json`;
+    if (!(await fileExists(projectJsonPath))) return undefined;
+    await ensureDirectory(projectDir);
+    await ensureDirectory(`${projectDir}/images`);
+    await ensureDirectory(`${projectDir}/audio`);
+    const metadata = await readJsonFile<any>(projectJsonPath);
+
+    if (!metadata || !metadata.id || !metadata.name) {
+      console.error('Invalid project metadata:', metadata);
+      return undefined;
     }
-    
+
+    const rawPages = Array.isArray(metadata.pages) ? metadata.pages : [];
+    const pages: ImagePage[] = [];
+
+    for (let i = 0; i < rawPages.length; i++) {
+      const page = rawPages[i];
+      if (!page || typeof page !== 'object') continue;
+
+      try {
+        const dataVal = page.data;
+        if (typeof dataVal === 'string' && dataVal.startsWith('blob:')) continue;
+        const isFileRef = typeof dataVal === 'string' && (
+          dataVal.startsWith('file://') ||
+          (!dataVal.startsWith('data:') && dataVal.includes('/'))
+        );
+
+        if (isFileRef) {
+          let filePath = dataVal.startsWith('file://') ? dataVal.replace('file://', '') : dataVal;
+          const match = filePath.match(/projects\/.+$/);
+          const relativePath = match ? match[0] : filePath;
+          const bytes = await readFileBytes(relativePath);
+          const mimeType = page._mimeType || 'image/jpeg';
+          const dataUrl = bytesToDataUrl(bytes, mimeType);
+          pages.push(sanitizePage({ ...page, data: dataUrl }));
+        } else if (typeof dataVal === 'string' && dataVal.startsWith('data:')) {
+          pages.push(sanitizePage(page));
+        }
+      } catch (err) {
+        console.warn(`Failed to load page ${i}, skipping:`, err);
+      }
+    }
+
+    let audioFile: VisualProject['audioFile'] = null;
+    if (metadata.audioFile && typeof metadata.audioFile === 'object' && metadata.audioFile.path) {
+      try {
+        let audioPath = metadata.audioFile.path;
+        const match = String(audioPath).match(/projects\/.+$/);
+        if (match) audioPath = match[0];
+        const bytes = await readFileBytes(audioPath);
+        const dataUrl = bytesToDataUrl(bytes, metadata.audioFile.mimeType || 'audio/mpeg');
+        audioFile = {
+          id: metadata.audioFile.id || 'audio',
+          name: metadata.audioFile.name || 'Audio',
+          data: dataUrl,
+          duration: typeof metadata.audioFile.duration === 'number' ? metadata.audioFile.duration : 0,
+        };
+      } catch (err) {
+        console.warn('Failed to load audio file, continuing without:', err);
+      }
+    }
+
     return {
       id: metadata.id,
       name: metadata.name,
-      createdAt: metadata.createdAt,
-      modifiedAt: metadata.modifiedAt,
+      createdAt: typeof metadata.createdAt === 'number' ? metadata.createdAt : Date.now(),
+      modifiedAt: typeof metadata.modifiedAt === 'number' ? metadata.modifiedAt : Date.now(),
       pages,
       audioFile,
     };
   } catch (error) {
+    const errMsg = error instanceof Error ? error.message : String(error);
+    // #region agent log
+    // fetch('http://127.0.0.1:7242/ingest/784514f5-0201-4165-905e-642cc13d7946',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'VisualProjectStorage.ts:loadProjectNative',message:'loadProjectNative catch',data:{errMsg,projectId},timestamp:Date.now(),hypothesisId:'A,B'})}).catch(()=>{});
+    // #endregion
     console.error('Failed to load project:', error);
     return undefined;
   }
 }
 
+function sanitizePage(page: any): ImagePage {
+  const segments = Array.isArray(page.segments) ? page.segments : [];
+  const sanitizedSegments = segments.map((s: any, idx: number) => {
+    if (!s || typeof s !== 'object') return null;
+    const region = s.region && typeof s.region === 'object'
+      ? {
+          x: typeof s.region.x === 'number' ? s.region.x : 0,
+          y: typeof s.region.y === 'number' ? s.region.y : 0,
+          width: typeof s.region.width === 'number' ? Math.max(1, s.region.width) : 10,
+          height: typeof s.region.height === 'number' ? Math.max(1, s.region.height) : 10,
+        }
+      : { x: 0, y: 0, width: 10, height: 10 };
+    return {
+      id: typeof s.id === 'string' ? s.id : `seg-${idx}`,
+      pageIndex: typeof s.pageIndex === 'number' ? s.pageIndex : 0,
+      region,
+      label: typeof s.label === 'string' ? s.label : `Segment ${idx + 1}`,
+      startTime: typeof s.startTime === 'number' ? s.startTime : 0,
+      endTime: typeof s.endTime === 'number' ? s.endTime : 5,
+      isHidden: !!s.isHidden,
+      order: typeof s.order === 'number' ? s.order : idx,
+    };
+  }).filter(Boolean);
+
+  return {
+    id: typeof page.id === 'string' ? page.id : `page-${Date.now()}`,
+    data: typeof page.data === 'string' ? page.data : '',
+    segments: sanitizedSegments,
+  };
+}
+
 async function deleteProjectNative(projectId: string): Promise<void> {
-  const projectsDir = await getProjectsDir();
-  const projectDir = `${projectsDir}/${projectId}`;
-  
-  // Delete project directory recursively
+  const projectDir = `${PROJECTS_DIR}/${projectId}`;
   try {
-    const files = await listFiles(projectDir);
-    for (const file of files) {
-      await deleteFile(file);
-    }
-    // Note: Tauri's fs API doesn't have rmdir, files deletion is enough
+    await removeDirectoryRecursive(projectDir);
   } catch (error) {
     console.error('Failed to delete project directory:', error);
   }
@@ -205,20 +289,37 @@ async function deleteProjectNative(projectId: string): Promise<void> {
 
 async function getAllProjectsNative(): Promise<VisualProject[]> {
   try {
-    const projectsDir = await getProjectsDir();
-    const dirs = await listFiles(projectsDir);
+    await ensureDirectory(PROJECTS_DIR);
+    const entries = await listFiles(PROJECTS_DIR);
     
     const projects: VisualProject[] = [];
-    for (const dir of dirs) {
+    for (const dirName of entries) {
       try {
-        const metadata = await readJsonFile<any>(`${dir}/project.json`);
-        // Return lightweight metadata without loading images
+        const metadata = await readJsonFile<any>(`${PROJECTS_DIR}/${dirName}/project.json`);
+        // Load first page thumbnail for project list (optional)
+        let thumbnailData: string | null = null;
+        if (metadata.pages?.length > 0) {
+          const firstPage = metadata.pages[0];
+          if (firstPage?.data && !firstPage.data.startsWith('data:')) {
+            try {
+              let imgPath = firstPage.data.startsWith('file://') ? firstPage.data.replace('file://', '') : firstPage.data;
+              const match = imgPath.match(/projects\/.+$/);
+              imgPath = match ? match[0] : imgPath;
+              const bytes = await readFileBytes(imgPath);
+              thumbnailData = bytesToDataUrl(bytes, firstPage._mimeType || 'image/jpeg');
+            } catch {
+              // Ignore thumbnail load errors
+            }
+          } else if (firstPage?.data?.startsWith('data:')) {
+            thumbnailData = firstPage.data;
+          }
+        }
         projects.push({
-          id: metadata.id,
-          name: metadata.name,
-          createdAt: metadata.createdAt,
-          modifiedAt: metadata.modifiedAt,
-          pages: [], // Don't load full pages for listing
+          id: typeof metadata.id === 'string' ? metadata.id : dirName,
+          name: typeof metadata.name === 'string' ? metadata.name : 'Untitled',
+          createdAt: typeof metadata.createdAt === 'number' ? metadata.createdAt : Date.now(),
+          modifiedAt: typeof metadata.modifiedAt === 'number' ? metadata.modifiedAt : Date.now(),
+          pages: thumbnailData ? [{ id: 'thumb', data: thumbnailData, segments: [] }] : [],
           audioFile: null,
         });
       } catch {
@@ -357,6 +458,7 @@ export async function duplicateVisualProject(id: string): Promise<VisualProject 
         id: uuidv4(),
       })),
     })),
+    audioFile: original.audioFile, // Preserve audio when duplicating
   };
   
   await saveVisualProject(duplicate);

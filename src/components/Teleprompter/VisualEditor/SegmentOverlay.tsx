@@ -11,6 +11,8 @@ interface SegmentOverlayProps {
   isPlaying: boolean;
 }
 
+const safeStr = (v: unknown): string => (typeof v === 'string' ? v : '');
+
 export const SegmentOverlay = memo<SegmentOverlayProps>(({
   segment,
   containerWidth,
@@ -21,7 +23,7 @@ export const SegmentOverlay = memo<SegmentOverlayProps>(({
   const [isDragging, setIsDragging] = useState(false);
   const [isResizing, setIsResizing] = useState<'top' | 'bottom' | 'left' | 'right' | null>(null);
   const [isEditingLabel, setIsEditingLabel] = useState(false);
-  const [labelValue, setLabelValue] = useState(segment.label);
+  const [labelValue, setLabelValue] = useState(() => safeStr(segment.label));
   const dragStartRef = useRef<{ x: number; y: number; region: typeof segment.region } | null>(null);
   
   const updateSegment = useVisualEditorState((s) => s.updateSegment);
@@ -126,11 +128,11 @@ export const SegmentOverlay = memo<SegmentOverlayProps>(({
   const handleDoubleClick = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
     setIsEditingLabel(true);
-    setLabelValue(segment.label);
+    setLabelValue(safeStr(segment.label));
   }, [segment.label]);
   
   const handleLabelSubmit = useCallback(() => {
-    updateSegment(segment.id, { label: labelValue });
+    updateSegment(segment.id, { label: safeStr(labelValue).trim() || 'Segment' });
     setIsEditingLabel(false);
   }, [segment.id, labelValue, updateSegment]);
   
@@ -184,7 +186,7 @@ export const SegmentOverlay = memo<SegmentOverlayProps>(({
       >
         {isEditingLabel ? (
           <Input
-            value={labelValue}
+            value={safeStr(labelValue)}
             onChange={(e) => setLabelValue(e.target.value)}
             onBlur={handleLabelSubmit}
             onKeyDown={(e) => e.key === 'Enter' && handleLabelSubmit()}
@@ -192,7 +194,7 @@ export const SegmentOverlay = memo<SegmentOverlayProps>(({
             autoFocus
           />
         ) : (
-          <span className="truncate block">{segment.label}</span>
+          <span className="truncate block">{typeof segment.label === 'string' ? segment.label : ''}</span>
         )}
       </div>
       

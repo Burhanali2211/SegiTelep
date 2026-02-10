@@ -86,30 +86,30 @@ const SegmentItem = memo<SegmentItemProps>(({
       }}
       onDragEnd={onDragEnd}
     >
-      <div className="drag-handle cursor-grab active:cursor-grabbing">
-        <GripVertical size={16} />
+      <div className="drag-handle cursor-grab active:cursor-grabbing shrink-0">
+        <GripVertical size={14} className="sm:w-4 sm:h-4" />
       </div>
       
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 mb-1">
-          <SegmentIcon size={14} className="text-muted-foreground shrink-0" />
-          <span className="font-medium text-sm truncate">
+      <div className="flex-1 min-w-0 overflow-hidden">
+        <div className="flex items-center gap-1.5 sm:gap-2 mb-1">
+          <SegmentIcon size={12} className="text-muted-foreground shrink-0 sm:w-3.5 sm:h-3.5" />
+          <span className="font-medium text-xs sm:text-sm truncate">
             {segment.type === 'text' ? 'Text' : segment.type === 'image' ? 'Image' : segment.type === 'image-region' ? 'Region' : 'PDF'}
           </span>
           {isPlaying && (
-            <div className="status-dot active ml-auto" />
+            <div className="status-dot active ml-auto shrink-0" />
           )}
         </div>
         {isVisualType && segment.content?.startsWith('data:') ? (
-          <div className="w-12 h-8 rounded overflow-hidden bg-muted">
+          <div className="w-8 h-6 sm:w-12 sm:h-8 rounded overflow-hidden bg-muted shrink-0">
             <img src={segment.content} alt="" className="w-full h-full object-cover" />
           </div>
         ) : (
-          <p className="text-xs text-muted-foreground truncate">
+          <p className="text-xs text-muted-foreground truncate leading-tight">
             {preview}
           </p>
         )}
-        <div className="flex items-center gap-2 mt-1.5">
+        <div className="flex items-center gap-1.5 sm:gap-2 mt-1">
           {isVisualType ? (
             <span className="text-xs text-muted-foreground">{segment.duration}s</span>
           ) : (
@@ -128,18 +128,18 @@ const SegmentItem = memo<SegmentItemProps>(({
           <Button 
             variant="ghost" 
             size="icon" 
-            className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity"
+            className="h-7 w-7 sm:h-8 sm:w-8 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
           >
-            <MoreVertical size={16} />
+            <MoreVertical size={14} className="sm:w-4 sm:h-4" />
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
-          <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onDuplicate(); }}>
+          <DropdownMenuItem onSelect={(e) => { e?.preventDefault?.(); onDuplicate(); }}>
             <Copy size={14} className="mr-2" />
             Duplicate
           </DropdownMenuItem>
           <DropdownMenuItem 
-            onClick={(e) => { e.stopPropagation(); onDelete(); }}
+            onSelect={(e) => { e?.preventDefault?.(); onDelete(); }}
             className="text-destructive focus:text-destructive"
           >
             <Trash2 size={14} className="mr-2" />
@@ -215,13 +215,15 @@ export const SegmentList = memo<SegmentListProps>(({ onPlaySegment, editorType =
   return (
     <div className="flex flex-col h-full overflow-hidden">
       <div className="panel-header shrink-0">
-        <h2 className="text-sm font-semibold">Segments</h2>
-        <span className="text-xs text-muted-foreground">
-          {segments.length} item{segments.length !== 1 ? 's' : ''}
-        </span>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
+          <h2 className="text-sm font-semibold truncate">Segments</h2>
+          <span className="text-xs text-muted-foreground shrink-0">
+            {segments.length} item{segments.length !== 1 ? 's' : ''}
+          </span>
+        </div>
       </div>
       
-      <div className="flex-1 min-h-0 overflow-y-auto p-3 space-y-2">
+      <div className="flex-1 min-h-0 overflow-y-auto p-2 sm:p-3 space-y-1.5 sm:space-y-2">
         {segments.map((segment, index) => (
           <SegmentItem
             key={segment.id}
@@ -250,12 +252,12 @@ export const SegmentList = memo<SegmentListProps>(({ onPlaySegment, editorType =
         )}
       </div>
       
-      <div className="p-3 border-t border-border space-y-2 shrink-0">
+      <div className="p-2 sm:p-3 border-t border-border space-y-1.5 sm:space-y-2 shrink-0">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button className="w-full" variant="secondary">
-              <Plus size={16} className="mr-2" />
-              Add Segment
+            <Button className="w-full" variant="secondary" size="sm">
+              <Plus size={14} className="mr-1.5 sm:mr-2" />
+              <span className="text-xs sm:text-sm">Add Segment</span>
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="center" className="w-48">

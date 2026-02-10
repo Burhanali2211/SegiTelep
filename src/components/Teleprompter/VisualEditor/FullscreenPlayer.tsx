@@ -1,5 +1,8 @@
 import React, { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { useVisualEditorState, formatTime, VisualSegment, ImagePage } from './useVisualEditorState';
+import { stopAllExcept, registerStopCallback } from '@/utils/audioPlaybackCoordinator';
+import { getCountdownSettings, CountdownSettings } from '@/components/Teleprompter/CountdownSettingsDialog';
+import { usePlayerIndicatorStore } from '@/store/playerIndicatorStore';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import {
@@ -37,14 +40,16 @@ export const FullscreenPlayer = memo<FullscreenPlayerProps>(({ onClose }) => {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [controlsVisible, setControlsVisible] = useState(true);
   const [isMuted, setIsMuted] = useState(false);
-  const [countdownEnabled, setCountdownEnabled] = useState(true);
-  const [countdownDuration, setCountdownDuration] = useState(3);
+  const [countdownSettings, setCountdownSettings] = useState<CountdownSettings>(getCountdownSettings());
+  const [isHovering, setIsHovering] = useState(false);
   
   const hideTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const countdownIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   
   const pages = useVisualEditorState((s) => s.pages);
   const audioFile = useVisualEditorState((s) => s.audioFile);
+  const setPlaying = useVisualEditorState((s) => s.setPlaying);
+  const playerSettings = usePlayerIndicatorStore((s) => s.settings);
   
   // Get all segments ordered by start time
   const allSegments = React.useMemo(() => {
@@ -96,9 +101,11 @@ export const FullscreenPlayer = memo<FullscreenPlayerProps>(({ onClose }) => {
       const regionW = (segment.region.width / 100) * img.width;
       const regionH = (segment.region.height / 100) * img.height;
       
+      // Black background - letterboxing/pillarboxing when segment aspect != display
       ctx.fillStyle = '#000';
       ctx.fillRect(0, 0, canvasWidth, canvasHeight);
       
+      // Fit segment to canvas, centered. Empty space (left/right or top/bottom) stays black.
       const scale = Math.min(canvasWidth / regionW, canvasHeight / regionH);
       const drawW = regionW * scale;
       const drawH = regionH * scale;
@@ -113,17 +120,67 @@ export const FullscreenPlayer = memo<FullscreenPlayerProps>(({ onClose }) => {
     };
     img.src = segment.pageData;
   }, []);
+
+  // Draw first segment preview during countdown
+  const drawCountdownPreview = useCallback(() => {
+    if (!countdownSettings.showPreview || allSegments.length === 0) return;
+    
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    
+    // Draw the first segment with reduced opacity
+    const firstSegment = allSegments[0];
+    const img = new Image();
+    img.onload = () => {
+      const canvasWidth = canvas.width;
+      const canvasHeight = canvas.height;
+      
+      const regionX = (firstSegment.region.x / 100) * img.width;
+      const regionY = (firstSegment.region.y / 100) * img.height;
+      const regionW = (firstSegment.region.width / 100) * img.width;
+      const regionH = (firstSegment.region.height / 100) * img.height;
+      
+      // Black background
+      ctx.fillStyle = '#000';
+      ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+      
+      // Set reduced opacity for preview
+      ctx.globalAlpha = 0.3;
+      
+      // Fit segment to canvas, centered
+      const scale = Math.min(canvasWidth / regionW, canvasHeight / regionH);
+      const drawW = regionW * scale;
+      const drawH = regionH * scale;
+      const drawX = (canvasWidth - drawW) / 2;
+      const drawY = (canvasHeight - drawH) / 2;
+      
+      ctx.drawImage(
+        img,
+        regionX, regionY, regionW, regionH,
+        drawX, drawY, drawW, drawH
+      );
+      
+      // Reset opacity
+      ctx.globalAlpha = 1.0;
+    };
+    img.src = firstSegment.pageData;
+  }, [countdownSettings.showPreview, allSegments]);
   
-  // Handle canvas resize
+  // Handle canvas resize - use full container so canvas aspect matches screen (for auto-detect)
   useEffect(() => {
     const handleResize = () => {
       if (!canvasRef.current || !containerRef.current) return;
       
       const container = containerRef.current;
       canvasRef.current.width = container.clientWidth;
-      canvasRef.current.height = container.clientHeight - 80;
+      canvasRef.current.height = container.clientHeight;
       
-      if (currentSegment) {
+      if (playbackState === 'countdown' && countdownSettings.showPreview) {
+        drawCountdownPreview();
+      } else if (currentSegment) {
         drawSegment(currentSegment);
       }
     };
@@ -131,21 +188,92 @@ export const FullscreenPlayer = memo<FullscreenPlayerProps>(({ onClose }) => {
     handleResize();
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
-  }, [currentSegment, drawSegment]);
+  }, [currentSegment, drawSegment, drawCountdownPreview, playbackState, countdownSettings.showPreview]);
   
+  // Listen for countdown settings changes
+  useEffect(() => {
+    const handleStorageChange = () => {
+      setCountdownSettings(getCountdownSettings());
+    };
+
+    // Listen for storage events (changes from other components)
+    window.addEventListener('storage', handleStorageChange);
+    
+    // Also check periodically for direct changes
+    const interval = setInterval(() => {
+      const currentSettings = getCountdownSettings();
+      if (JSON.stringify(currentSettings) !== JSON.stringify(countdownSettings)) {
+        setCountdownSettings(currentSettings);
+      }
+    }, 1000);
+
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      clearInterval(interval);
+    };
+  }, [countdownSettings]);
+
+  // Draw countdown preview when countdown starts
+  useEffect(() => {
+    if (playbackState === 'countdown' && countdownSettings.showPreview) {
+      drawCountdownPreview();
+    }
+  }, [playbackState, countdownSettings.showPreview, drawCountdownPreview]);
+
+  // Sync playback state with visual editor store (for MainMenuBar/other UI)
+  useEffect(() => {
+    setPlaying(playbackState === 'playing');
+  }, [playbackState, setPlaying]);
+
+  // Register stop callback so others can stop us when they start
+  useEffect(() => {
+    return registerStopCallback('fullscreen-player', () => {
+      if (countdownIntervalRef.current) {
+        clearInterval(countdownIntervalRef.current);
+        countdownIntervalRef.current = null;
+      }
+      setPlaybackState('idle');
+      if (audioRef.current) {
+        audioRef.current.pause();
+      }
+    });
+  }, []);
+
   // Start countdown
   const startCountdown = useCallback(() => {
-    if (!countdownEnabled) {
+    stopAllExcept('fullscreen-player');
+    if (!countdownSettings.enabled) {
       setPlaybackState('playing');
       return;
     }
     
     setPlaybackState('countdown');
-    setCountdownValue(countdownDuration);
+    setCountdownValue(countdownSettings.duration);
     
-    let count = countdownDuration;
+    let count = countdownSettings.duration;
     countdownIntervalRef.current = setInterval(() => {
       count -= 1;
+      
+      // Play countdown sound if enabled
+      if (countdownSettings.playSound && count > 0) {
+        // Create a simple beep sound using Web Audio API
+        const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+        const oscillator = audioContext.createOscillator();
+        const gainNode = audioContext.createGain();
+        
+        oscillator.connect(gainNode);
+        gainNode.connect(audioContext.destination);
+        
+        oscillator.frequency.value = 800; // 800Hz beep
+        oscillator.type = 'sine';
+        
+        gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.1);
+        
+        oscillator.start(audioContext.currentTime);
+        oscillator.stop(audioContext.currentTime + 0.1);
+      }
+      
       if (count <= 0) {
         if (countdownIntervalRef.current) {
           clearInterval(countdownIntervalRef.current);
@@ -155,7 +283,7 @@ export const FullscreenPlayer = memo<FullscreenPlayerProps>(({ onClose }) => {
         setCountdownValue(count);
       }
     }, 1000);
-  }, [countdownEnabled, countdownDuration]);
+  }, [countdownSettings.enabled, countdownSettings.duration, countdownSettings.playSound]);
   
   // Cancel countdown
   const cancelCountdown = useCallback(() => {
@@ -275,7 +403,7 @@ export const FullscreenPlayer = memo<FullscreenPlayerProps>(({ onClose }) => {
     return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
   }, []);
   
-  // Auto-hide controls
+  // Auto-hide controls based on settings
   const showControls = useCallback(() => {
     setControlsVisible(true);
     
@@ -283,16 +411,31 @@ export const FullscreenPlayer = memo<FullscreenPlayerProps>(({ onClose }) => {
       clearTimeout(hideTimeoutRef.current);
     }
     
-    if (playbackState === 'playing') {
+    // Only auto-hide if behavior is 'auto-hide' and currently playing
+    if (playerSettings.behavior === 'auto-hide' && playbackState === 'playing') {
       hideTimeoutRef.current = setTimeout(() => {
         setControlsVisible(false);
-      }, 3000);
+      }, playerSettings.autoHideDelay);
     }
-  }, [playbackState]);
+  }, [playbackState, playerSettings.behavior, playerSettings.autoHideDelay]);
   
   const handleMouseMove = useCallback(() => {
     showControls();
   }, [showControls]);
+  
+  const handleMouseEnter = useCallback(() => {
+    setIsHovering(true);
+    if (playerSettings.behavior === 'show-on-hover') {
+      setControlsVisible(true);
+    }
+  }, [playerSettings.behavior]);
+  
+  const handleMouseLeave = useCallback(() => {
+    setIsHovering(false);
+    if (playerSettings.behavior === 'show-on-hover') {
+      setControlsVisible(false);
+    }
+  }, [playerSettings.behavior]);
   
   // Playback controls
   const togglePlay = useCallback(() => {
@@ -470,6 +613,8 @@ export const FullscreenPlayer = memo<FullscreenPlayerProps>(({ onClose }) => {
       ref={containerRef}
       className="fixed inset-0 z-50 bg-black flex flex-col"
       onMouseMove={handleMouseMove}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
     >
       {/* Audio element */}
       {audioFile && (
@@ -500,8 +645,8 @@ export const FullscreenPlayer = memo<FullscreenPlayerProps>(({ onClose }) => {
         </div>
       )}
       
-      {/* Canvas */}
-      <div className="flex-1 relative">
+      {/* Canvas - full screen so aspect matches auto-detect; controls overlay below */}
+      <div className="absolute inset-0">
         <canvas
           ref={canvasRef}
           className="w-full h-full"
@@ -509,11 +654,21 @@ export const FullscreenPlayer = memo<FullscreenPlayerProps>(({ onClose }) => {
         
         {/* Segment info overlay */}
         <div className={cn(
-          'absolute top-4 left-4 transition-opacity duration-300',
-          controlsVisible && playbackState !== 'countdown' ? 'opacity-100' : 'opacity-0'
+          'absolute top-4 left-4 transition-opacity duration-300 z-10',
+          ((playerSettings.behavior === 'always-show' || 
+            (playerSettings.behavior === 'show-on-hover' && isHovering) ||
+            (playerSettings.behavior === 'auto-hide' && controlsVisible)) && 
+            playbackState !== 'countdown') ? 'opacity-100' : 'opacity-0'
         )}>
-          <div className="bg-black/70 text-white px-3 py-2 rounded text-sm">
-            <p className="font-medium">{currentSegment?.label}</p>
+          <div 
+            className="text-white px-3 py-2 rounded text-sm"
+            style={{
+              backgroundColor: playerSettings.backgroundColor,
+              color: playerSettings.textColor,
+              opacity: playerSettings.opacity,
+            }}
+          >
+            <p className="font-medium">{typeof currentSegment?.label === 'string' ? currentSegment.label : ''}</p>
             <p className="text-xs text-white/60">
               {currentSegmentIndex + 1} / {allSegments.length}
             </p>
@@ -525,8 +680,11 @@ export const FullscreenPlayer = memo<FullscreenPlayerProps>(({ onClose }) => {
           variant="ghost"
           size="icon"
           className={cn(
-            'absolute top-4 right-4 text-white hover:bg-white/20 transition-opacity duration-300',
-            controlsVisible && playbackState !== 'countdown' ? 'opacity-100' : 'opacity-0'
+            'absolute top-4 right-4 text-white hover:bg-white/20 transition-opacity duration-300 z-10',
+            ((playerSettings.behavior === 'always-show' || 
+              (playerSettings.behavior === 'show-on-hover' && isHovering) ||
+              (playerSettings.behavior === 'auto-hide' && controlsVisible)) && 
+              playbackState !== 'countdown') ? 'opacity-100' : 'opacity-0'
           )}
           onClick={onClose}
         >
@@ -534,11 +692,19 @@ export const FullscreenPlayer = memo<FullscreenPlayerProps>(({ onClose }) => {
         </Button>
       </div>
       
-      {/* Controls */}
+      {/* Controls - overlay at bottom */}
       <div className={cn(
-        'bg-black/90 p-4 transition-opacity duration-300',
-        controlsVisible && playbackState !== 'countdown' ? 'opacity-100' : 'opacity-0'
-      )}>
+        'absolute bottom-0 left-0 right-0 z-20 p-4 transition-opacity duration-300',
+        ((playerSettings.behavior === 'always-show' || 
+          (playerSettings.behavior === 'show-on-hover' && isHovering) ||
+          (playerSettings.behavior === 'auto-hide' && controlsVisible)) && 
+          playbackState !== 'countdown') ? 'opacity-100' : 'opacity-0'
+      )}
+        style={{
+          backgroundColor: playerSettings.backgroundColor,
+          opacity: playerSettings.opacity,
+        }}
+      >
         {/* Progress bar */}
         <div
           className="h-1.5 bg-white/20 rounded cursor-pointer mb-4 relative group"
@@ -560,7 +726,10 @@ export const FullscreenPlayer = memo<FullscreenPlayerProps>(({ onClose }) => {
         
         {/* Time and controls */}
         <div className="flex items-center justify-between">
-          <div className="text-white text-sm font-mono min-w-[100px]">
+          <div 
+            className="text-sm font-mono min-w-[100px]"
+            style={{ color: playerSettings.textColor }}
+          >
             {formatTime(currentTime)} / {formatTime(totalDuration)}
           </div>
           
@@ -568,7 +737,8 @@ export const FullscreenPlayer = memo<FullscreenPlayerProps>(({ onClose }) => {
             <Button
               variant="ghost"
               size="icon"
-              className="text-white hover:bg-white/20"
+              className="hover:bg-white/20"
+              style={{ color: playerSettings.textColor }}
               onClick={skipPrev}
               disabled={playbackState === 'countdown'}
             >
@@ -578,7 +748,8 @@ export const FullscreenPlayer = memo<FullscreenPlayerProps>(({ onClose }) => {
             <Button
               variant="ghost"
               size="icon"
-              className="text-white hover:bg-white/20 h-12 w-12"
+              className="h-12 w-12"
+              style={{ color: playerSettings.textColor }}
               onClick={togglePlay}
             >
               {playbackState === 'playing' ? (
@@ -593,7 +764,8 @@ export const FullscreenPlayer = memo<FullscreenPlayerProps>(({ onClose }) => {
             <Button
               variant="ghost"
               size="icon"
-              className="text-white hover:bg-white/20"
+              className="hover:bg-white/20"
+              style={{ color: playerSettings.textColor }}
               onClick={skipNext}
               disabled={playbackState === 'countdown'}
             >
@@ -607,10 +779,14 @@ export const FullscreenPlayer = memo<FullscreenPlayerProps>(({ onClose }) => {
               variant="ghost"
               size="icon"
               className={cn(
-                'text-white hover:bg-white/20',
-                countdownEnabled && 'text-primary'
+                'hover:bg-white/20',
+                countdownSettings.enabled && 'text-primary'
               )}
-              onClick={() => setCountdownEnabled(!countdownEnabled)}
+              style={{ color: playerSettings.textColor }}
+              onClick={() => {
+                const newSettings = { ...countdownSettings, enabled: !countdownSettings.enabled };
+                setCountdownSettings(newSettings);
+              }}
               disabled={playbackState !== 'idle'}
             >
               <Timer size={18} />
@@ -620,7 +796,8 @@ export const FullscreenPlayer = memo<FullscreenPlayerProps>(({ onClose }) => {
               <Button
                 variant="ghost"
                 size="icon"
-                className="text-white hover:bg-white/20"
+                className="hover:bg-white/20"
+                style={{ color: playerSettings.textColor }}
                 onClick={toggleMute}
               >
                 {isMuted ? <VolumeX size={18} /> : <Volume2 size={18} />}
@@ -630,7 +807,8 @@ export const FullscreenPlayer = memo<FullscreenPlayerProps>(({ onClose }) => {
             <Button
               variant="ghost"
               size="icon"
-              className="text-white hover:bg-white/20"
+              className="hover:bg-white/20"
+              style={{ color: playerSettings.textColor }}
               onClick={toggleFullscreen}
             >
               {isFullscreen ? <Minimize size={18} /> : <Maximize size={18} />}

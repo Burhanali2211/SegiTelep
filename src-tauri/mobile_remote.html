@@ -1,0 +1,617 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SegiTelep Remote Control</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            color: #f1f5f9;
+            touch-action: manipulation;
+        }
+
+        .header {
+            background: rgba(30, 41, 59, 0.8);
+            backdrop-filter: blur(10px);
+            padding: 1rem;
+            text-align: center;
+            border-bottom: 1px solid #334155;
+        }
+
+        .header h1 {
+            font-size: 1.5rem;
+            font-weight: 600;
+            margin-bottom: 0.25rem;
+        }
+
+        .header p {
+            color: #94a3b8;
+            font-size: 0.875rem;
+        }
+
+        .status-bar {
+            background: rgba(16, 185, 129, 0.1);
+            border: 1px solid #10b981;
+            border-radius: 0.5rem;
+            padding: 0.75rem;
+            margin: 1rem;
+            text-align: center;
+        }
+
+        .status-bar.connected {
+            background: rgba(16, 185, 129, 0.1);
+            border-color: #10b981;
+        }
+
+        .status-bar.disconnected {
+            background: rgba(239, 68, 68, 0.1);
+            border-color: #ef4444;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #10b981;
+            display: inline-block;
+            margin-right: 0.5rem;
+            animation: pulse 2s infinite;
+        }
+
+        .status-dot.disconnected {
+            background: #ef4444;
+            animation: none;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .controls {
+            flex: 1;
+            padding: 1rem;
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .control-section {
+            background: rgba(30, 41, 59, 0.6);
+            backdrop-filter: blur(10px);
+            border: 1px solid #334155;
+            border-radius: 1rem;
+            padding: 1.5rem;
+        }
+
+        .control-section h3 {
+            font-size: 1rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+            color: #e2e8f0;
+        }
+
+        .playback-controls {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 0.5rem;
+        }
+
+        .btn {
+            background: #3b82f6;
+            color: white;
+            border: none;
+            border-radius: 0.75rem;
+            padding: 1rem;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 0.5rem;
+            min-height: 80px;
+            touch-action: manipulation;
+            user-select: none;
+            -webkit-user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .btn:hover {
+            background: #2563eb;
+            transform: translateY(-2px);
+        }
+
+        .btn:active {
+            transform: translateY(0);
+            background: #1d4ed8;
+        }
+
+        .btn.secondary {
+            background: #64748b;
+        }
+
+        .btn.secondary:hover {
+            background: #475569;
+        }
+
+        .btn.danger {
+            background: #ef4444;
+        }
+
+        .btn.danger:hover {
+            background: #dc2626;
+        }
+
+        .btn.success {
+            background: #10b981;
+        }
+
+        .btn.success:hover {
+            background: #059669;
+        }
+
+        .btn-icon {
+            font-size: 1.5rem;
+        }
+
+        .btn-text {
+            font-size: 0.75rem;
+        }
+
+        .speed-control {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .speed-slider {
+            flex: 1;
+            height: 6px;
+            background: #334155;
+            border-radius: 3px;
+            outline: none;
+            -webkit-appearance: none;
+        }
+
+        .speed-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 20px;
+            height: 20px;
+            background: #3b82f6;
+            border-radius: 50%;
+            cursor: pointer;
+        }
+
+        .speed-slider::-moz-range-thumb {
+            width: 20px;
+            height: 20px;
+            background: #3b82f6;
+            border-radius: 50%;
+            cursor: pointer;
+            border: none;
+        }
+
+        .speed-value {
+            min-width: 3rem;
+            text-align: center;
+            font-weight: 600;
+        }
+
+        .segment-info {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.75rem;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 0.5rem;
+        }
+
+        .project-info {
+            text-align: center;
+            padding: 1rem;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 0.5rem;
+        }
+
+        .project-name {
+            font-weight: 600;
+            margin-bottom: 0.25rem;
+        }
+
+        .project-details {
+            font-size: 0.875rem;
+            color: #94a3b8;
+        }
+
+        .navigation-controls {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0.5rem;
+        }
+
+        @media (max-width: 480px) {
+            .header h1 {
+                font-size: 1.25rem;
+            }
+            
+            .playback-controls {
+                grid-template-columns: repeat(2, 1fr);
+            }
+            
+            .btn {
+                min-height: 70px;
+                padding: 0.75rem;
+            }
+            
+            .btn-icon {
+                font-size: 1.25rem;
+            }
+            
+            .btn-text {
+                font-size: 0.7rem;
+            }
+        }
+
+        .connection-info {
+            text-align: center;
+            padding: 1rem;
+            background: rgba(59, 130, 246, 0.1);
+            border: 1px solid #3b82f6;
+            border-radius: 0.5rem;
+            margin: 1rem;
+        }
+
+        .connection-info h4 {
+            color: #3b82f6;
+            margin-bottom: 0.5rem;
+        }
+
+        .connection-info p {
+            font-size: 0.875rem;
+            color: #94a3b8;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🎭 SegiTelep Remote</h1>
+        <p>Control your teleprompter remotely</p>
+    </div>
+
+    <div class="status-bar disconnected" id="statusBar">
+        <span class="status-dot disconnected" id="statusDot"></span>
+        <span id="statusText">Connecting to desktop...</span>
+    </div>
+
+    <div class="connection-info">
+        <h4>📱 Mobile Remote Control</h4>
+        <p>Connected to SegiTelep desktop application</p>
+    </div>
+
+    <div class="controls">
+        <div class="control-section">
+            <h3>🎬 Playback Controls</h3>
+            <div class="playback-controls">
+                <button class="btn success" id="playBtn">
+                    <span class="btn-icon">▶️</span>
+                    <span class="btn-text">Play</span>
+                </button>
+                <button class="btn secondary" id="pauseBtn">
+                    <span class="btn-icon">⏸️</span>
+                    <span class="btn-text">Pause</span>
+                </button>
+                <button class="btn danger" id="stopBtn">
+                    <span class="btn-icon">⏹️</span>
+                    <span class="btn-text">Stop</span>
+                </button>
+            </div>
+        </div>
+
+        <div class="control-section">
+            <h3>⚡ Speed Control</h3>
+            <div class="speed-control">
+                <span>🐢</span>
+                <input type="range" class="speed-slider" id="speedSlider" min="0.5" max="2" step="0.1" value="1">
+                <span>🐰</span>
+                <span class="speed-value" id="speedValue">1.0x</span>
+            </div>
+        </div>
+
+        <div class="control-section">
+            <h3>📄 Navigation</h3>
+            <div class="navigation-controls">
+                <button class="btn secondary" id="prevBtn">
+                    <span class="btn-icon">⬅️</span>
+                    <span class="btn-text">Previous</span>
+                </button>
+                <button class="btn secondary" id="nextBtn">
+                    <span class="btn-icon">➡️</span>
+                    <span class="btn-text">Next</span>
+                </button>
+            </div>
+        </div>
+
+        <div class="control-section">
+            <h3>🎯 Actions</h3>
+            <div class="playback-controls">
+                <button class="btn secondary" id="mirrorBtn">
+                    <span class="btn-icon">🪞</span>
+                    <span class="btn-text">Mirror</span>
+                </button>
+                <button class="btn secondary" id="resetBtn">
+                    <span class="btn-icon">🔄</span>
+                    <span class="btn-text">Reset</span>
+                </button>
+            </div>
+        </div>
+
+        <div class="control-section">
+            <h3>📊 Project Info</h3>
+            <div class="project-info">
+                <div class="project-name" id="projectName">Loading...</div>
+                <div class="project-details">
+                    <div class="segment-info">
+                        <span>Segment: <span id="currentSegment">0</span> / <span id="totalSegments">1</span></span>
+                        <span>Status: <span id="playStatus">Stopped</span></span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        class RemoteController {
+            constructor() {
+                this.isConnected = false;
+                this.ws = null;
+                this.reconnectAttempts = 0;
+                this.maxReconnectAttempts = 5;
+                this.reconnectDelay = 2000;
+                
+                this.init();
+            }
+
+            init() {
+                this.setupEventListeners();
+                this.connectWebSocket();
+                this.startStatusPolling();
+            }
+
+            connectWebSocket() {
+                // Try to detect the host from the current URL
+                const currentHost = window.location.hostname;
+                const wsUrl = `ws://${currentHost}:8766`;
+                
+                console.log('Connecting to WebSocket:', wsUrl);
+                
+                try {
+                    this.ws = new WebSocket(wsUrl);
+
+                    this.ws.onopen = () => {
+                        console.log('WebSocket connected');
+                        this.isConnected = true;
+                        this.reconnectAttempts = 0;
+                        this.updateConnectionStatus(true);
+                    };
+
+                    this.ws.onmessage = (event) => {
+                        this.handleStatusUpdate(JSON.parse(event.data));
+                    };
+
+                    this.ws.onclose = (event) => {
+                        console.log('WebSocket closed:', event.code, event.reason);
+                        this.isConnected = false;
+                        this.updateConnectionStatus(false);
+                        this.handleReconnection();
+                    };
+
+                    this.ws.onerror = (error) => {
+                        console.error('WebSocket error:', error);
+                        this.isConnected = false;
+                        this.updateConnectionStatus(false);
+                    };
+
+                } catch (error) {
+                    console.error('Failed to create WebSocket:', error);
+                    this.isConnected = false;
+                    this.updateConnectionStatus(false);
+                }
+            }
+
+            handleReconnection() {
+                if (this.reconnectAttempts < this.maxReconnectAttempts) {
+                    this.reconnectAttempts++;
+                    const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts - 1), 10000);
+                    
+                    console.log(`Reconnecting in ${delay}ms... (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
+                    
+                    setTimeout(() => {
+                        if (!this.isConnected) {
+                            this.connectWebSocket();
+                        }
+                    }, delay);
+                } else {
+                    console.log('Max reconnection attempts reached');
+                    this.updateConnectionStatus(false, true);
+                }
+            }
+
+            updateConnectionStatus(connected, failed = false) {
+                const statusBar = document.getElementById('statusBar');
+                const statusDot = document.getElementById('statusDot');
+                const statusText = document.getElementById('statusText');
+
+                if (connected) {
+                    statusBar.className = 'status-bar connected';
+                    statusDot.className = 'status-dot';
+                    statusText.textContent = 'Connected to desktop';
+                } else if (failed) {
+                    statusBar.className = 'status-bar disconnected';
+                    statusDot.className = 'status-dot disconnected';
+                    statusText.textContent = 'Connection failed - Refresh to retry';
+                } else {
+                    statusBar.className = 'status-bar disconnected';
+                    statusDot.className = 'status-dot disconnected';
+                    statusText.textContent = 'Connecting to desktop...';
+                }
+            }
+
+            handleStatusUpdate(status) {
+                console.log('Status update:', status);
+                
+                // Update project info
+                document.getElementById('projectName').textContent = status.project_name || 'Unknown Project';
+                document.getElementById('currentSegment').textContent = status.current_segment || 0;
+                document.getElementById('totalSegments').textContent = status.total_segments || 1;
+                document.getElementById('playStatus').textContent = status.is_playing ? 'Playing' : 'Stopped';
+                
+                // Update speed slider
+                if (status.current_speed) {
+                    document.getElementById('speedSlider').value = status.current_speed;
+                    document.getElementById('speedValue').textContent = status.current_speed.toFixed(1) + 'x';
+                }
+            }
+
+            sendCommand(commandType, value = null) {
+                if (!this.isConnected) {
+                    console.log('Not connected, command ignored:', commandType);
+                    return;
+                }
+
+                const command = {
+                    type: commandType,
+                    value: value,
+                    timestamp: Date.now()
+                };
+
+                console.log('Sending command:', command);
+
+                if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+                    this.ws.send(JSON.stringify(command));
+                } else {
+                    // Fallback to HTTP
+                    this.sendHttpCommand(command);
+                }
+            }
+
+            async sendHttpCommand(command) {
+                try {
+                    const response = await fetch('/command', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify(command)
+                    });
+                    
+                    if (response.ok) {
+                        console.log('HTTP command sent successfully');
+                    } else {
+                        console.error('HTTP command failed:', response.statusText);
+                    }
+                } catch (error) {
+                    console.error('Error sending HTTP command:', error);
+                }
+            }
+
+            setupEventListeners() {
+                // Playback controls
+                document.getElementById('playBtn').addEventListener('click', () => {
+                    this.sendCommand('play');
+                });
+
+                document.getElementById('pauseBtn').addEventListener('click', () => {
+                    this.sendCommand('pause');
+                });
+
+                document.getElementById('stopBtn').addEventListener('click', () => {
+                    this.sendCommand('stop');
+                });
+
+                // Navigation controls
+                document.getElementById('prevBtn').addEventListener('click', () => {
+                    this.sendCommand('prev_segment');
+                });
+
+                document.getElementById('nextBtn').addEventListener('click', () => {
+                    this.sendCommand('next_segment');
+                });
+
+                // Speed control
+                const speedSlider = document.getElementById('speedSlider');
+                speedSlider.addEventListener('input', (e) => {
+                    const speed = parseFloat(e.target.value);
+                    document.getElementById('speedValue').textContent = speed.toFixed(1) + 'x';
+                    this.sendCommand('set_speed', speed);
+                });
+
+                // Action buttons
+                document.getElementById('mirrorBtn').addEventListener('click', () => {
+                    this.sendCommand('toggle_mirror');
+                });
+
+                document.getElementById('resetBtn').addEventListener('click', () => {
+                    this.sendCommand('reset_position');
+                });
+
+                // Prevent zoom on double tap
+                let lastTouchEnd = 0;
+                document.addEventListener('touchend', (event) => {
+                    const now = Date.now();
+                    if (now - lastTouchEnd <= 300) {
+                        event.preventDefault();
+                    }
+                    lastTouchEnd = now;
+                }, false);
+            }
+
+            startStatusPolling() {
+                // Poll status every 2 seconds as fallback
+                setInterval(async () => {
+                    if (!this.isConnected) {
+                        try {
+                            const response = await fetch('/status');
+                            if (response.ok) {
+                                const status = await response.json();
+                                this.handleStatusUpdate(status);
+                            }
+                        } catch (error) {
+                            console.log('Status polling failed:', error);
+                        }
+                    }
+                }, 2000);
+            }
+        }
+
+        // Initialize the remote controller
+        document.addEventListener('DOMContentLoaded', () => {
+            window.remoteController = new RemoteController();
+        });
+
+        // Handle page visibility changes
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) {
+                console.log('Page hidden');
+            } else {
+                console.log('Page visible');
+                if (window.remoteController && !window.remoteController.isConnected) {
+                    window.remoteController.connectWebSocket();
+                }
+            }
+        });
+    </script>
+</body>
+</html>

@@ -3,6 +3,7 @@
 
 import { useTeleprompterStore } from '@/store/teleprompterStore';
 import { useVisualEditorState } from '@/components/Teleprompter/VisualEditor/useVisualEditorState';
+import { safeSerialize } from '@/utils/serializationHelpers';
 
 export interface ExternalDisplayOptions {
   screenIndex?: number;  // Which screen to use (0 = primary, 1+ = external)
@@ -97,15 +98,14 @@ export function isExternalDisplayOpen(): boolean {
 function setupExternalDisplayCommunication(): void {
   const channel = getMessageChannel();
   
-  // Send current state to external display
+  // Send current state to external display. Must be serializable - BroadcastChannel
+  // uses structured clone; PointerEvent/DOM refs cause DOMException.
   const sendState = () => {
-    const playback = useTeleprompterStore.getState().playback;
-    const project = useTeleprompterStore.getState().project;
-    const visualState = useVisualEditorState.getState();
-    
-    channel.postMessage({
-      type: 'state-update',
-      payload: {
+    try {
+      const playback = useTeleprompterStore.getState().playback;
+      const project = useTeleprompterStore.getState().project;
+      const visualState = useVisualEditorState.getState();
+      const payload = {
         playback: {
           isPlaying: playback.isPlaying,
           isPaused: playback.isPaused,
@@ -120,8 +120,12 @@ function setupExternalDisplayCommunication(): void {
           playbackSpeed: visualState.playbackSpeed,
           pages: visualState.pages,
         },
-      },
-    });
+      };
+      const serialized = safeSerialize({ type: 'state-update', payload });
+      channel.postMessage(serialized);
+    } catch (e) {
+      console.warn('[ExternalDisplay] Failed to send state:', e);
+    }
   };
   
   // Send initial state
@@ -140,10 +144,15 @@ function setupExternalDisplayCommunication(): void {
   }
 }
 
-// Send command to external display
+// Send command to external display. Uses safeSerialize to avoid clone errors.
 export function sendToExternalDisplay(command: string, data?: unknown): void {
-  const channel = getMessageChannel();
-  channel.postMessage({ type: command, payload: data });
+  try {
+    const channel = getMessageChannel();
+    const serialized = safeSerialize({ type: command, payload: data });
+    channel.postMessage(serialized);
+  } catch (e) {
+    console.warn('[ExternalDisplay] Failed to send command:', e);
+  }
 }
 
 // Generate the HTML content for external display
@@ -154,7 +163,7 @@ function generateExternalDisplayContent(fullscreen: boolean): string {
     <head>
       <meta charset="utf-8">
       <meta name="viewport" content="width=device-width, initial-scale=1">
-      <title>ProTeleprompter - External Display</title>
+      <title>SegiTelep - External Display</title>
       <style>
         * {
           margin: 0;

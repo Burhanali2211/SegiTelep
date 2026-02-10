@@ -21,6 +21,8 @@ interface AudioManagerDialogProps {
   onOpenChange: (open: boolean) => void;
   segmentId?: string;
   onAssignAudio?: (segmentId: string, audioId: string, autoAdvance: boolean) => void;
+  /** When true, show "Use in Project" to load selected audio into current visual project */
+  onUseInProject?: (audioFile: { id: string; name: string; data: string; duration: number }) => void;
 }
 
 export const AudioManagerDialog = memo<AudioManagerDialogProps>(({
@@ -28,6 +30,7 @@ export const AudioManagerDialog = memo<AudioManagerDialogProps>(({
   onOpenChange,
   segmentId,
   onAssignAudio,
+  onUseInProject,
 }) => {
   const {
     audioFiles,
@@ -42,6 +45,7 @@ export const AudioManagerDialog = memo<AudioManagerDialogProps>(({
     setVolume,
     toggleMute,
     selectAudio,
+    getAudioById,
   } = useAudioManager();
 
   const [autoAdvance, setAutoAdvance] = React.useState(true);
@@ -53,6 +57,20 @@ export const AudioManagerDialog = memo<AudioManagerDialogProps>(({
   }, [segmentId, selectedAudioId, autoAdvance, onAssignAudio, onOpenChange]);
 
   const isAssignMode = Boolean(segmentId);
+  const isVisualProjectMode = Boolean(onUseInProject);
+  const selectedAudio = selectedAudioId ? getAudioById(selectedAudioId) : undefined;
+
+  const handleUseInProject = useCallback(() => {
+    if (selectedAudio && onUseInProject) {
+      onUseInProject({
+        id: selectedAudio.id,
+        name: selectedAudio.name,
+        data: selectedAudio.data,
+        duration: selectedAudio.duration,
+      });
+      onOpenChange(false);
+    }
+  }, [selectedAudio, onUseInProject, onOpenChange]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -119,6 +137,11 @@ export const AudioManagerDialog = memo<AudioManagerDialogProps>(({
           {isAssignMode && (
             <Button onClick={handleAssign} disabled={!selectedAudioId}>
               Assign Audio
+            </Button>
+          )}
+          {isVisualProjectMode && !isAssignMode && (
+            <Button onClick={handleUseInProject} disabled={!selectedAudioId}>
+              Use in Project
             </Button>
           )}
         </DialogFooter>

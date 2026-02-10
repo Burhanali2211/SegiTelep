@@ -85,7 +85,7 @@ export function ProjectListDialog({
   
   // Filter projects
   const filteredProjects = projects.filter((p) =>
-    p.name.toLowerCase().includes(searchQuery.toLowerCase())
+    (typeof p.name === 'string' ? p.name : '').toLowerCase().includes(searchQuery.toLowerCase())
   );
   
   // Delete project
@@ -253,7 +253,7 @@ export function ProjectListDialog({
                     
                     {/* Info */}
                     <div className="flex-1 min-w-0">
-                      <h4 className="font-medium truncate">{project.name}</h4>
+                      <h4 className="font-medium truncate">{typeof project.name === 'string' ? project.name : 'Untitled'}</h4>
                       <div className="flex items-center gap-3 text-xs text-muted-foreground mt-0.5">
                         <span className="flex items-center gap-1">
                           <Calendar className="w-3 h-3" />
@@ -274,17 +274,17 @@ export function ProjectListDialog({
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleDuplicate(project.id); }}>
+                        <DropdownMenuItem onSelect={(e) => { e?.preventDefault?.(); handleDuplicate(project.id); }}>
                           <Copy className="w-4 h-4 mr-2" />
                           Duplicate
                         </DropdownMenuItem>
-                        <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleExport(project); }}>
+                        <DropdownMenuItem onSelect={(e) => { e?.preventDefault?.(); handleExport(project); }}>
                           <Download className="w-4 h-4 mr-2" />
                           Export
                         </DropdownMenuItem>
                         <DropdownMenuItem
                           className="text-destructive focus:text-destructive"
-                          onClick={(e) => { e.stopPropagation(); setDeleteConfirm(project.id); }}
+                          onSelect={(e) => { e?.preventDefault?.(); setDeleteConfirm(project.id); }}
                         >
                           <Trash2 className="w-4 h-4 mr-2" />
                           Delete

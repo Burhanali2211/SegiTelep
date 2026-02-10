@@ -1,0 +1,107 @@
+name: Production Build Check
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-check:
+    runs-on: windows-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+    
+    - name: Setup Rust
+      uses: dtolnay/rust-toolchain@stable
+    
+    - name: Install dependencies
+      run: npm ci
+    
+    - name: Check React chunking
+      run: |
+        echo "🔍 Checking React chunking configuration..."
+        if grep -q "return null" vite.config.ts && grep -q "react/" vite.config.ts; then
+          echo "✅ React chunking protection is in place"
+        else
+          echo "❌ React chunking protection missing!"
+          exit 1
+        fi
+    
+    - name: Check React imports
+      run: |
+        echo "🔍 Checking React imports..."
+        if grep -q "import React" src/main.tsx && grep -q "import React" src/App.tsx; then
+          echo "✅ React imports are in place"
+        else
+          echo "❌ React imports missing!"
+          exit 1
+        fi
+    
+    - name: Check HashRouter
+      run: |
+        echo "🔍 Checking HashRouter usage..."
+        if grep -q "HashRouter" src/App.tsx && ! grep -q "BrowserRouter" src/App.tsx; then
+          echo "✅ HashRouter is being used"
+        else
+          echo "❌ BrowserRouter detected or HashRouter missing!"
+          exit 1
+        fi
+    
+    - name: Check environment variables
+      run: |
+        echo "🔍 Checking environment variable usage..."
+        if grep -r "process\.env" src/; then
+          echo "❌ process.env usage detected!"
+          exit 1
+        else
+          echo "✅ No process.env usage found"
+        fi
+    
+    - name: Build frontend
+      run: npm run build
+    
+    - name: Check build output
+      run: |
+        echo "🔍 Checking build output..."
+        if [ -f "dist/index.html" ] && [ -d "dist/assets" ]; then
+          echo "✅ Frontend build successful"
+          
+          # Check for React in vendor chunks
+          if ls dist/assets/*react*.js 2>/dev/null; then
+            echo "❌ React found in vendor chunks!"
+            exit 1
+          else
+            echo "✅ React not in separate vendor chunks"
+          fi
+        else
+          echo "❌ Frontend build failed!"
+          exit 1
+        fi
+    
+    - name: Build Tauri app
+      run: npm run tauri build
+    
+    - name: Check Tauri build
+      run: |
+        echo "🔍 Checking Tauri build..."
+        if [ -f "src-tauri/target/release/segitelep.exe" ]; then
+          echo "✅ Tauri build successful"
+        else
+          echo "❌ Tauri build failed!"
+          exit 1
+        fi
+    
+    - name: Production check complete
+      run: |
+        echo "🎉 All production checks passed!"
+        echo "React context error prevention: ✅"
+        echo "Tauri compatibility: ✅"
+        echo "Build reliability: ✅"

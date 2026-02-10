@@ -3,19 +3,99 @@ import { useVisualEditorState } from './useVisualEditorState';
 import { useUndoRedo } from './useUndoRedo';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { 
-  Trash2, 
-  Copy, 
+import {
+  Trash2,
+  Copy,
   ClipboardPaste,
-  Square, 
+  Square,
   CheckSquare,
   ArrowLeft,
   ArrowRight,
   Eye,
   EyeOff,
   Play,
+  LayoutGrid,
+  Timer,
+  AlignHorizontalSpaceAround,
+  RectangleHorizontal,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+
+interface BatchTimeMenuProps {
+  selectedCount: number;
+  getAllSegmentsOrdered: () => { id: string; startTime: number; endTime: number }[];
+  selectedSegmentIds: Set<string>;
+  saveState: () => void;
+  spaceEvenlySelected: (start: number, end: number) => void;
+  setDurationForSelected: (duration: number) => void;
+  alignSelectedToGrid: (gridSeconds: number) => void;
+}
+
+const BatchTimeMenu = memo(({ selectedCount, getAllSegmentsOrdered, selectedSegmentIds, saveState, spaceEvenlySelected, setDurationForSelected, alignSelectedToGrid }: BatchTimeMenuProps) => {
+  const ordered = getAllSegmentsOrdered().filter(s => selectedSegmentIds.has(s.id));
+  const firstStart = ordered[0]?.startTime ?? 0;
+  const lastEnd = ordered[ordered.length - 1]?.endTime ?? 0;
+  const totalRange = lastEnd - firstStart;
+
+  return (
+    <div className="flex items-center gap-1">
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 px-2"
+            disabled={selectedCount < 2}
+            onClick={() => {
+              saveState();
+              spaceEvenlySelected(firstStart, lastEnd);
+            }}
+          >
+            <AlignHorizontalSpaceAround size={14} className="mr-1" />
+            Space evenly
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>Distribute selected segments evenly in time range</TooltipContent>
+      </Tooltip>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 px-2"
+            disabled={selectedCount === 0}
+            onClick={() => {
+              saveState();
+              setDurationForSelected(5);
+            }}
+          >
+            <Timer size={14} className="mr-1" />
+            5s each
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>Set duration to 5 seconds for all selected</TooltipContent>
+      </Tooltip>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 px-2"
+            disabled={selectedCount === 0}
+            onClick={() => {
+              saveState();
+              alignSelectedToGrid(0.5);
+            }}
+          >
+            <LayoutGrid size={14} className="mr-1" />
+            Align 0.5s
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>Snap times to 0.5 second grid</TooltipContent>
+      </Tooltip>
+    </div>
+  );
+});
 
 interface SelectionToolbarProps {
   className?: string;
@@ -32,6 +112,12 @@ export const SelectionToolbar = memo<SelectionToolbarProps>(({ className }) => {
   const selectAll = useVisualEditorState((s) => s.selectAll);
   const deselectAll = useVisualEditorState((s) => s.deselectAll);
   const shiftSelectedTimes = useVisualEditorState((s) => s.shiftSelectedTimes);
+  const spaceEvenlySelected = useVisualEditorState((s) => s.spaceEvenlySelected);
+  const setDurationForSelected = useVisualEditorState((s) => s.setDurationForSelected);
+  const alignSelectedToGrid = useVisualEditorState((s) => s.alignSelectedToGrid);
+  const getAllSegmentsOrdered = useVisualEditorState((s) => s.getAllSegmentsOrdered);
+  const aspectRatioConstraint = useVisualEditorState((s) => s.aspectRatioConstraint);
+  const applyAspectRatioToSelected = useVisualEditorState((s) => s.applyAspectRatioToSelected);
   const toggleSegmentVisibility = useVisualEditorState((s) => s.toggleSegmentVisibility);
   const setPlaybackTime = useVisualEditorState((s) => s.setPlaybackTime);
   const setPlaying = useVisualEditorState((s) => s.setPlaying);
@@ -142,6 +228,41 @@ export const SelectionToolbar = memo<SelectionToolbarProps>(({ className }) => {
             </TooltipTrigger>
             <TooltipContent>Shift times forward 1 second</TooltipContent>
           </Tooltip>
+
+          <div className="h-4 w-px bg-border" />
+
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 px-2"
+                disabled={selectedCount === 0 || !aspectRatioConstraint}
+                onClick={() => {
+                  saveState();
+                  applyAspectRatioToSelected(aspectRatioConstraint);
+                }}
+              >
+                <RectangleHorizontal size={14} className="mr-1" />
+                Apply ratio
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              {aspectRatioConstraint ? `Apply ${aspectRatioConstraint} to selected` : 'Select an aspect ratio first'}
+            </TooltipContent>
+          </Tooltip>
+
+          <div className="h-4 w-px bg-border" />
+
+          <BatchTimeMenu
+            selectedCount={selectedCount}
+            getAllSegmentsOrdered={getAllSegmentsOrdered}
+            selectedSegmentIds={selectedSegmentIds}
+            saveState={saveState}
+            spaceEvenlySelected={spaceEvenlySelected}
+            setDurationForSelected={setDurationForSelected}
+            alignSelectedToGrid={alignSelectedToGrid}
+          />
           
           {singleSelected && (
             <>

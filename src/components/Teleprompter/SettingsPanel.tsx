@@ -1,4 +1,4 @@
-import React, { memo, useCallback } from 'react';
+import React, { memo, useCallback, useState, useEffect } from 'react';
 import { useTeleprompterStore } from '@/store/teleprompterStore';
 import { FONT_OPTIONS, TEXT_COLOR_OPTIONS, SPEED_PRESETS } from '@/types/teleprompter.types';
 import {
@@ -19,6 +19,9 @@ import {
 } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Settings,
   Palette,
@@ -27,7 +30,9 @@ import {
   Monitor,
   Eye,
   Timer,
+  Volume2,
 } from 'lucide-react';
+import { getCountdownSettings, saveCountdownSettings, CountdownSettings } from '@/components/Teleprompter/CountdownSettingsDialog';
 
 interface SettingsPanelProps {
   open: boolean;
@@ -37,6 +42,14 @@ interface SettingsPanelProps {
 export const SettingsPanel = memo<SettingsPanelProps>(({ open, onOpenChange }) => {
   const project = useTeleprompterStore((s) => s.project);
   const updateSettings = useTeleprompterStore((s) => s.updateSettings);
+  const [countdownSettings, setCountdownSettings] = useState<CountdownSettings>(getCountdownSettings());
+
+  // Load countdown settings when dialog opens
+  useEffect(() => {
+    if (open) {
+      setCountdownSettings(getCountdownSettings());
+    }
+  }, [open]);
 
   const handleSettingChange = useCallback(
     <K extends keyof NonNullable<typeof project>['settings']>(
@@ -46,6 +59,18 @@ export const SettingsPanel = memo<SettingsPanelProps>(({ open, onOpenChange }) =
       updateSettings({ [key]: value });
     },
     [updateSettings]
+  );
+
+  const updateCountdownSetting = useCallback(
+    <K extends keyof CountdownSettings>(
+      key: K,
+      value: CountdownSettings[K]
+    ) => {
+      const newSettings = { ...countdownSettings, [key]: value };
+      setCountdownSettings(newSettings);
+      saveCountdownSettings(newSettings);
+    },
+    [countdownSettings]
   );
 
   if (!project) return null;
@@ -259,6 +284,72 @@ export const SettingsPanel = memo<SettingsPanelProps>(({ open, onOpenChange }) =
               <div className="space-y-4">
                 <h3 className="text-sm font-medium flex items-center gap-2">
                   <Timer size={16} />
+                  Countdown Settings
+                </h3>
+
+                <div className="flex items-center justify-between">
+                  <div>
+                    <Label className="text-sm">Enable countdown before playback</Label>
+                    <p className="text-xs text-muted-foreground">
+                      Show countdown timer before starting playback
+                    </p>
+                  </div>
+                  <Switch
+                    checked={countdownSettings.enabled}
+                    onCheckedChange={(v) => updateCountdownSetting('enabled', v)}
+                  />
+                </div>
+
+                {countdownSettings.enabled && (
+                  <>
+                    <div className="flex items-center justify-between">
+                      <Label className="text-sm">Duration (seconds)</Label>
+                      <div className="flex items-center gap-2 w-32">
+                        <Input
+                          type="number"
+                          min={1}
+                          max={10}
+                          value={countdownSettings.duration}
+                          onChange={(e) => updateCountdownSetting('duration', Math.max(1, Math.min(10, parseInt(e.target.value) || 3)))}
+                          className="h-8 w-16"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <Label className="text-sm">Play sound on countdown</Label>
+                        <p className="text-xs text-muted-foreground">
+                          Play beep sound during countdown
+                        </p>
+                      </div>
+                      <Switch
+                        checked={countdownSettings.playSound}
+                        onCheckedChange={(v) => updateCountdownSetting('playSound', v)}
+                      />
+                    </div>
+
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <Label className="text-sm">Show segment preview</Label>
+                        <p className="text-xs text-muted-foreground">
+                          Show first segment during countdown
+                        </p>
+                      </div>
+                      <Switch
+                        checked={countdownSettings.showPreview}
+                        onCheckedChange={(v) => updateCountdownSetting('showPreview', v)}
+                      />
+                    </div>
+                  </>
+                )}
+              </div>
+
+              <Separator />
+
+              <div className="space-y-4">
+                <h3 className="text-sm font-medium flex items-center gap-2">
+                  <Eye size={16} />
                   Control Visibility
                 </h3>
 

@@ -13,6 +13,7 @@ import { safeSerialize } from '@/utils/serializationHelpers';
 const LAST_PROJECT_KEY = 'lastVisualProjectId';
 const STARTUP_MODE_KEY = 'teleprompter-startup-mode';
 const AUTO_RESUME_KEY = 'teleprompter-auto-resume';
+const AUTO_SAVE_KEY = 'teleprompter-auto-save';
 const SESSION_TIMEOUT_MS = 60 * 60 * 1000; // 1 hour
 const AUTO_SAVE_DELAY = 3000; // 3 seconds
 const MAX_SAVE_RETRIES = 3;
@@ -28,6 +29,17 @@ export function getAutoResumePreference(): boolean {
 // Set auto-resume preference
 export function setAutoResumePreference(enabled: boolean): void {
   localStorage.setItem(AUTO_RESUME_KEY, String(enabled));
+}
+
+// Get auto-save preference (default: true)
+export function getAutoSavePreference(): boolean {
+  const stored = localStorage.getItem(AUTO_SAVE_KEY);
+  return stored === undefined || stored === null || stored === 'true';
+}
+
+// Set auto-save preference
+export function setAutoSavePreference(enabled: boolean): void {
+  localStorage.setItem(AUTO_SAVE_KEY, String(enabled));
 }
 
 // Check if there's a stored session to restore
@@ -49,6 +61,7 @@ export function useVisualProjectSession() {
   });
   
   const [autoResumeEnabled, setAutoResumeEnabledState] = useState(getAutoResumePreference);
+  const [autoSaveEnabled, setAutoSaveEnabledState] = useState(getAutoSavePreference);
   
   // Only subscribe to what we need for UI rendering
   const isDirty = useVisualEditorState((s) => s.isDirty);
@@ -66,6 +79,12 @@ export function useVisualProjectSession() {
   // Set startup mode
   const setStartupMode = useCallback((mode: StartupMode) => {
     setStartupModeState(mode);
+  }, []);
+
+  // Update auto-save preference
+  const setAutoSaveEnabled = useCallback((enabled: boolean) => {
+    setAutoSavePreference(enabled);
+    setAutoSaveEnabledState(enabled);
   }, []);
 
   // Track save attempts to prevent infinite retry loops
@@ -210,6 +229,9 @@ export function useVisualProjectSession() {
     
     try {
       const project = await loadVisualProject(id);
+      // #region agent log
+      // fetch('http://127.0.0.1:7242/ingest/784514f5-0201-4165-905e-642cc13d7946',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useVisualProjectSession.ts:loadProject',message:'loadVisualProject result',data:{id,found:!!project,pageCount:project?.pages?.length??0},timestamp:Date.now(),hypothesisId:'A,B,C'})}).catch(()=>{});
+      // #endregion
       
       if (!project) {
         toast.error('Project not found');
@@ -223,8 +245,8 @@ export function useVisualProjectSession() {
       loadProjectData({
         projectId: project.id,
         projectName: project.name,
-        pages: project.pages,
-        audioFile: project.audioFile,
+        pages: safeSerialize(project.pages),
+        audioFile: project.audioFile ? safeSerialize(project.audioFile) : null,
         lastSaved: project.modifiedAt,
       });
       
@@ -253,34 +275,51 @@ export function useVisualProjectSession() {
   useEffect(() => {
     if (hasRestoredRef.current) return;
     hasRestoredRef.current = true;
-    
+
     const restoreSession = async () => {
-      // Only auto-restore if auto-resume is enabled
-      if (!getAutoResumePreference()) {
-        return;
-      }
-      
+      const autoResume = getAutoResumePreference();
       const lastProjectId = localStorage.getItem(LAST_PROJECT_KEY);
-      
-      if (lastProjectId) {
-        useVisualEditorState.getState().setIsLoading(true);
+      const isTauri = typeof window !== 'undefined' && '__TAURI__' in window;
+      // #region agent log
+      // fetch('http://127.0.0.1:7242/ingest/784514f5-0201-4165-905e-642cc13d7946',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useVisualProjectSession.ts:restoreSession',message:'restoreSession entry',data:{autoResume,lastProjectId:lastProjectId??null,isTauri},timestamp:Date.now(),hypothesisId:'A,E'})}).catch(()=>{});
+      // #endregion
+      if (!autoResume) return;
+      if (!lastProjectId) return;
+
+      // Delay to ensure Tauri/native APIs are ready (fixes desktop app load-after-close)
+      await new Promise((r) => setTimeout(r, isTauri ? 400 : 100));
+
+      useVisualEditorState.getState().setIsLoading(true);
+      try {
         const success = await loadProject(lastProjectId);
-        
+        // #region agent log
+        // fetch('http://127.0.0.1:7242/ingest/784514f5-0201-4165-905e-642cc13d7946',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useVisualProjectSession.ts:restoreSession',message:'loadProject result',data:{success,lastProjectId},timestamp:Date.now(),hypothesisId:'A,B'})}).catch(()=>{});
+        // #endregion
         if (!success) {
-          // Clear invalid project ID
           localStorage.removeItem(LAST_PROJECT_KEY);
+          useVisualEditorState.getState().reset();
           setStartupMode('welcome');
         }
+      } catch (err) {
+        const errMsg = err instanceof Error ? err.message : String(err);
+        // #region agent log
+        // fetch('http://127.0.0.1:7242/ingest/784514f5-0201-4165-905e-642cc13d7946',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useVisualProjectSession.ts:restoreSession',message:'restoreSession catch',data:{errMsg,lastProjectId},timestamp:Date.now(),hypothesisId:'A,B'})}).catch(()=>{});
+        // #endregion
+        console.error('Session restore failed:', err);
+        localStorage.removeItem(LAST_PROJECT_KEY);
+        useVisualEditorState.getState().reset();
+        setStartupMode('welcome');
+      } finally {
         useVisualEditorState.getState().setIsLoading(false);
       }
     };
-    
+
     restoreSession();
   }, [loadProject, setStartupMode]);
 
-  // Auto-save when dirty
+  // Auto-save when dirty (only if auto-save is enabled)
   useEffect(() => {
-    if (isDirty) {
+    if (autoSaveEnabled && isDirty) {
       scheduleAutoSave();
     }
     
@@ -289,7 +328,7 @@ export function useVisualProjectSession() {
         clearTimeout(autoSaveTimeoutRef.current);
       }
     };
-  }, [isDirty, scheduleAutoSave]);
+  }, [autoSaveEnabled, isDirty, scheduleAutoSave]);
 
   // beforeunload warning
   useEffect(() => {
@@ -341,6 +380,8 @@ export function useVisualProjectSession() {
     setStartupMode,
     autoResumeEnabled,
     setAutoResumeEnabled,
+    autoSaveEnabled,
+    setAutoSaveEnabled,
     hasStoredSession: hasStoredSession(),
   };
 }

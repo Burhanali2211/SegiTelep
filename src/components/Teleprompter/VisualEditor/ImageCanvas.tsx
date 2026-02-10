@@ -3,6 +3,15 @@ import { useVisualEditorState, VisualSegment } from './useVisualEditorState';
 import { useUndoRedo } from './useUndoRedo';
 import { Region } from '@/types/teleprompter.types';
 import { cn } from '@/lib/utils';
+import { SegmentBox } from './components/canvas/SegmentBox';
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from '@/components/ui/context-menu';
+import { Square, ClipboardPaste, SquareStack, ZoomIn, ZoomOut, RotateCcw } from 'lucide-react';
 
 interface ImageCanvasProps {
   className?: string;
@@ -19,6 +28,8 @@ export const ImageCanvas = memo<ImageCanvasProps>(({ className }) => {
   const [imageNaturalSize, setImageNaturalSize] = useState({ width: 0, height: 0 });
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
   const [imageDisplaySize, setImageDisplaySize] = useState({ width: 0, height: 0 });
+  
+  const lastPanResetSizeRef = useRef({ width: 0, height: 0 });
   
   // Drawing state
   const [drawStart, setDrawStart] = useState<{ x: number; y: number } | null>(null);
@@ -44,6 +55,13 @@ export const ImageCanvas = memo<ImageCanvasProps>(({ className }) => {
   const deselectAll = useVisualEditorState((s) => s.deselectAll);
   const setPan = useVisualEditorState((s) => s.setPan);
   const setDrawing = useVisualEditorState((s) => s.setDrawing);
+  const setZoom = useVisualEditorState((s) => s.setZoom);
+  const resetView = useVisualEditorState((s) => s.resetView);
+  const paste = useVisualEditorState((s) => s.paste);
+  const clipboard = useVisualEditorState((s) => s.clipboard);
+  
+  const prevZoomRef = useRef(zoom);
+  const prevImageLoadedRef = useRef(imageLoaded);
   
   const { saveState } = useUndoRedo();
   
@@ -155,19 +173,29 @@ export const ImageCanvas = memo<ImageCanvasProps>(({ className }) => {
     return { x: snappedX, y: snappedY };
   }, [containerSize, imageDisplaySize, zoom]);
   
-  // Reset pan when zoom changes or image loads to center the image
+  // Reset pan only when zoom or image loads. Do NOT reset on container resize.
+  // Container resize happens when SegmentPropertiesBar/SelectionToolbar appear after drawing a segment,
+  // which would cause unwanted scroll/position jump. Keeping pan stable during resize fixes that.
   useEffect(() => {
-    if (imageLoaded && containerSize.width > 0 && imageDisplaySize.width > 0) {
-      // Center the image in the container
-      const scaledWidth = imageDisplaySize.width * zoom;
-      const scaledHeight = imageDisplaySize.height * zoom;
-      
-      const centerX = (containerSize.width - scaledWidth) / 2;
-      const centerY = (containerSize.height - scaledHeight) / 2;
-      
-      const snapped = applyMagneticSnap({ x: centerX, y: centerY });
-      setPan(snapped);
-    }
+    if (!imageLoaded || containerSize.width <= 0 || imageDisplaySize.width <= 0) return;
+    
+    const zoomChanged = prevZoomRef.current !== zoom;
+    const imageLoadedChanged = prevImageLoadedRef.current !== imageLoaded;
+    prevZoomRef.current = zoom;
+    prevImageLoadedRef.current = imageLoaded;
+    
+    const isInitial = lastPanResetSizeRef.current.width === 0 && lastPanResetSizeRef.current.height === 0;
+    const shouldReset = zoomChanged || imageLoadedChanged || isInitial;
+    if (!shouldReset) return;
+    
+    lastPanResetSizeRef.current = { width: containerSize.width, height: containerSize.height };
+    
+    const scaledWidth = imageDisplaySize.width * zoom;
+    const scaledHeight = imageDisplaySize.height * zoom;
+    const centerX = (containerSize.width - scaledWidth) / 2;
+    const centerY = (containerSize.height - scaledHeight) / 2;
+    const snapped = applyMagneticSnap({ x: centerX, y: centerY });
+    setPan(snapped);
   }, [imageLoaded, zoom, containerSize.width, containerSize.height, imageDisplaySize.width, imageDisplaySize.height]);
   
   // Get percentage coords from pointer event relative to image
@@ -188,6 +216,12 @@ export const ImageCanvas = memo<ImageCanvasProps>(({ className }) => {
   // Get aspect ratio value from constraint
   const getAspectRatioValue = useCallback(() => {
     if (!aspectRatioConstraint) return null;
+    
+    if (aspectRatioConstraint === 'auto-detect') {
+      const w = typeof screen !== 'undefined' ? screen.width : 1920;
+      const h = typeof screen !== 'undefined' ? screen.height : 1080;
+      return w / Math.max(1, h);
+    }
     
     const presets: Record<string, number> = {
       '16:9': 16 / 9,
@@ -258,6 +292,7 @@ export const ImageCanvas = memo<ImageCanvasProps>(({ className }) => {
   }, [isDrawing, zoom, pan, getPercentCoords, findSegmentAtCoords, deselectAll]);
   
   const handlePointerMove = useCallback((e: React.PointerEvent) => {
+    if (isDrawing || (isPanning && panStart)) e.preventDefault();
     if (isPanning && panStart) {
       const dx = e.clientX - panStart.x;
       const dy = e.clientY - panStart.y;
@@ -306,6 +341,7 @@ export const ImageCanvas = memo<ImageCanvasProps>(({ className }) => {
   }, [isDrawing, drawStart, isPanning, panStart, getPercentCoords, setPan, getAspectRatioValue]);
   
   const handlePointerUp = useCallback((e: React.PointerEvent) => {
+    if (isDrawing || isPanning) e.preventDefault();
     (e.target as HTMLElement).releasePointerCapture(e.pointerId);
     
     if (isPanning) {
@@ -442,339 +478,82 @@ export const ImageCanvas = memo<ImageCanvasProps>(({ className }) => {
         />
         
         {/* Drawing overlay - captures pointer events for drawing */}
-        <div
-          className="absolute inset-0"
-          onPointerDown={handlePointerDown}
-          onPointerMove={handlePointerMove}
-          onPointerUp={handlePointerUp}
-          onPointerCancel={handlePointerUp}
-          style={{ touchAction: 'none' }}
-        >
-          {/* Existing segments */}
-          {currentPage.segments.map((segment) => {
-            if (segment.isHidden) return null;
-            
-            return (
-              <SegmentBox
-                key={segment.id}
-                segment={segment}
-                isSelected={selectedSegmentIds.has(segment.id)}
-                isPlaying={playbackTime >= segment.startTime && playbackTime < segment.endTime}
-              />
-            );
-          })}
-          
-          {/* Current drawing preview */}
-          {currentDraw && (
+        <ContextMenu>
+          <ContextMenuTrigger asChild>
             <div
-              className="absolute border-2 border-dashed border-blue-500 bg-blue-500/20 pointer-events-none"
-              style={{
-                left: `${currentDraw.x}%`,
-                top: `${currentDraw.y}%`,
-                width: `${currentDraw.width}%`,
-                height: `${currentDraw.height}%`,
-              }}
-            />
-          )}
-        </div>
+              className="absolute inset-0"
+              onPointerDown={handlePointerDown}
+              onPointerMove={handlePointerMove}
+              onPointerUp={handlePointerUp}
+              onPointerCancel={handlePointerUp}
+              style={{ touchAction: 'none' }}
+            >
+              {/* Existing segments */}
+              {currentPage.segments.map((segment) => {
+                if (segment.isHidden) return null;
+                
+                return (
+                  <SegmentBox
+                    key={segment.id}
+                    segment={segment}
+                    isSelected={selectedSegmentIds.has(segment.id)}
+                    isPlaying={playbackTime >= segment.startTime && playbackTime < segment.endTime}
+                  />
+                );
+              })}
+              
+              {/* Current drawing preview */}
+              {currentDraw && (
+                <div
+                  className="absolute border-2 border-dashed border-blue-500 bg-blue-500/20 pointer-events-none"
+                  style={{
+                    left: `${currentDraw.x}%`,
+                    top: `${currentDraw.y}%`,
+                    width: `${currentDraw.width}%`,
+                    height: `${currentDraw.height}%`,
+                  }}
+                />
+              )}
+            </div>
+          </ContextMenuTrigger>
+          <ContextMenuContent className="w-48">
+            <ContextMenuItem onClick={() => setDrawing(true)}>
+              <Square className="mr-2 h-4 w-4" />
+              Draw new region
+            </ContextMenuItem>
+            {clipboard.length > 0 && (
+              <ContextMenuItem
+                onClick={() => {
+                  saveState();
+                  paste();
+                }}
+              >
+                <ClipboardPaste className="mr-2 h-4 w-4" />
+                Paste ({clipboard.length})
+              </ContextMenuItem>
+            )}
+            <ContextMenuItem onClick={deselectAll}>
+              <SquareStack className="mr-2 h-4 w-4" />
+              Deselect all
+            </ContextMenuItem>
+            <ContextMenuSeparator />
+            <ContextMenuItem onClick={() => setZoom(Math.min(3, zoom + 0.25))}>
+              <ZoomIn className="mr-2 h-4 w-4" />
+              Zoom in
+            </ContextMenuItem>
+            <ContextMenuItem onClick={() => setZoom(Math.max(0.25, zoom - 0.25))}>
+              <ZoomOut className="mr-2 h-4 w-4" />
+              Zoom out
+            </ContextMenuItem>
+            <ContextMenuItem onClick={resetView}>
+              <RotateCcw className="mr-2 h-4 w-4" />
+              Reset view
+            </ContextMenuItem>
+          </ContextMenuContent>
+        </ContextMenu>
       </div>
     </div>
   );
 });
 
 ImageCanvas.displayName = 'ImageCanvas';
-
-// Magnetic snap threshold in percentage (relative to image)
-const SEGMENT_SNAP_THRESHOLD_PERCENT = 1.5; // ~1.5% of image dimension
-
-// Interactive segment box with drag and resize
-interface SegmentBoxProps {
-  segment: VisualSegment;
-  isSelected: boolean;
-  isPlaying: boolean;
-}
-
-const SegmentBox = memo<SegmentBoxProps>(({ segment, isSelected, isPlaying }) => {
-  const [isDragging, setIsDragging] = useState(false);
-  const [isResizing, setIsResizing] = useState<'top' | 'bottom' | 'left' | 'right' | null>(null);
-  const [snappedEdges, setSnappedEdges] = useState<{ left: boolean; right: boolean; top: boolean }>({ left: false, right: false, top: false });
-  const dragDataRef = useRef<{
-    startX: number;
-    startY: number;
-    region: Region;
-  } | null>(null);
-  
-  const updateSegment = useVisualEditorState((s) => s.updateSegment);
-  const selectSegment = useVisualEditorState((s) => s.selectSegment);
-  const setActiveDrag = useVisualEditorState((s) => s.setActiveDrag);
-  const { saveState } = useUndoRedo();
-  
-  // Magnetic snap function for segment edges - snaps to LEFT, RIGHT, TOP but NOT BOTTOM
-  const applySegmentSnap = useCallback((region: Region): { region: Region; snapped: { left: boolean; right: boolean; top: boolean } } => {
-    let { x, y, width, height } = region;
-    const snapped = { left: false, right: false, top: false };
-    
-    // Snap LEFT edge to 0
-    if (Math.abs(x) < SEGMENT_SNAP_THRESHOLD_PERCENT) {
-      x = 0;
-      snapped.left = true;
-    }
-    
-    // Snap RIGHT edge to 100
-    const rightEdge = x + width;
-    if (Math.abs(100 - rightEdge) < SEGMENT_SNAP_THRESHOLD_PERCENT) {
-      x = 100 - width;
-      snapped.right = true;
-    }
-    
-    // Snap TOP edge to 0
-    if (Math.abs(y) < SEGMENT_SNAP_THRESHOLD_PERCENT) {
-      y = 0;
-      snapped.top = true;
-    }
-    
-    // NO snapping for bottom edge (intentionally omitted)
-    
-    // Ensure bounds
-    x = Math.max(0, Math.min(100 - width, x));
-    y = Math.max(0, Math.min(100 - height, y));
-    
-    return { region: { x, y, width, height }, snapped };
-  }, []);
-  
-  // Handle segment click/selection
-  const handleClick = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation();
-    
-    if (e.ctrlKey || e.metaKey) {
-      selectSegment(segment.id, 'toggle');
-    } else if (e.shiftKey) {
-      selectSegment(segment.id, 'range');
-    } else {
-      selectSegment(segment.id, 'single');
-    }
-  }, [segment.id, selectSegment]);
-  
-  // Handle drag start
-  const handleDragStart = useCallback((e: React.PointerEvent) => {
-    e.stopPropagation();
-    e.preventDefault();
-    
-    // Select if not selected
-    if (!isSelected) {
-      selectSegment(segment.id, 'single');
-    }
-    
-    saveState();
-    setIsDragging(true);
-    setActiveDrag(true); // Lock autosave during drag
-    dragDataRef.current = {
-      startX: e.clientX,
-      startY: e.clientY,
-      region: { ...segment.region },
-    };
-    
-    (e.target as HTMLElement).setPointerCapture(e.pointerId);
-  }, [segment, isSelected, selectSegment, saveState, setActiveDrag]);
-  
-  // Handle drag move with magnetic snapping
-  const handleDragMove = useCallback((e: React.PointerEvent) => {
-    if (!isDragging || !dragDataRef.current) return;
-    
-    const imageEl = document.getElementById('visual-editor-image');
-    if (!imageEl) return;
-    
-    const rect = imageEl.getBoundingClientRect();
-    const dx = ((e.clientX - dragDataRef.current.startX) / rect.width) * 100;
-    const dy = ((e.clientY - dragDataRef.current.startY) / rect.height) * 100;
-    
-    const rawX = dragDataRef.current.region.x + dx;
-    const rawY = dragDataRef.current.region.y + dy;
-    
-    // Apply magnetic snapping
-    const { region: snappedRegion, snapped } = applySegmentSnap({
-      x: rawX,
-      y: rawY,
-      width: segment.region.width,
-      height: segment.region.height,
-    });
-    
-    setSnappedEdges(snapped);
-    
-    updateSegment(segment.id, {
-      region: snappedRegion,
-    });
-  }, [isDragging, segment, updateSegment, applySegmentSnap]);
-  
-  // Handle drag end
-  const handleDragEnd = useCallback((e: React.PointerEvent) => {
-    (e.target as HTMLElement).releasePointerCapture(e.pointerId);
-    setIsDragging(false);
-    setActiveDrag(false); // Unlock autosave
-    setSnappedEdges({ left: false, right: false, top: false });
-    dragDataRef.current = null;
-  }, [setActiveDrag]);
-  
-  // Handle resize start - now supports all 4 edges
-  const handleResizeStart = useCallback((edge: 'top' | 'bottom' | 'left' | 'right', e: React.PointerEvent) => {
-    e.stopPropagation();
-    e.preventDefault();
-    
-    saveState();
-    setIsResizing(edge);
-    setActiveDrag(true); // Lock autosave during resize
-    dragDataRef.current = {
-      startX: e.clientX,
-      startY: e.clientY,
-      region: { ...segment.region },
-    };
-    
-    (e.target as HTMLElement).setPointerCapture(e.pointerId);
-  }, [segment.region, saveState, setActiveDrag]);
-  
-  // Handle resize move with magnetic snapping
-  const handleResizeMove = useCallback((e: React.PointerEvent) => {
-    if (!isResizing || !dragDataRef.current) return;
-    
-    const imageEl = document.getElementById('visual-editor-image');
-    if (!imageEl) return;
-    
-    const rect = imageEl.getBoundingClientRect();
-    const dx = ((e.clientX - dragDataRef.current.startX) / rect.width) * 100;
-    const dy = ((e.clientY - dragDataRef.current.startY) / rect.height) * 100;
-    
-    let newRegion = { ...segment.region };
-    const newSnapped = { left: false, right: false, top: false };
-    
-    if (isResizing === 'top') {
-      let newY = dragDataRef.current.region.y + dy;
-      // Snap top edge to 0
-      if (Math.abs(newY) < SEGMENT_SNAP_THRESHOLD_PERCENT) {
-        newY = 0;
-        newSnapped.top = true;
-      }
-      newY = Math.max(0, Math.min(dragDataRef.current.region.y + dragDataRef.current.region.height - 5, newY));
-      const newHeight = dragDataRef.current.region.height - (newY - dragDataRef.current.region.y);
-      newRegion = { ...newRegion, y: newY, height: newHeight };
-    } else if (isResizing === 'bottom') {
-      // No snapping for bottom
-      const newHeight = Math.max(5, Math.min(100 - dragDataRef.current.region.y, dragDataRef.current.region.height + dy));
-      newRegion = { ...newRegion, height: newHeight };
-    } else if (isResizing === 'left') {
-      let newX = dragDataRef.current.region.x + dx;
-      // Snap left edge to 0
-      if (Math.abs(newX) < SEGMENT_SNAP_THRESHOLD_PERCENT) {
-        newX = 0;
-        newSnapped.left = true;
-      }
-      newX = Math.max(0, Math.min(dragDataRef.current.region.x + dragDataRef.current.region.width - 5, newX));
-      const newWidth = dragDataRef.current.region.width - (newX - dragDataRef.current.region.x);
-      newRegion = { ...newRegion, x: newX, width: newWidth };
-    } else if (isResizing === 'right') {
-      let newWidth = dragDataRef.current.region.width + dx;
-      const rightEdge = dragDataRef.current.region.x + newWidth;
-      // Snap right edge to 100
-      if (Math.abs(100 - rightEdge) < SEGMENT_SNAP_THRESHOLD_PERCENT) {
-        newWidth = 100 - dragDataRef.current.region.x;
-        newSnapped.right = true;
-      }
-      newWidth = Math.max(5, Math.min(100 - dragDataRef.current.region.x, newWidth));
-      newRegion = { ...newRegion, width: newWidth };
-    }
-    
-    setSnappedEdges(newSnapped);
-    updateSegment(segment.id, { region: newRegion });
-  }, [isResizing, segment, updateSegment]);
-  
-  // Handle resize end
-  const handleResizeEnd = useCallback((e: React.PointerEvent) => {
-    (e.target as HTMLElement).releasePointerCapture(e.pointerId);
-    setIsResizing(null);
-    setActiveDrag(false); // Unlock autosave
-    setSnappedEdges({ left: false, right: false, top: false });
-    dragDataRef.current = null;
-  }, [setActiveDrag]);
-  
-  const borderColor = isPlaying ? 'rgb(239, 68, 68)' : isSelected ? 'rgb(250, 204, 21)' : 'rgb(34, 197, 94)';
-  const bgColor = isPlaying ? 'rgba(239, 68, 68, 0.2)' : isSelected ? 'rgba(250, 204, 21, 0.15)' : 'rgba(34, 197, 94, 0.1)';
-  
-  return (
-    <div
-      className={cn(
-        'absolute border-2 transition-colors',
-        isDragging && 'cursor-grabbing',
-        !isDragging && 'cursor-grab'
-      )}
-      style={{
-        left: `${segment.region.x}%`,
-        top: `${segment.region.y}%`,
-        width: `${segment.region.width}%`,
-        height: `${segment.region.height}%`,
-        borderColor,
-        backgroundColor: bgColor,
-      }}
-      onClick={handleClick}
-      onPointerDown={handleDragStart}
-      onPointerMove={handleDragMove}
-      onPointerUp={handleDragEnd}
-      onPointerCancel={handleDragEnd}
-    >
-      {/* Snap indicator lines */}
-      {snappedEdges.left && (
-        <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-blue-500 animate-pulse" />
-      )}
-      {snappedEdges.right && (
-        <div className="absolute right-0 top-0 bottom-0 w-0.5 bg-blue-500 animate-pulse" />
-      )}
-      {snappedEdges.top && (
-        <div className="absolute top-0 left-0 right-0 h-0.5 bg-blue-500 animate-pulse" />
-      )}
-      
-      {/* Top resize handle - with snap */}
-      <div
-        className="absolute -top-1 left-2 right-2 h-3 cursor-ns-resize hover:bg-primary/30 z-10"
-        onPointerDown={(e) => handleResizeStart('top', e)}
-        onPointerMove={handleResizeMove}
-        onPointerUp={handleResizeEnd}
-        onPointerCancel={handleResizeEnd}
-      />
-      
-      {/* Bottom resize handle - NO snap */}
-      <div
-        className="absolute -bottom-1 left-2 right-2 h-3 cursor-ns-resize hover:bg-primary/30 z-10"
-        onPointerDown={(e) => handleResizeStart('bottom', e)}
-        onPointerMove={handleResizeMove}
-        onPointerUp={handleResizeEnd}
-        onPointerCancel={handleResizeEnd}
-      />
-      
-      {/* Left resize handle - with snap */}
-      <div
-        className="absolute -left-1 top-2 bottom-2 w-3 cursor-ew-resize hover:bg-primary/30 z-10"
-        onPointerDown={(e) => handleResizeStart('left', e)}
-        onPointerMove={handleResizeMove}
-        onPointerUp={handleResizeEnd}
-        onPointerCancel={handleResizeEnd}
-      />
-      
-      {/* Right resize handle - with snap */}
-      <div
-        className="absolute -right-1 top-2 bottom-2 w-3 cursor-ew-resize hover:bg-primary/30 z-10"
-        onPointerDown={(e) => handleResizeStart('right', e)}
-        onPointerMove={handleResizeMove}
-        onPointerUp={handleResizeEnd}
-        onPointerCancel={handleResizeEnd}
-      />
-      
-      {/* Label badge */}
-      <div
-        className="absolute top-0 left-0 px-1.5 py-0.5 text-[10px] font-medium text-black max-w-full truncate"
-        style={{ backgroundColor: borderColor }}
-      >
-        {segment.label}
-      </div>
-    </div>
-  );
-});
-
-SegmentBox.displayName = 'SegmentBox';

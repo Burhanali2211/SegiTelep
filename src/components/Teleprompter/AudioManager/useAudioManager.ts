@@ -1,4 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
+import { stopAllExcept, registerStopCallback } from '@/utils/audioPlaybackCoordinator';
 import { AudioFile, AudioManagerState, SUPPORTED_AUDIO_TYPES, MAX_FILE_SIZE } from './types';
 import { 
   getAllAudioFiles, 
@@ -104,7 +105,11 @@ export function useAudioManager() {
             resolve(newFile);
           } catch (e) {
             console.error('Failed to save audio file:', e);
-            toast.error('Failed to save audio file. Storage may be full.');
+            const msg = e instanceof Error ? e.message : 'Unknown error';
+            const isQuota = /quota|storage|full|limit/i.test(msg) || (e instanceof Error && e.name === 'QuotaExceededError');
+            toast.error(isQuota 
+              ? 'Storage limit reached. Delete some audio files or use the desktop app.' 
+              : `Failed to save: ${msg}`);
             setState(prev => ({ ...prev, isLoading: false }));
             resolve(null);
           }
@@ -165,6 +170,15 @@ export function useAudioManager() {
     }
   }, []);
 
+  // Register stop callback so others can stop us when they start
+  useEffect(() => {
+    return registerStopCallback('audio-manager', () => {
+      cleanupAudio();
+      setState(prev => ({ ...prev, playingId: null }));
+      playbackRetryRef.current = 0;
+    });
+  }, [cleanupAudio]);
+
   // Play/pause audio with error recovery
   const togglePlayback = useCallback((audioFile: AudioFile) => {
     if (state.playingId === audioFile.id) {
@@ -173,6 +187,8 @@ export function useAudioManager() {
       setState(prev => ({ ...prev, playingId: null }));
       playbackRetryRef.current = 0;
     } else {
+      // Stop other audio sources before starting
+      stopAllExcept('audio-manager');
       // Start playing
       cleanupAudio();
       playbackRetryRef.current = 0;

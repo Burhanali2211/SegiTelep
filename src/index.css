@@ -130,14 +130,38 @@
 
   /* Segment list item */
   .segment-item {
-    @apply flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-all duration-150;
+    @apply flex items-start gap-2 sm:gap-3 p-2 sm:p-3 rounded-lg cursor-pointer transition-all duration-150;
     background: hsl(var(--card));
     border: 1px solid transparent;
+    min-height: 60px;
   }
 
   .segment-item:hover {
     background: hsl(var(--secondary));
     border-color: hsl(var(--border));
+  }
+
+  /* Responsive segment item adjustments */
+  @media (max-width: 640px) {
+    .segment-item {
+      @apply gap-2 p-2;
+      min-height: 50px;
+    }
+    
+    .segment-item .drag-handle {
+      @apply w-6 h-6;
+    }
+    
+    .segment-item .segment-icon {
+      @apply w-3.5 h-3.5;
+    }
+  }
+  
+  @media (max-width: 480px) {
+    .segment-item {
+      @apply p-1.5;
+      min-height: 45px;
+    }
   }
 
   .segment-item.active {
@@ -163,9 +187,62 @@
 
   /* Speed indicator */
   .speed-badge {
-    @apply inline-flex items-center px-2 py-0.5 rounded text-xs font-mono;
+    @apply inline-flex items-center px-1.5 sm:px-2 py-0.5 rounded text-xs font-mono;
     background: hsl(var(--secondary));
     color: hsl(var(--accent));
+  }
+  
+  /* Panel header improvements */
+  .panel-header {
+    @apply flex items-center justify-between p-3 sm:p-4 border-b border-border shrink-0;
+  }
+  
+  /* Responsive sidebar improvements */
+  @media (max-width: 768px) {
+    .panel-header {
+      @apply p-3;
+    }
+  }
+  
+  @media (max-width: 640px) {
+    .panel-header {
+      @apply p-2.5;
+    }
+    
+    .panel-header h2 {
+      @apply text-sm;
+    }
+  }
+  
+  /* Mobile-specific improvements */
+  @media (max-width: 480px) {
+    .segment-item {
+      @apply gap-1.5 p-2;
+      min-height: 44px;
+    }
+    
+    .segment-item .drag-handle {
+      @apply w-5 h-5;
+    }
+    
+    .segment-item .segment-icon {
+      @apply w-3 h-3;
+    }
+    
+    .speed-badge {
+      @apply px-1 text-xs;
+    }
+  }
+  
+  /* Touch-friendly improvements */
+  @media (hover: none) and (pointer: coarse) {
+    .segment-item {
+      @apply min-h-12;
+    }
+    
+    .segment-item button {
+      @apply min-h-8 min-w-8;
+    }
   }
 
   /* Mirror mode */
@@ -300,4 +377,12 @@
 
 .playing .status-dot.active {
   animation: pulse-glow 2s ease-in-out infinite;
+}
+
+/* Grid pattern utility */
+.bg-grid-pattern {
+  background-image: 
+    linear-gradient(to right, hsl(var(--border) / 0.1) 1px, transparent 1px),
+    linear-gradient(to bottom, hsl(var(--border) / 0.1) 1px, transparent 1px);
+  background-size: 24px 24px;
 }

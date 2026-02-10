@@ -1,5 +1,6 @@
 import React, { memo, useCallback, useRef, useEffect, useState } from 'react';
 import { useVisualEditorState, formatTime } from './useVisualEditorState';
+import { stopAllExcept, registerStopCallback } from '@/utils/audioPlaybackCoordinator';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { 
@@ -12,14 +13,29 @@ import {
   X,
   Volume2,
   VolumeX,
+  Library,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-interface AudioWaveformProps {
-  className?: string;
+const WAVEFORM_HEIGHT = 36;
+
+/** Resolve CSS variable for canvas - canvas does not support var() in fillStyle */
+function getCanvasColor(varName: string, alpha?: number): string {
+  try {
+    const value = getComputedStyle(document.documentElement).getPropertyValue(varName).trim();
+    if (!value) return alpha !== undefined ? `hsla(0,0%,50%,${alpha})` : 'hsl(0,0%,50%)';
+    return alpha !== undefined ? `hsla(${value.replace(/\s+/g, ', ')}, ${alpha})` : `hsl(${value.replace(/\s+/g, ', ')})`;
+  } catch {
+    return alpha !== undefined ? 'hsla(0,0%,50%,0.5)' : 'hsl(0,0%,50%)';
+  }
 }
 
-export const AudioWaveform = memo<AudioWaveformProps>(({ className }) => {
+interface AudioWaveformProps {
+  className?: string;
+  onOpenAudioLibrary?: () => void;
+}
+
+export const AudioWaveform = memo<AudioWaveformProps>(({ className, onOpenAudioLibrary }) => {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -34,6 +50,7 @@ export const AudioWaveform = memo<AudioWaveformProps>(({ className }) => {
   const audioFile = useVisualEditorState((s) => s.audioFile);
   const playbackTime = useVisualEditorState((s) => s.playbackTime);
   const isPlaying = useVisualEditorState((s) => s.isPlaying);
+  const showPlayer = useVisualEditorState((s) => s.showPlayer);
   const playbackSpeed = useVisualEditorState((s) => s.playbackSpeed);
   const currentPage = useVisualEditorState((s) => s.getCurrentPage());
   
@@ -76,13 +93,28 @@ export const AudioWaveform = memo<AudioWaveformProps>(({ className }) => {
     
     audioRef.current = audio;
     
-    // Generate waveform data
-    const audioContext = new AudioContext();
-    
-    fetch(audioFile.data)
-      .then(res => res.arrayBuffer())
-      .then(buffer => audioContext.decodeAudioData(buffer))
-      .then(audioBuffer => {
+    // Generate waveform data - decode from data URL
+    const decodeAndExtractWaveform = async () => {
+      const audioContext = new AudioContext();
+      try {
+        if (audioContext.state === 'suspended') {
+          await audioContext.resume();
+        }
+        let arrayBuffer: ArrayBuffer;
+        if (audioFile.data.startsWith('data:')) {
+          const base64 = audioFile.data.split(',')[1];
+          if (!base64) throw new Error('Invalid data URL');
+          const binaryString = atob(base64);
+          const bytes = new Uint8Array(binaryString.length);
+          for (let i = 0; i < binaryString.length; i++) {
+            bytes[i] = binaryString.charCodeAt(i);
+          }
+          arrayBuffer = bytes.buffer;
+        } else {
+          const res = await fetch(audioFile.data);
+          arrayBuffer = await res.arrayBuffer();
+        }
+        const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
         const rawData = audioBuffer.getChannelData(0);
         const samples = 150;
         const blockSize = Math.floor(rawData.length / samples);
@@ -96,14 +128,17 @@ export const AudioWaveform = memo<AudioWaveformProps>(({ className }) => {
           filteredData.push(sum / blockSize);
         }
         
-        const maxVal = Math.max(...filteredData);
+        const maxVal = Math.max(...filteredData) || 1;
         const normalized = filteredData.map(v => v / maxVal);
         setWaveformData(normalized);
-      })
-      .catch(console.error)
-      .finally(() => {
-        audioContext.close();
-      });
+      } catch (err) {
+        console.error('Waveform extraction failed:', err);
+        setWaveformData([]);
+      } finally {
+        await audioContext.close();
+      }
+    };
+    decodeAndExtractWaveform();
     
     return () => {
       audio.pause();
@@ -111,52 +146,69 @@ export const AudioWaveform = memo<AudioWaveformProps>(({ className }) => {
     };
   }, [audioFile?.data, setPlaying, setPlaybackTime]);
   
-  // Resize canvas observer
+  // Resize canvas observer - get width from container
   useEffect(() => {
-    if (!containerRef.current) return;
+    const container = containerRef.current;
+    if (!container) return;
     
+    const updateWidth = () => {
+      const w = container.offsetWidth || container.clientWidth;
+      if (w > 0) setCanvasWidth(w);
+    };
+    
+    updateWidth();
+    requestAnimationFrame(updateWidth);
     const observer = new ResizeObserver((entries) => {
       for (const entry of entries) {
-        setCanvasWidth(entry.contentRect.width);
+        const w = entry.contentRect.width;
+        if (w > 0) setCanvasWidth(w);
       }
     });
     
-    observer.observe(containerRef.current);
+    observer.observe(container);
     return () => observer.disconnect();
-  }, []);
+  }, [audioFile]);
   
   // Draw waveform visualization
   useEffect(() => {
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext('2d');
-    if (!canvas || !ctx || canvasWidth === 0) return;
+    if (!canvas || !ctx) return;
     
-    const height = 36;
+    const w = canvasWidth || containerRef.current?.offsetWidth || 0;
+    if (w <= 0) return;
+    
+    const height = WAVEFORM_HEIGHT;
     const dpr = window.devicePixelRatio || 1;
-    canvas.width = canvasWidth * dpr;
+    canvas.width = w * dpr;
     canvas.height = height * dpr;
-    canvas.style.width = `${canvasWidth}px`;
+    canvas.style.width = `${w}px`;
     canvas.style.height = `${height}px`;
     ctx.scale(dpr, dpr);
     
-    // Clear and fill background
-    ctx.fillStyle = 'hsl(var(--muted) / 0.5)';
-    ctx.fillRect(0, 0, canvasWidth, height);
+    const muted = getCanvasColor('--muted', 0.5);
+    const primary = getCanvasColor('--primary');
+    const primaryAlpha12 = getCanvasColor('--primary', 0.12);
+    const primaryAlpha4 = getCanvasColor('--primary', 0.4);
+    const mutedFg35 = getCanvasColor('--muted-foreground', 0.35);
+    const mutedFg2 = getCanvasColor('--muted-foreground', 0.2);
+    const mutedFg3 = getCanvasColor('--muted-foreground', 0.3);
+    const destructive = getCanvasColor('--destructive');
+    
+    ctx.fillStyle = muted;
+    ctx.fillRect(0, 0, w, height);
     
     const duration = audioFile?.duration || 1;
     const progress = Math.min(playbackTime / duration, 1);
     
-    // Draw segment regions
     const segments = currentPage?.segments || [];
     segments.forEach(segment => {
       if (segment.isHidden) return;
-      const startX = (segment.startTime / duration) * canvasWidth;
-      const endX = (segment.endTime / duration) * canvasWidth;
-      ctx.fillStyle = 'hsla(var(--primary), 0.12)';
+      const startX = (segment.startTime / duration) * w;
+      const endX = (segment.endTime / duration) * w;
+      ctx.fillStyle = primaryAlpha12;
       ctx.fillRect(startX, 0, endX - startX, height);
-      
-      // Draw segment start marker
-      ctx.strokeStyle = 'hsla(var(--primary), 0.4)';
+      ctx.strokeStyle = primaryAlpha4;
       ctx.lineWidth = 1;
       ctx.beginPath();
       ctx.moveTo(startX, 0);
@@ -164,63 +216,64 @@ export const AudioWaveform = memo<AudioWaveformProps>(({ className }) => {
       ctx.stroke();
     });
     
-    // Draw waveform bars
     if (waveformData.length > 0) {
-      const barWidth = canvasWidth / waveformData.length;
+      const barWidth = w / waveformData.length;
       const barGap = 1;
       
       waveformData.forEach((val, i) => {
         const x = i * barWidth;
         const barHeight = Math.max(2, val * (height - 8));
         const y = (height - barHeight) / 2;
-        
         const barProgress = i / waveformData.length;
         const isPlayed = barProgress < progress;
-        
-        // Gradient effect for played section
-        if (isPlayed) {
-          ctx.fillStyle = 'hsl(var(--primary))';
-        } else {
-          ctx.fillStyle = 'hsl(var(--muted-foreground) / 0.35)';
-        }
-        
+        ctx.fillStyle = isPlayed ? primary : mutedFg35;
         ctx.fillRect(x, y, barWidth - barGap, barHeight);
       });
     } else {
-      // No waveform data - show simple progress bar
-      ctx.fillStyle = 'hsl(var(--muted-foreground) / 0.2)';
-      ctx.fillRect(0, height / 2 - 2, canvasWidth, 4);
-      ctx.fillStyle = 'hsl(var(--primary))';
-      ctx.fillRect(0, height / 2 - 2, canvasWidth * progress, 4);
+      ctx.fillStyle = mutedFg2;
+      ctx.fillRect(0, height / 2 - 2, w, 4);
+      ctx.fillStyle = primary;
+      ctx.fillRect(0, height / 2 - 2, w * progress, 4);
     }
     
-    // Draw playhead
-    const playheadX = progress * canvasWidth;
-    ctx.fillStyle = 'hsl(var(--destructive))';
+    const playheadX = progress * w;
+    ctx.fillStyle = destructive;
     ctx.fillRect(playheadX - 1, 0, 2, height);
     
-    // Draw time markers
     const timeMarkerCount = Math.min(5, Math.floor(duration / 30));
     if (timeMarkerCount > 0) {
-      ctx.fillStyle = 'hsl(var(--muted-foreground) / 0.3)';
+      ctx.fillStyle = mutedFg3;
       ctx.font = '8px monospace';
       for (let i = 1; i <= timeMarkerCount; i++) {
         const markerTime = (duration / (timeMarkerCount + 1)) * i;
-        const markerX = (markerTime / duration) * canvasWidth;
+        const markerX = (markerTime / duration) * w;
         ctx.fillRect(markerX, height - 3, 1, 3);
       }
     }
   }, [waveformData, canvasWidth, playbackTime, audioFile?.duration, currentPage?.segments]);
   
+  // Register stop callback so others can stop us when they start
+  useEffect(() => {
+    return registerStopCallback('visual-editor', () => {
+      if (audioRef.current) {
+        audioRef.current.pause();
+      }
+      setPlaying(false);
+    });
+  }, [setPlaying]);
+
   // Handle playback state changes
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio || !isAudioReady) return;
+    // FullscreenPlayer has its own audio - don't play here when it's open
+    if (showPlayer) return;
     
     audio.playbackRate = playbackSpeed;
     audio.muted = isMuted;
     
     if (isPlaying) {
+      stopAllExcept('visual-editor');
       // Sync audio time if significantly out of sync
       if (Math.abs(audio.currentTime - playbackTime) > 0.1) {
         audio.currentTime = playbackTime;
@@ -255,7 +308,7 @@ export const AudioWaveform = memo<AudioWaveformProps>(({ className }) => {
         animationRef.current = null;
       }
     };
-  }, [isPlaying, playbackSpeed, isMuted, isAudioReady, setPlaying, setPlaybackTime, playbackTime]);
+  }, [isPlaying, playbackSpeed, isMuted, isAudioReady, showPlayer, setPlaying, setPlaybackTime, playbackTime]);
   
   // Seek on canvas click
   const handleCanvasClick = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -336,6 +389,9 @@ export const AudioWaveform = memo<AudioWaveformProps>(({ className }) => {
   
   const handleTogglePlay = useCallback(() => {
     if (!isAudioReady) return;
+    if (!isPlaying) {
+      stopAllExcept('visual-editor');
+    }
     setPlaying(!isPlaying);
   }, [isPlaying, isAudioReady, setPlaying]);
   
@@ -370,7 +426,7 @@ export const AudioWaveform = memo<AudioWaveformProps>(({ className }) => {
   }, [isMuted]);
   
   return (
-    <div className={cn('flex items-center gap-1.5 px-2 py-1.5 bg-muted/30 border-t border-border', className)}>
+    <div className={cn('flex items-center gap-1.5 px-2 py-1.5 bg-muted/30 border-t border-border shrink-0 min-h-[44px] max-h-[44px] overflow-hidden', className)}>
       <input
         ref={fileInputRef}
         type="file"
@@ -380,10 +436,23 @@ export const AudioWaveform = memo<AudioWaveformProps>(({ className }) => {
       />
       
       {!audioFile ? (
-        <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={handleUploadAudio}>
-          <Upload size={12} className="mr-1.5" />
-          Load Audio
-        </Button>
+        <div className="flex items-center gap-1.5">
+          <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={handleUploadAudio}>
+            <Upload size={12} className="mr-1.5" />
+            Load Audio
+          </Button>
+          {onOpenAudioLibrary && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={onOpenAudioLibrary}>
+                  <Library size={12} className="mr-1.5" />
+                  From Library
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Load from Audio Library</TooltipContent>
+            </Tooltip>
+          )}
+        </div>
       ) : (
         <>
           {/* Playback controls */}
@@ -417,22 +486,29 @@ export const AudioWaveform = memo<AudioWaveformProps>(({ className }) => {
             </Tooltip>
           </div>
           
-          {/* Time display - precise MM:SS.CC format */}
-          <div className="flex flex-col items-end min-w-[85px]">
-            <span className="text-[11px] font-mono font-medium tabular-nums text-foreground leading-tight">
+          {/* Time display - single line MM:SS.CC format */}
+          <div className="flex items-center min-w-[100px] shrink-0">
+            <span className="text-[11px] font-mono font-medium tabular-nums text-foreground">
               {formatTime(playbackTime)}
             </span>
-            <span className="text-[9px] font-mono text-muted-foreground tabular-nums leading-tight">
-              / {formatTime(audioFile.duration)}
+            <span className="text-[11px] font-mono text-muted-foreground tabular-nums mx-0.5">
+              /
+            </span>
+            <span className="text-[11px] font-mono text-muted-foreground tabular-nums">
+              {formatTime(audioFile.duration)}
             </span>
           </div>
           
-          {/* Waveform visualization */}
-          <div ref={containerRef} className="flex-1 min-w-[100px]">
+          {/* Waveform visualization - fixed height container */}
+          <div 
+            ref={containerRef} 
+            className="flex-1 min-w-[80px] h-9 shrink min-h-0 overflow-hidden flex items-center"
+          >
             <canvas
               ref={canvasRef}
               onClick={handleCanvasClick}
-              className="cursor-pointer rounded w-full"
+              className="cursor-pointer rounded w-full h-9 block"
+              style={{ height: WAVEFORM_HEIGHT, minHeight: WAVEFORM_HEIGHT }}
             />
           </div>
           

@@ -1,116 +1,40 @@
-import React, { memo, useEffect, useState, useCallback } from 'react';
-import { useVisualEditorState, SaveStatus } from './useVisualEditorState';
+import React, { memo, useState, useCallback, useEffect } from 'react';
+import { useVisualProjectSession } from '@/hooks/useVisualProjectSession';
 import { useTeleprompterStore } from '@/store/teleprompterStore';
 import { useUndoRedo } from './useUndoRedo';
+import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
+import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/components/ui/resizable';
+import { LeftControlPanel } from './LeftControlPanel';
 import { ImageCanvas } from './ImageCanvas';
 import { TimelineStrip } from './TimelineStrip';
-import { SelectionToolbar } from './SelectionToolbar';
-import { LeftControlPanel } from './LeftControlPanel';
+import { SegmentOverlay } from './SegmentOverlay';
 import { AudioWaveform } from './AudioWaveform';
-import { FullscreenPlayer } from './FullscreenPlayer';
+import { SelectionToolbar } from './SelectionToolbar';
+import { SegmentPropertiesBar } from './components/toolbar/SegmentPropertiesBar';
 import { ProjectListDialog } from './ProjectListDialog';
+import { WelcomeDashboard } from './WelcomeDashboard/WelcomeDashboard';
+import { FullscreenPlayer } from './FullscreenPlayer';
 import { KeyboardShortcutsOverlay } from './KeyboardShortcutsOverlay';
-import { WelcomeDashboard } from './WelcomeDashboard';
-import { useVisualProjectSession } from '@/hooks/useVisualProjectSession';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { Skeleton } from '@/components/ui/skeleton';
-import { 
-  Eye, 
-  Save, 
-  FolderOpen, 
-  Play,
-  Loader2,
-  Check,
-  Plus,
-  Download,
-  Upload,
-  Keyboard,
-  Cloud,
-  CloudOff,
-  RectangleHorizontal,
-} from 'lucide-react';
+import { useVisualEditorState } from './useVisualEditorState';
 import { cn } from '@/lib/utils';
 import { exportVisualProject, importVisualProject } from '@/core/storage/VisualProjectStorage';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-  DropdownMenuSeparator,
-} from '@/components/ui/dropdown-menu';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@/components/ui/popover';
 import { toast } from 'sonner';
-
-// Aspect ratio presets
-const ASPECT_RATIO_PRESETS = [
-  { value: 'free', label: 'Free Draw', description: 'No constraint' },
-  { value: '16:9', label: '16:9', description: '1920×1080 (HD)' },
-  { value: '4:3', label: '4:3', description: '1024×768' },
-  { value: '1:1', label: '1:1', description: 'Square' },
-  { value: '9:16', label: '9:16', description: 'Portrait' },
-  { value: '21:9', label: '21:9', description: 'Ultrawide' },
-  { value: 'custom', label: 'Custom', description: 'Set your own' },
-];
+import { Loader2 } from 'lucide-react';
+import { Skeleton } from '@/components/ui/skeleton';
 
 interface VisualEditorProps {
   className?: string;
   onOpenPreview?: () => void;
+  onOpenAudioLibrary?: () => void;
+  onGoHome?: () => void;
+  onEditorTypeChange?: (type: 'text' | 'visual') => void;
+  onOpenSettings?: () => void;
+  onOpenShortcuts?: () => void;
 }
 
-// Save status indicator component
-const SaveStatusIndicator = ({ status, lastSaved }: { status: SaveStatus; lastSaved: number | null }) => {
-  if (status === 'saving') {
-    return (
-      <span className="text-[10px] text-muted-foreground flex items-center gap-1">
-        <Loader2 size={10} className="animate-spin" />
-        Saving...
-      </span>
-    );
-  }
-  
-  if (status === 'saved' && lastSaved) {
-    return (
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <span className="text-[10px] text-muted-foreground flex items-center gap-1 cursor-default">
-            <Cloud size={10} className="text-primary" />
-            Saved
-          </span>
-        </TooltipTrigger>
-        <TooltipContent>
-          Last saved: {new Date(lastSaved).toLocaleString()}
-        </TooltipContent>
-      </Tooltip>
-    );
-  }
-  
-  if (status === 'error') {
-    return (
-      <span className="text-[10px] text-destructive flex items-center gap-1">
-        <CloudOff size={10} />
-        Save failed
-      </span>
-    );
-  }
-  
-  return null;
-};
-
-export const VisualEditor = memo<VisualEditorProps>(({ className, onOpenPreview }) => {
-  const [showPlayer, setShowPlayer] = useState(false);
+export const VisualEditor = memo<VisualEditorProps>(({ className, onOpenAudioLibrary, onGoHome, onEditorTypeChange, onOpenSettings, onOpenShortcuts }) => {
+  const showPlayer = useVisualEditorState((s) => s.showPlayer);
+  const setShowPlayer = useVisualEditorState((s) => s.setShowPlayer);
   const [showProjectList, setShowProjectList] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
   
@@ -131,6 +55,8 @@ export const VisualEditor = memo<VisualEditorProps>(({ className, onOpenPreview 
     setStartupMode,
     autoResumeEnabled,
     setAutoResumeEnabled,
+    autoSaveEnabled,
+    setAutoSaveEnabled,
   } = useVisualProjectSession();
   
   // Local state for project name editing
@@ -139,6 +65,8 @@ export const VisualEditor = memo<VisualEditorProps>(({ className, onOpenPreview 
   const lastSaved = useVisualEditorState((s) => s.lastSaved);
   
   const zoom = useVisualEditorState((s) => s.zoom);
+  const isPlaying = useVisualEditorState((s) => s.isPlaying);
+  const setPlaying = useVisualEditorState((s) => s.setPlaying);
   const selectedSegmentIds = useVisualEditorState((s) => s.selectedSegmentIds);
   const pages = useVisualEditorState((s) => s.pages);
   const currentPage = useVisualEditorState((s) => s.getCurrentPage());
@@ -163,14 +91,12 @@ export const VisualEditor = memo<VisualEditorProps>(({ className, onOpenPreview 
   const setCustomAspectRatio = useVisualEditorState((s) => s.setCustomAspectRatio);
   
   const { saveState, undo, redo } = useUndoRedo();
-  
-  // Export current project
+
   const handleExport = useCallback(() => {
     if (pages.length === 0) {
       toast.error('Add at least one image before exporting');
       return;
     }
-    
     exportVisualProject({
       id: projectId || 'exported',
       name: projectName,
@@ -182,7 +108,30 @@ export const VisualEditor = memo<VisualEditorProps>(({ className, onOpenPreview 
     toast.success('Project exported');
   }, [projectId, projectName, pages, audioFile]);
   
-  // Import project
+  useKeyboardShortcuts({
+    setShowShortcuts,
+    createNewProject,
+    setShowProjectList,
+    handleExport,
+    saveProject,
+    setDrawing,
+    selectedSegmentIds,
+    saveState,
+    deleteSegments,
+    copySelected,
+    paste,
+    duplicateSegment,
+    selectAll,
+    deselectAll,
+    undo,
+    redo,
+    zoom,
+    setZoom,
+    pages,
+    currentPageIndex,
+    setCurrentPage,
+  });
+
   const handleImport = useCallback(async () => {
     const input = document.createElement('input');
     input.type = 'file';
@@ -208,165 +157,16 @@ export const VisualEditor = memo<VisualEditorProps>(({ className, onOpenPreview 
   const totalSegments = pages.reduce((acc, p) => acc + p.segments.filter(s => !s.isHidden).length, 0);
   const canPlay = totalSegments > 0;
   
-  // Keyboard shortcuts
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // Ignore if typing in input
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
-        return;
-      }
-      
-      const ctrl = e.ctrlKey || e.metaKey;
-      
-      // Show shortcuts (?)
-      if (e.key === '?' || (e.shiftKey && e.key === '/')) {
-        e.preventDefault();
-        setShowShortcuts(true);
-        return;
-      }
-      
-      // New project (Ctrl+N)
-      if (ctrl && e.key === 'n') {
-        e.preventDefault();
-        createNewProject();
-        return;
-      }
-      
-      // Open project (Ctrl+O)
-      if (ctrl && e.key === 'o') {
-        e.preventDefault();
-        setShowProjectList(true);
-        return;
-      }
-      
-      // Export (Ctrl+Shift+S)
-      if (ctrl && e.shiftKey && e.key === 's') {
-        e.preventDefault();
-        handleExport();
-        return;
-      }
-      
-      // Save shortcut (Ctrl+S)
-      if (ctrl && e.key === 's' && !e.shiftKey) {
-        e.preventDefault();
-        saveProject();
-        return;
-      }
-      
-      // New segment (N key)
-      if (e.key === 'n' || e.key === 'N') {
-        e.preventDefault();
-        setDrawing(true);
-        return;
-      }
-      
-      // Delete
-      if ((e.key === 'Delete' || e.key === 'Backspace') && selectedSegmentIds.size > 0) {
-        e.preventDefault();
-        saveState();
-        deleteSegments(Array.from(selectedSegmentIds));
-        return;
-      }
-      
-      // Copy
-      if (ctrl && e.key === 'c') {
-        e.preventDefault();
-        copySelected();
-        return;
-      }
-      
-      // Paste
-      if (ctrl && e.key === 'v') {
-        e.preventDefault();
-        saveState();
-        paste();
-        return;
-      }
-      
-      // Duplicate
-      if (ctrl && e.key === 'd' && selectedSegmentIds.size === 1) {
-        e.preventDefault();
-        saveState();
-        duplicateSegment(Array.from(selectedSegmentIds)[0]);
-        return;
-      }
-      
-      // Select all
-      if (ctrl && e.key === 'a') {
-        e.preventDefault();
-        selectAll();
-        return;
-      }
-      
-      // Deselect
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        deselectAll();
-        setDrawing(false);
-        return;
-      }
-      
-      // Undo
-      if (ctrl && e.key === 'z' && !e.shiftKey) {
-        e.preventDefault();
-        undo();
-        return;
-      }
-      
-      // Redo
-      if (ctrl && e.shiftKey && e.key === 'z') {
-        e.preventDefault();
-        redo();
-        return;
-      }
-      
-      // Zoom
-      if (e.key === '+' || e.key === '=') {
-        e.preventDefault();
-        setZoom(zoom + 0.25);
-        return;
-      }
-      
-      if (e.key === '-') {
-        e.preventDefault();
-        setZoom(zoom - 0.25);
-        return;
-      }
-      
-      // Page navigation
-      if (e.key === 'PageUp') {
-        e.preventDefault();
-        if (currentPageIndex > 0) {
-          setCurrentPage(currentPageIndex - 1);
-        }
-        return;
-      }
-      
-      if (e.key === 'PageDown') {
-        e.preventDefault();
-        if (currentPageIndex < pages.length - 1) {
-          setCurrentPage(currentPageIndex + 1);
-        }
-        return;
-      }
-    };
-    
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [
-    selectedSegmentIds, zoom, pages.length, currentPageIndex,
-    saveState, deleteSegments, copySelected, paste, duplicateSegment,
-    selectAll, deselectAll, undo, redo, setZoom, setCurrentPage, setDrawing,
-    saveProject, createNewProject, handleExport,
-  ]);
-  
   const hasHiddenSegments = currentPage?.segments.some(s => s.isHidden);
+  const singleSelectedSegment = selectedSegmentIds.size === 1 && currentPage
+    ? currentPage.segments.find(s => selectedSegmentIds.has(s.id))
+    : null;
   
   // Loading state
   if (isLoading) {
     return (
       <div className={cn('flex h-full bg-background overflow-hidden', className)}>
-        <div className="w-56 shrink-0 border-r p-3 space-y-3">
+        <div className="w-64 min-w-[260px] shrink-0 border-r p-3 space-y-3">
           <Skeleton className="h-8 w-full" />
           <Skeleton className="h-24 w-full" />
           <Skeleton className="h-24 w-full" />
@@ -408,6 +208,7 @@ export const VisualEditor = memo<VisualEditorProps>(({ className, onOpenPreview 
           onNewProject={createNewProject}
           onOpenProject={loadProjectAndEdit}
           onOpenProjectList={() => setShowProjectList(true)}
+          onOpenShortcuts={() => setShowShortcuts(true)}
           autoResumeEnabled={autoResumeEnabled}
           onAutoResumeChange={setAutoResumeEnabled}
           className={className}
@@ -436,214 +237,50 @@ export const VisualEditor = memo<VisualEditorProps>(({ className, onOpenPreview 
       />
       
       <div className={cn('flex h-full bg-background overflow-hidden', className)}>
-        {/* Left Control Panel - Collapsible */}
-        {!segmentListCollapsed && (
-          <LeftControlPanel className="w-56 shrink-0" />
-        )}
-        
-        {/* Main Canvas Area */}
-        <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-          {/* Header with project controls */}
-          <div className="flex items-center gap-2 px-3 py-1.5 border-b border-border bg-card">
-            {/* Project name */}
-            <Input
-              value={projectName}
-              onChange={(e) => setProjectName(e.target.value)}
-              className="h-7 w-40 text-sm"
-              placeholder="Project name"
+        {!segmentListCollapsed ? (
+          <ResizablePanelGroup direction="horizontal" className="flex-1">
+            <ResizablePanel defaultSize={11} minSize={10} maxSize={20}>
+              <LeftControlPanel className="h-full w-full overflow-hidden" />
+            </ResizablePanel>
+            <ResizableHandle withHandle className="shrink-0" />
+            <ResizablePanel defaultSize={89} minSize={80} className="min-w-0">
+              <div className="flex flex-col h-full min-w-0 overflow-hidden">
+                {/* Canvas */}
+                <ImageCanvas className="flex-1 min-h-0" />
+
+          {/* Segment Properties Bar - when exactly one segment selected */}
+          {singleSelectedSegment && (
+            <SegmentPropertiesBar
+              segment={singleSelectedSegment}
+              onClose={() => useVisualEditorState.getState().deselectAll()}
             />
-            
-            {/* Save status */}
-            <SaveStatusIndicator status={saveStatus} lastSaved={lastSaved} />
-            
-            {/* Unsaved indicator */}
-            {isDirty && saveStatus === 'idle' && (
-              <span className="text-[10px] px-1.5 py-0.5 bg-accent/20 text-accent rounded">
-                Unsaved
-              </span>
-            )}
-            
-            {/* Aspect ratio selector */}
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <div className="flex items-center gap-1 ml-2">
-                  <Select
-                    value={aspectRatioConstraint || 'free'}
-                    onValueChange={(val) => setAspectRatioConstraint(val === 'free' ? null : val)}
-                  >
-                    <SelectTrigger className="h-7 w-20 text-xs gap-1 px-2">
-                      <RectangleHorizontal size={12} className="shrink-0 text-muted-foreground" />
-                      <SelectValue placeholder="Ratio" />
-                    </SelectTrigger>
-                    <SelectContent align="start">
-                      {ASPECT_RATIO_PRESETS.map((preset) => (
-                        <SelectItem key={preset.value} value={preset.value} className="text-xs">
-                          <span className="font-medium">{preset.label}</span>
-                          <span className="ml-2 text-muted-foreground">{preset.description}</span>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  
-                  {/* Custom ratio popover */}
-                  {aspectRatioConstraint === 'custom' && (
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <Button variant="ghost" size="sm" className="h-7 px-2 text-[10px] font-mono">
-                          {customAspectRatio.width}:{customAspectRatio.height}
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-44 p-2" align="start">
-                        <p className="text-[10px] font-medium mb-2">Custom Ratio</p>
-                        <div className="flex items-center gap-1">
-                          <Input
-                            type="number"
-                            value={customAspectRatio.width}
-                            onChange={(e) => setCustomAspectRatio({ 
-                              ...customAspectRatio, 
-                              width: parseInt(e.target.value) || 1 
-                            })}
-                            className="h-6 w-14 text-xs px-2"
-                            min={1}
-                          />
-                          <span className="text-muted-foreground text-xs">:</span>
-                          <Input
-                            type="number"
-                            value={customAspectRatio.height}
-                            onChange={(e) => setCustomAspectRatio({ 
-                              ...customAspectRatio, 
-                              height: parseInt(e.target.value) || 1 
-                            })}
-                            className="h-6 w-14 text-xs px-2"
-                            min={1}
-                          />
-                        </div>
-                      </PopoverContent>
-                    </Popover>
-                  )}
-                </div>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">
-                Aspect ratio constraint for drawing
-              </TooltipContent>
-            </Tooltip>
-            
-            <div className="flex-1" />
-            
-            {/* Shortcuts help */}
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setShowShortcuts(true)}>
-                  <Keyboard size={14} />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Keyboard shortcuts (?)</TooltipContent>
-            </Tooltip>
-            
-            {/* File menu */}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="sm">
-                  <FolderOpen size={14} className="mr-1" />
-                  File
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={() => createNewProject()}>
-                  <Plus size={14} className="mr-2" />
-                  New Project
-                  <span className="ml-auto text-[10px] text-muted-foreground">Ctrl+N</span>
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => setShowProjectList(true)}>
-                  <FolderOpen size={14} className="mr-2" />
-                  Open Project...
-                  <span className="ml-auto text-[10px] text-muted-foreground">Ctrl+O</span>
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => saveProject()}>
-                  <Save size={14} className="mr-2" />
-                  Save
-                  <span className="ml-auto text-[10px] text-muted-foreground">Ctrl+S</span>
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={handleExport} disabled={pages.length === 0}>
-                  <Download size={14} className="mr-2" />
-                  Export...
-                  <span className="ml-auto text-[10px] text-muted-foreground">Ctrl+Shift+S</span>
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={handleImport}>
-                  <Upload size={14} className="mr-2" />
-                  Import...
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-            
-            {/* Save button */}
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => saveProject()}
-                  disabled={saveStatus === 'saving' || pages.length === 0}
-                >
-                  {saveStatus === 'saving' ? (
-                    <Loader2 size={14} className="mr-1 animate-spin" />
-                  ) : (
-                    <Save size={14} className="mr-1" />
-                  )}
-                  Save
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Save project (Ctrl+S)</TooltipContent>
-            </Tooltip>
-            
-            {hasHiddenSegments && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={showAllSegments}
-                  >
-                    <Eye size={14} className="mr-1" />
-                    Show Hidden
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>Show all hidden segments</TooltipContent>
-              </Tooltip>
-            )}
-            
-            {/* Play button */}
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="default"
-                  size="sm"
-                  onClick={() => setShowPlayer(true)}
-                  disabled={!canPlay}
-                >
-                  <Play size={14} className="mr-1" />
-                  Play
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                {canPlay ? 'Start fullscreen playback' : 'Add segments to play'}
-              </TooltipContent>
-            </Tooltip>
-          </div>
-        
-          {/* Canvas */}
-          <ImageCanvas className="flex-1 min-h-0" />
+          )}
           
           {/* Audio Waveform */}
-          <AudioWaveform />
+          <AudioWaveform onOpenAudioLibrary={onOpenAudioLibrary} />
           
           {/* Timeline Strip */}
           <TimelineStrip />
           
-          {/* Selection Toolbar (floating) */}
+          {/* Selection Toolbar */}
           <SelectionToolbar />
-        </div>
+              </div>
+            </ResizablePanel>
+          </ResizablePanelGroup>
+        ) : (
+          <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+            <ImageCanvas className="flex-1 min-h-0" />
+            {singleSelectedSegment && (
+              <SegmentPropertiesBar
+                segment={singleSelectedSegment}
+                onClose={() => useVisualEditorState.getState().deselectAll()}
+              />
+            )}
+            <AudioWaveform onOpenAudioLibrary={onOpenAudioLibrary} />
+            <TimelineStrip />
+            <SelectionToolbar />
+          </div>
+        )}
       </div>
     </>
   );

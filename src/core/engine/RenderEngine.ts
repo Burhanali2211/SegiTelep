@@ -1,6 +1,12 @@
 // Canvas-based rendering engine for high-performance text display
 
 import { Segment, TEXT_COLOR_OPTIONS, Region } from '@/types/teleprompter.types';
+import * as pdfjsLib from 'pdfjs-dist';
+
+// Configure PDF.js worker (required for proper PDF parsing)
+if (typeof window !== 'undefined') {
+  pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
+}
 
 export interface RenderConfig {
   width: number;
@@ -151,6 +157,35 @@ export class RenderEngine {
       img.src = src;
     });
   }
+
+  private async loadPdfPage(dataUrl: string): Promise<HTMLImageElement> {
+    if (this.cachedImages.has(dataUrl)) {
+      return this.cachedImages.get(dataUrl)!;
+    }
+    const [, base64Data] = dataUrl.split(',');
+    const binaryString = atob(base64Data);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+    const pdf = await pdfjsLib.getDocument({ data: bytes }).promise;
+    const page = await pdf.getPage(1);
+    const viewport = page.getViewport({ scale: 2 });
+    const canvas = document.createElement('canvas');
+    canvas.width = viewport.width;
+    canvas.height = viewport.height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('Could not get canvas context');
+    await page.render({ canvasContext: ctx, viewport }).promise;
+    const img = new Image();
+    await new Promise<void>((resolve, reject) => {
+      img.onload = () => resolve();
+      img.onerror = reject;
+      img.src = canvas.toDataURL('image/png');
+    });
+    this.cachedImages.set(dataUrl, img);
+    return img;
+  }
   
   render(segment: Segment, scrollOffset: number, mirror: boolean = false): void {
     if (!this.ctx || !this.canvas) return;
@@ -192,23 +227,22 @@ export class RenderEngine {
     if (!this.ctx || !segment.content) return;
     
     const { width, height } = this.config;
+    const isPdf = segment.type === 'pdf-page';
+    const loadPromise = isPdf ? this.loadPdfPage(segment.content) : this.loadImage(segment.content);
     
-    // Check if image is cached
     if (this.cachedImages.has(segment.content)) {
       const img = this.cachedImages.get(segment.content)!;
       this.drawImageCentered(img, width, height);
     } else {
-      // Load and cache the image
-      this.loadImage(segment.content).then((img) => {
+      loadPromise.then((img) => {
         this.drawImageCentered(img, width, height);
       }).catch(() => {
-        // Draw placeholder if image fails to load
         this.ctx!.fillStyle = '#333333';
         this.ctx!.fillRect(width * 0.1, height * 0.1, width * 0.8, height * 0.8);
         this.ctx!.fillStyle = '#666666';
         this.ctx!.font = '24px Inter';
         this.ctx!.textAlign = 'center';
-        this.ctx!.fillText('Image failed to load', width / 2, height / 2);
+        this.ctx!.fillText(isPdf ? 'PDF failed to load' : 'Image failed to load', width / 2, height / 2);
       });
     }
   }

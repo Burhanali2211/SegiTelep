@@ -106,7 +106,7 @@ export const VoiceInputDialog = memo<VoiceInputDialogProps>(({
         {error && (
           <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-destructive/10 text-destructive text-sm">
             <AlertCircle size={16} />
-            {error}
+            {typeof error === 'string' ? error : (error?.message ?? 'An error occurred')}
           </div>
         )}
 

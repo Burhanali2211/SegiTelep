@@ -1,88 +1,105 @@
 // Native Storage API for Tauri Desktop Application
-// Provides native filesystem access when running as desktop app,
-// with fallback to IndexedDB for web preview
+// Uses @tauri-apps/plugin-fs with BaseDirectory.AppData and relative paths
+// Falls back to IndexedDB/localStorage for web preview
+
+import {
+  BaseDirectory,
+  exists,
+  mkdir,
+  readFile,
+  readDir,
+  readTextFile as fsReadTextFile,
+  remove,
+  writeFile,
+  writeTextFile as fsWriteTextFile,
+} from '@tauri-apps/plugin-fs';
 
 // Check if we're running in Tauri
 export function isTauriApp(): boolean {
   return typeof window !== 'undefined' && '__TAURI__' in window;
 }
 
-// Lazy import Tauri API to avoid errors in web mode
-async function getTauriInvoke() {
+const APP_DATA_BASE = BaseDirectory.AppData;
+
+// Guard: throw if not in Tauri (for functions that require native fs)
+function requireTauri(): void {
   if (!isTauriApp()) {
     throw new Error('Not running in Tauri environment');
   }
-  const { invoke } = await import('@tauri-apps/api/tauri');
-  return invoke;
 }
 
+// Get app data path - for compatibility; returns empty string when not in Tauri
 export async function getAppDataPath(): Promise<string> {
-  const invoke = await getTauriInvoke();
-  return invoke('get_app_data_path') as Promise<string>;
-}
-
-export async function ensureDirectory(path: string): Promise<void> {
-  if (!isTauriApp()) {
-    return; // No-op in browser
+  if (!isTauriApp()) return '';
+  try {
+    const { appDataDir } = await import('@tauri-apps/api/path');
+    return appDataDir();
+  } catch {
+    return '';
   }
-  const invoke = await getTauriInvoke();
-  await invoke('ensure_directory', { path });
 }
 
-export async function readFileBytes(path: string): Promise<Uint8Array> {
-  const invoke = await getTauriInvoke();
-  const bytes = await invoke('read_file_bytes', { path }) as number[];
-  return new Uint8Array(bytes);
+export async function ensureDirectory(relativePath: string): Promise<void> {
+  if (!isTauriApp()) return;
+  await mkdir(relativePath, { baseDir: APP_DATA_BASE, recursive: true });
 }
 
-export async function writeFileBytes(path: string, contents: Uint8Array): Promise<void> {
-  const invoke = await getTauriInvoke();
-  await invoke('write_file_bytes', { 
-    path, 
-    contents: Array.from(contents) 
-  });
+export async function readFileBytes(relativePath: string): Promise<Uint8Array> {
+  requireTauri();
+  return readFile(relativePath, { baseDir: APP_DATA_BASE });
 }
 
-export async function deleteFile(path: string): Promise<void> {
-  const invoke = await getTauriInvoke();
-  await invoke('delete_file', { path });
+export async function writeFileBytes(relativePath: string, contents: Uint8Array): Promise<void> {
+  requireTauri();
+  await writeFile(relativePath, contents, { baseDir: APP_DATA_BASE });
 }
 
-export async function listFiles(path: string): Promise<string[]> {
-  const invoke = await getTauriInvoke();
-  return invoke('list_files', { path }) as Promise<string[]>;
+export async function deleteFile(relativePath: string): Promise<void> {
+  if (!isTauriApp()) return;
+  await remove(relativePath, { baseDir: APP_DATA_BASE });
 }
 
-export async function fileExists(path: string): Promise<boolean> {
-  if (!isTauriApp()) {
-    return false;
-  }
-  const invoke = await getTauriInvoke();
-  return invoke('file_exists', { path }) as Promise<boolean>;
+// List entries in directory - returns names of files and subdirectories
+export async function listFiles(relativePath: string): Promise<string[]> {
+  if (!isTauriApp()) return [];
+  const entries = await readDir(relativePath, { baseDir: APP_DATA_BASE });
+  return entries.map((e) => e.name);
+}
+
+// Remove directory recursively (for project deletion)
+export async function removeDirectoryRecursive(relativePath: string): Promise<void> {
+  if (!isTauriApp()) return;
+  await remove(relativePath, { baseDir: APP_DATA_BASE, recursive: true });
+}
+
+export async function fileExists(relativePath: string): Promise<boolean> {
+  if (!isTauriApp()) return false;
+  return exists(relativePath, { baseDir: APP_DATA_BASE });
 }
 
 // Helper to read text file
-export async function readTextFile(path: string): Promise<string> {
-  const bytes = await readFileBytes(path);
-  return new TextDecoder().decode(bytes);
+export async function readTextFile(relativePath: string): Promise<string> {
+  requireTauri();
+  return fsReadTextFile(relativePath, { baseDir: APP_DATA_BASE });
 }
 
 // Helper to write text file
-export async function writeTextFile(path: string, content: string): Promise<void> {
-  const bytes = new TextEncoder().encode(content);
-  await writeFileBytes(path, bytes);
+async function writeTextFileToFs(path: string, content: string): Promise<void> {
+  requireTauri();
+  await fsWriteTextFile(path, content, { baseDir: APP_DATA_BASE });
 }
 
 // Helper to read JSON file
-export async function readJsonFile<T>(path: string): Promise<T> {
-  const content = await readTextFile(path);
+export async function readJsonFile<T>(relativePath: string): Promise<T> {
+  requireTauri();
+  const content = await fsReadTextFile(relativePath, { baseDir: APP_DATA_BASE });
   return JSON.parse(content) as T;
 }
 
 // Helper to write JSON file
-export async function writeJsonFile<T>(path: string, data: T): Promise<void> {
+export async function writeJsonFile<T>(relativePath: string, data: T): Promise<void> {
   const content = JSON.stringify(data, null, 2);
-  await writeTextFile(path, content);
+  await writeTextFileToFs(relativePath, content);
 }
 
 // Convert base64 data URL to Uint8Array
@@ -124,6 +141,7 @@ export function getExtensionFromMimeType(mimeType: string): string {
     'audio/mp4': 'm4a',
     'audio/aac': 'aac',
     'application/json': 'json',
+    'application/pdf': 'pdf',
   };
   return map[mimeType] || 'bin';
 }
