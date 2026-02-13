@@ -9,14 +9,15 @@ interface DeleteProjectButtonProps {
   projectId: string;
   projectName?: string;
   className?: string;
+  onClick?: () => void;
 }
 
 /** Clean delete project button */
 export const DeleteProjectButton = memo<DeleteProjectButtonProps>(
-  ({ projectId, projectName, className }) => {
+  ({ projectId, projectName, className, onClick }) => {
     const handleClick = (e: React.MouseEvent) => {
       e.stopPropagation();
-      toast.info(`Delete "${projectName || 'project'}" (mock)`);
+      if (onClick) onClick();
     };
 
     return (

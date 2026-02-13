@@ -1,5 +1,7 @@
 // Core Types for Teleprompter Application
 
+export type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
+
 export interface Region {
   x: number;      // percentage 0-100
   y: number;      // percentage 0-100
@@ -21,22 +23,22 @@ export interface Segment {
   type: 'text' | 'image' | 'image-region' | 'pdf-page';
   name: string;
   order: number;
-  
+
   // Content
   content: string; // Text content or asset reference (base64 data URL)
-  
+
   // Region for cropped segments
   region?: Region;
   sourceAssetId?: string; // Reference to source image for regions
-  
+
   // Audio
   audioId?: string;
   syncToAudio?: boolean; // If true, use audio duration
-  
+
   // Playback settings
   scrollSpeed: number; // pixels per second (for text)
   duration: number; // seconds (for static content like images)
-  
+
   // Visual settings
   fontSize: number;
   fontFamily: string;

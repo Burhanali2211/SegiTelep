@@ -9,7 +9,7 @@ import {
 import { ArrowDownAZ } from 'lucide-react';
 import { toast } from 'sonner';
 
-type SortOption = 'recent' | 'name' | 'modified';
+export type SortOption = 'recent' | 'name' | 'modified';
 
 interface SortProjectsDropdownProps {
   value?: SortOption;
@@ -22,7 +22,6 @@ export const SortProjectsDropdown = memo<SortProjectsDropdownProps>(
   ({ value = 'recent', onSort, className }) => {
     const handleSelect = (option: SortOption) => {
       onSort?.(option);
-      toast.info(`Sort by: ${option} (mock)`);
     };
 
     return (

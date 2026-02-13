@@ -3,8 +3,8 @@ import { useVisualProjectSession } from '@/hooks/useVisualProjectSession';
 import { useTeleprompterStore } from '@/store/teleprompterStore';
 import { useUndoRedo } from './useUndoRedo';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
-import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/components/ui/resizable';
-import { LeftControlPanel } from './LeftControlPanel';
+import { AppSidebar } from '@/components/Layout/AppSidebar';
+import { SidebarProvider, SidebarInset } from '@/components/ui/sidebar';
 import { ImageCanvas } from './ImageCanvas';
 import { TimelineStrip } from './TimelineStrip';
 import { SegmentOverlay } from './SegmentOverlay';
@@ -16,6 +16,7 @@ import { WelcomeDashboard } from './WelcomeDashboard/WelcomeDashboard';
 import { FullscreenPlayer } from './FullscreenPlayer';
 import { KeyboardShortcutsOverlay } from './KeyboardShortcutsOverlay';
 import { useVisualEditorState } from './useVisualEditorState';
+import { AppLogo } from '@/components/Layout/AppLogo';
 import { cn } from '@/lib/utils';
 import { exportVisualProject, importVisualProject } from '@/core/storage/VisualProjectStorage';
 import { toast } from 'sonner';
@@ -27,23 +28,20 @@ interface VisualEditorProps {
   onOpenPreview?: () => void;
   onOpenAudioLibrary?: () => void;
   onGoHome?: () => void;
-  onEditorTypeChange?: (type: 'text' | 'visual') => void;
   onOpenSettings?: () => void;
   onOpenShortcuts?: () => void;
 }
 
-export const VisualEditor = memo<VisualEditorProps>(({ className, onOpenAudioLibrary, onGoHome, onEditorTypeChange, onOpenSettings, onOpenShortcuts }) => {
+export const VisualEditor = memo<VisualEditorProps>(({ className, onOpenAudioLibrary, onGoHome, onOpenSettings, onOpenShortcuts }) => {
   const showPlayer = useVisualEditorState((s) => s.showPlayer);
   const setShowPlayer = useVisualEditorState((s) => s.setShowPlayer);
   const [showProjectList, setShowProjectList] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
-  
-  // Get sidebar collapsed state from main store
-  const segmentListCollapsed = useTeleprompterStore((s) => s.editor.segmentListCollapsed);
-  
+
+
   // Session management
-  const { 
-    saveProject, 
+  const {
+    saveProject,
     loadProject,
     loadProjectAndEdit,
     createNewProject,
@@ -58,12 +56,12 @@ export const VisualEditor = memo<VisualEditorProps>(({ className, onOpenAudioLib
     autoSaveEnabled,
     setAutoSaveEnabled,
   } = useVisualProjectSession();
-  
+
   // Local state for project name editing
   const projectName = useVisualEditorState((s) => s.projectName);
   const setProjectName = useVisualEditorState((s) => s.setProjectName);
   const lastSaved = useVisualEditorState((s) => s.lastSaved);
-  
+
   const zoom = useVisualEditorState((s) => s.zoom);
   const isPlaying = useVisualEditorState((s) => s.isPlaying);
   const setPlaying = useVisualEditorState((s) => s.setPlaying);
@@ -71,7 +69,7 @@ export const VisualEditor = memo<VisualEditorProps>(({ className, onOpenAudioLib
   const pages = useVisualEditorState((s) => s.pages);
   const currentPage = useVisualEditorState((s) => s.getCurrentPage());
   const audioFile = useVisualEditorState((s) => s.audioFile);
-  
+
   const setZoom = useVisualEditorState((s) => s.setZoom);
   const showAllSegments = useVisualEditorState((s) => s.showAllSegments);
   const deleteSegments = useVisualEditorState((s) => s.deleteSegments);
@@ -83,13 +81,13 @@ export const VisualEditor = memo<VisualEditorProps>(({ className, onOpenAudioLib
   const setCurrentPage = useVisualEditorState((s) => s.setCurrentPage);
   const currentPageIndex = useVisualEditorState((s) => s.currentPageIndex);
   const setDrawing = useVisualEditorState((s) => s.setDrawing);
-  
+
   // Aspect ratio state
   const aspectRatioConstraint = useVisualEditorState((s) => s.aspectRatioConstraint);
   const customAspectRatio = useVisualEditorState((s) => s.customAspectRatio);
   const setAspectRatioConstraint = useVisualEditorState((s) => s.setAspectRatioConstraint);
   const setCustomAspectRatio = useVisualEditorState((s) => s.setCustomAspectRatio);
-  
+
   const { saveState, undo, redo } = useUndoRedo();
 
   const handleExport = useCallback(() => {
@@ -107,7 +105,7 @@ export const VisualEditor = memo<VisualEditorProps>(({ className, onOpenAudioLib
     });
     toast.success('Project exported');
   }, [projectId, projectName, pages, audioFile]);
-  
+
   useKeyboardShortcuts({
     setShowShortcuts,
     createNewProject,
@@ -136,11 +134,11 @@ export const VisualEditor = memo<VisualEditorProps>(({ className, onOpenAudioLib
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = '.visualprompt.json,.json';
-    
+
     input.onchange = async (e) => {
       const file = (e.target as HTMLInputElement).files?.[0];
       if (!file) return;
-      
+
       try {
         const imported = await importVisualProject(file);
         await loadProject(imported.id);
@@ -149,46 +147,34 @@ export const VisualEditor = memo<VisualEditorProps>(({ className, onOpenAudioLib
         toast.error('Failed to import project. Invalid file format.');
       }
     };
-    
+
     input.click();
   }, [loadProject]);
-  
+
   // Check if has segments to play
   const totalSegments = pages.reduce((acc, p) => acc + p.segments.filter(s => !s.isHidden).length, 0);
   const canPlay = totalSegments > 0;
-  
+
   const hasHiddenSegments = currentPage?.segments.some(s => s.isHidden);
   const singleSelectedSegment = selectedSegmentIds.size === 1 && currentPage
     ? currentPage.segments.find(s => selectedSegmentIds.has(s.id))
     : null;
-  
+
   // Loading state
   if (isLoading) {
     return (
-      <div className={cn('flex h-full bg-background overflow-hidden', className)}>
-        <div className="w-64 min-w-[260px] shrink-0 border-r p-3 space-y-3">
-          <Skeleton className="h-8 w-full" />
-          <Skeleton className="h-24 w-full" />
-          <Skeleton className="h-24 w-full" />
-        </div>
-        <div className="flex-1 flex flex-col">
-          <div className="h-10 border-b flex items-center px-3 gap-2">
-            <Skeleton className="h-7 w-40" />
-            <div className="flex-1" />
-            <Skeleton className="h-7 w-20" />
-            <Skeleton className="h-7 w-20" />
-          </div>
-          <div className="flex-1 flex items-center justify-center">
-            <div className="flex flex-col items-center gap-3">
-              <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
-              <p className="text-sm text-muted-foreground">Loading project...</p>
-            </div>
+      <div className={cn('flex flex-col items-center justify-center h-full w-full bg-background', className)}>
+        <div className="flex flex-col items-center gap-4">
+          <AppLogo size="lg" className="animate-pulse" />
+          <div className="flex flex-col items-center gap-2">
+            <Loader2 className="w-6 h-6 animate-spin text-primary" />
+            <p className="text-sm text-muted-foreground font-medium">Initializing workspace...</p>
           </div>
         </div>
       </div>
     );
   }
-  
+
   // Welcome Dashboard - show when startup mode is 'welcome'
   if (startupMode === 'welcome') {
     return (
@@ -203,12 +189,13 @@ export const VisualEditor = memo<VisualEditorProps>(({ className, onOpenAudioLib
           }}
           currentProjectId={projectId}
         />
-        
+
         <WelcomeDashboard
           onNewProject={createNewProject}
           onOpenProject={loadProjectAndEdit}
           onOpenProjectList={() => setShowProjectList(true)}
           onOpenShortcuts={() => setShowShortcuts(true)}
+          onImport={handleImport}
           autoResumeEnabled={autoResumeEnabled}
           onAutoResumeChange={setAutoResumeEnabled}
           className={className}
@@ -216,13 +203,13 @@ export const VisualEditor = memo<VisualEditorProps>(({ className, onOpenAudioLib
       </>
     );
   }
-  
+
   return (
     <>
       {showPlayer && (
         <FullscreenPlayer onClose={() => setShowPlayer(false)} />
       )}
-      
+
       <ProjectListDialog
         open={showProjectList}
         onOpenChange={setShowProjectList}
@@ -230,57 +217,30 @@ export const VisualEditor = memo<VisualEditorProps>(({ className, onOpenAudioLib
         onNewProject={() => createNewProject()}
         currentProjectId={projectId}
       />
-      
+
       <KeyboardShortcutsOverlay
         open={showShortcuts}
         onOpenChange={setShowShortcuts}
       />
-      
-      <div className={cn('flex h-full bg-background overflow-hidden', className)}>
-        {!segmentListCollapsed ? (
-          <ResizablePanelGroup direction="horizontal" className="flex-1">
-            <ResizablePanel defaultSize={11} minSize={10} maxSize={20}>
-              <LeftControlPanel className="h-full w-full overflow-hidden" />
-            </ResizablePanel>
-            <ResizableHandle withHandle className="shrink-0" />
-            <ResizablePanel defaultSize={89} minSize={80} className="min-w-0">
-              <div className="flex flex-col h-full min-w-0 overflow-hidden">
-                {/* Canvas */}
-                <ImageCanvas className="flex-1 min-h-0" />
 
-          {/* Segment Properties Bar - when exactly one segment selected */}
+      <div className={cn('flex h-full w-full bg-background overflow-hidden overflow-x-hidden relative min-w-0', className)}>
+        <div className="flex-1 flex flex-col min-w-0 w-full overflow-hidden overflow-x-hidden m-0 relative">
           {singleSelectedSegment && (
             <SegmentPropertiesBar
               segment={singleSelectedSegment}
               onClose={() => useVisualEditorState.getState().deselectAll()}
+              className="absolute top-6 left-1/2 -translate-x-1/2 z-30 shadow-xl border rounded-lg w-auto max-w-[calc(100vw-400px)]"
             />
           )}
-          
-          {/* Audio Waveform */}
-          <AudioWaveform onOpenAudioLibrary={onOpenAudioLibrary} />
-          
-          {/* Timeline Strip */}
-          <TimelineStrip />
-          
-          {/* Selection Toolbar */}
-          <SelectionToolbar />
-              </div>
-            </ResizablePanel>
-          </ResizablePanelGroup>
-        ) : (
-          <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-            <ImageCanvas className="flex-1 min-h-0" />
-            {singleSelectedSegment && (
-              <SegmentPropertiesBar
-                segment={singleSelectedSegment}
-                onClose={() => useVisualEditorState.getState().deselectAll()}
-              />
-            )}
+          <ImageCanvas className="flex-1 min-h-0 min-w-0 basis-0" />
+          <div className="flex flex-col shrink-0 w-full min-w-0 overflow-hidden max-w-full border-t bg-background">
             <AudioWaveform onOpenAudioLibrary={onOpenAudioLibrary} />
-            <TimelineStrip />
+            <div className="w-full relative overflow-hidden min-w-0">
+              <TimelineStrip />
+            </div>
             <SelectionToolbar />
           </div>
-        )}
+        </div>
       </div>
     </>
   );

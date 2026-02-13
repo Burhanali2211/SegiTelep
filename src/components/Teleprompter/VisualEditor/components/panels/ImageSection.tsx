@@ -8,6 +8,7 @@ import {
 } from '@/components/ui/context-menu';
 import { Trash2, ImagePlus, Upload, Check } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { AssetThumbnail } from '../../components/AssetThumbnail';
 import type { ImagePage } from '../../types/visualEditor.types';
 
 interface ImageSectionProps {
@@ -67,7 +68,7 @@ export const ImageSection = memo<ImageSectionProps>(({ pages, currentPageIndex, 
           {imagePages.map((page, index) => {
             const actualPageIndex = pages.findIndex(p => p.id === page.id);
             const isSelected = actualPageIndex === currentPageIndex;
-            
+
             return (
               <ContextMenu key={page.id}>
                 <ContextMenuTrigger asChild>
@@ -83,17 +84,12 @@ export const ImageSection = memo<ImageSectionProps>(({ pages, currentPageIndex, 
                     )}
                   >
                     {/* Thumbnail */}
-                    <div className="relative w-8 h-8 rounded-md overflow-hidden flex-shrink-0">
-                      <img src={page.data} alt="" className="w-full h-full object-cover" />
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent" />
-                      <div className="absolute bottom-0.5 left-0.5 text-[7px] font-bold px-0.5 py-0.5 rounded bg-black/70 text-white">
-                        {actualPageIndex + 1}
-                      </div>
-                      {page.segments.length > 0 && (
-                        <div className="absolute top-0.5 right-0.5 text-[7px] font-medium px-0.5 py-0.5 rounded bg-black/70 text-white">{page.segments.length}</div>
-                      )}
-                    </div>
-                    
+                    <AssetThumbnail
+                      assetId={page.assetId}
+                      data={page.data}
+                      className="w-8 h-8 rounded-md flex-shrink-0"
+                    />
+
                     {/* Info */}
                     <div className="flex-1 min-w-0 overflow-hidden">
                       <div className="flex flex-col min-w-0">
@@ -106,7 +102,7 @@ export const ImageSection = memo<ImageSectionProps>(({ pages, currentPageIndex, 
                         <span className="text-[8px] text-muted-foreground truncate">Click to select</span>
                       </div>
                     </div>
-                    
+
                     {/* Actions */}
                     <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
                       {imagePages.length > 1 && (
@@ -142,7 +138,7 @@ export const ImageSection = memo<ImageSectionProps>(({ pages, currentPageIndex, 
               </ContextMenu>
             );
           })}
-          
+
           {/* Add More Button */}
           <button
             onClick={onAddImage}

@@ -1,14 +1,28 @@
-import React, { memo, useState } from 'react';
+import React, { memo, useState, useCallback, useMemo } from 'react';
 import { MainMenuBar } from './MainMenuBar';
-import { SaveStatus } from './SecondaryToolbar';
-import { Menu, X, Play, Pause, Save, Home, Settings, HelpCircle, FileText, Image, Loader2, CheckCircle, AlertCircle, Edit3, ChevronDown, Clock, Music, Timer, Eye } from 'lucide-react';
+import { SaveStatus } from '@/types/teleprompter.types';
+import {
+  X,
+  Play,
+  Pause,
+  Save,
+  Loader2,
+  CheckCircle,
+  AlertCircle,
+  Edit3,
+  ChevronDown,
+  Clock,
+  Music,
+  Timer,
+  Eye,
+  Circle,
+  Check
+} from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
-import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { Input } from '@/components/ui/input';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { 
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -16,10 +30,12 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { AppLogo } from './AppLogo';
+import { SidebarTrigger } from '@/components/ui/sidebar';
+import { AspectRatioSelector } from '@/components/Teleprompter/VisualEditor/components/toolbar/AspectRatioSelector';
 
-// Editable Project Name Component
-const EditableProjectName = memo<{ 
-  projectName: string; 
+// Editable Project Name Component - Enhanced
+const EditableProjectName = memo<{
+  projectName: string;
   onProjectNameChange: (name: string) => void;
 }>(({ projectName, onProjectNameChange }) => {
   const [isEditing, setIsEditing] = useState(false);
@@ -29,58 +45,92 @@ const EditableProjectName = memo<{
     setTempName(projectName);
   }, [projectName]);
 
-  const handleSave = () => {
+  const handleSave = useCallback(() => {
     if (tempName.trim() && tempName !== projectName) {
       onProjectNameChange(tempName.trim());
     } else {
       setTempName(projectName);
     }
     setIsEditing(false);
-  };
+  }, [tempName, projectName, onProjectNameChange]);
 
-  const handleCancel = () => {
+  const handleCancel = useCallback(() => {
     setTempName(projectName);
     setIsEditing(false);
-  };
+  }, [projectName]);
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
+      e.preventDefault();
       handleSave();
     } else if (e.key === 'Escape') {
+      e.preventDefault();
       handleCancel();
     }
-  };
+  }, [handleSave, handleCancel]);
 
   if (isEditing) {
     return (
-      <div className="flex items-center gap-1">
+      <div className="flex items-center gap-1.5 animate-in fade-in-0 zoom-in-95 duration-150">
         <Input
           value={tempName}
           onChange={(e) => setTempName(e.target.value)}
           onBlur={handleSave}
           onKeyDown={handleKeyDown}
-          className="h-7 w-44 text-sm focus:ring-2 focus:ring-primary/20 transition-all"
-          placeholder="Project name"
+          className="h-7 w-48 text-sm font-medium bg-background border-primary/50 focus-visible:ring-primary/30 focus-visible:border-primary transition-all shadow-sm"
+          placeholder="Enter project name"
           autoFocus
+          maxLength={50}
         />
+        <div className="flex items-center gap-0.5">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6 hover:bg-green-500/10 hover:text-green-600"
+            onClick={handleSave}
+          >
+            <Check size={12} />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6 hover:bg-destructive/10 hover:text-destructive"
+            onClick={handleCancel}
+          >
+            <X size={12} />
+          </Button>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="flex items-center gap-2">
-      <span className="text-xs text-muted-foreground">Project:</span>
-      <div 
-        className="flex items-center gap-1 px-2 py-1 rounded-md hover:bg-muted/50 cursor-pointer transition-colors group min-w-0 max-w-44"
-        onClick={() => setIsEditing(true)}
-        title="Click to edit project name"
-      >
-        <span className="text-sm truncate flex-1 min-w-0">{projectName || 'Untitled Project'}</span>
-        <Edit3 size={12} className="text-muted-foreground group-hover:text-foreground transition-colors flex-shrink-0" />
-      </div>
-    </div>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <div
+          className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg hover:bg-accent/50 cursor-pointer transition-all duration-200 group border border-transparent hover:border-border/50 min-w-0 max-w-56"
+          onClick={() => setIsEditing(true)}
+        >
+          <div className="flex items-center gap-1.5 min-w-0 flex-1">
+            <span className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wide">Project:</span>
+            <span className="text-sm font-semibold truncate text-foreground/90">
+              {projectName || 'Untitled Project'}
+            </span>
+          </div>
+          <Edit3
+            size={11}
+            className="text-muted-foreground/50 group-hover:text-primary transition-colors flex-shrink-0 opacity-0 group-hover:opacity-100"
+          />
+        </div>
+      </TooltipTrigger>
+      <TooltipContent side="bottom" className="text-xs">
+        Click to rename project
+      </TooltipContent>
+    </Tooltip>
   );
 });
+
+EditableProjectName.displayName = 'EditableProjectName';
 
 // Enhanced Play Button with Teleprompter Settings
 const EnhancedPlayButton = memo<{
@@ -92,135 +142,185 @@ const EnhancedPlayButton = memo<{
   onOpenAudioManager?: () => void;
   onOpenTimerCalculator: () => void;
   onOpenPlayerIndicatorSettings?: () => void;
-}>(({ 
-  canPlay, 
-  isPlaying, 
-  onPlay, 
-  onPlayPause, 
-  onOpenCountdown, 
-  onOpenAudioManager, 
+}>(({
+  canPlay,
+  isPlaying,
+  onPlay,
+  onPlayPause,
+  onOpenCountdown,
+  onOpenAudioManager,
   onOpenTimerCalculator,
-  onOpenPlayerIndicatorSettings 
+  onOpenPlayerIndicatorSettings
 }) => {
+  const handleMainAction = useCallback(() => {
+    if (isPlaying && onPlayPause) {
+      onPlayPause();
+    } else {
+      onPlay();
+    }
+  }, [isPlaying, onPlayPause, onPlay]);
+
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button 
-          variant="default" 
-          size="sm" 
-          className="h-7 px-3 gap-1 transition-all hover:scale-105 active:scale-95"
-          disabled={!canPlay}
-        >
-          {isPlaying && onPlayPause ? (
+    <div className="flex items-center gap-0.5">
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            variant={isPlaying ? "default" : "default"}
+            size="sm"
+            className={cn(
+              "h-8 px-3 gap-1.5 font-semibold transition-all shadow-sm",
+              isPlaying
+                ? "bg-primary hover:bg-primary/90 shadow-primary/20"
+                : "bg-primary hover:bg-primary/90"
+            )}
+            disabled={!canPlay}
+            onClick={handleMainAction}
+          >
+            {isPlaying ? (
+              <>
+                <div className="w-1.5 h-1.5 bg-white rounded-full animate-pulse" />
+                <span className="text-xs">Pause</span>
+              </>
+            ) : (
+              <>
+                <Play size={13} className="fill-current" />
+                <span className="text-xs">Play</span>
+              </>
+            )}
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">
+          {isPlaying ? 'Pause playback (Space)' : 'Start playback (Space)'}
+        </TooltipContent>
+      </Tooltip>
+
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            variant={isPlaying ? "default" : "default"}
+            size="sm"
+            className={cn(
+              "h-8 w-7 p-0 transition-all shadow-sm border-l border-white/10",
+              isPlaying
+                ? "bg-primary hover:bg-primary/90"
+                : "bg-primary hover:bg-primary/90"
+            )}
+            disabled={!canPlay}
+          >
+            <ChevronDown size={12} />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-56 bg-popover/95 backdrop-blur-xl border-border/50 shadow-xl">
+          <DropdownMenuItem onClick={onPlay} className="cursor-pointer focus:bg-accent/50">
+            <Play size={14} className="mr-2 text-primary" />
+            <span className="font-medium">{isPlaying ? 'Restart Playback' : 'Start Playback'}</span>
+          </DropdownMenuItem>
+
+          <DropdownMenuSeparator className="bg-border/50" />
+
+          <DropdownMenuItem onClick={onOpenCountdown} className="cursor-pointer focus:bg-accent/50">
+            <Clock size={14} className="mr-2 text-muted-foreground" />
+            <span>Countdown Settings</span>
+          </DropdownMenuItem>
+
+          <DropdownMenuItem onClick={onOpenTimerCalculator} className="cursor-pointer focus:bg-accent/50">
+            <Timer size={14} className="mr-2 text-muted-foreground" />
+            <span>Timer Calculator</span>
+          </DropdownMenuItem>
+
+          {onOpenAudioManager && (
+            <DropdownMenuItem onClick={onOpenAudioManager} className="cursor-pointer focus:bg-accent/50">
+              <Music size={14} className="mr-2 text-muted-foreground" />
+              <span>Audio Manager</span>
+            </DropdownMenuItem>
+          )}
+
+          {onOpenPlayerIndicatorSettings && (
             <>
-              <div className="w-1.5 h-1.5 bg-current rounded-full animate-pulse" />
-              Pause
-            </>
-          ) : (
-            <>
-              <Play size={12} />
-              Play
+              <DropdownMenuSeparator className="bg-border/50" />
+              <DropdownMenuItem onClick={onOpenPlayerIndicatorSettings} className="cursor-pointer focus:bg-accent/50">
+                <Eye size={14} className="mr-2 text-muted-foreground" />
+                <span>Player Indicator Settings</span>
+              </DropdownMenuItem>
             </>
           )}
-          <ChevronDown size={10} className="opacity-70" />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-48">
-        <DropdownMenuItem onClick={onPlay}>
-          <Play size={14} className="mr-2" />
-          {isPlaying ? 'Restart Playback' : 'Start Playback'}
-        </DropdownMenuItem>
-        
-        <DropdownMenuSeparator />
-        
-        <DropdownMenuItem onClick={onOpenCountdown}>
-          <Clock size={14} className="mr-2" />
-          Countdown Settings
-        </DropdownMenuItem>
-        
-        <DropdownMenuItem onClick={onOpenTimerCalculator}>
-          <Timer size={14} className="mr-2" />
-          Timer Calculator
-        </DropdownMenuItem>
-        
-        {onOpenAudioManager && (
-          <DropdownMenuItem onClick={onOpenAudioManager}>
-            <Music size={14} className="mr-2" />
-            Audio Manager
-          </DropdownMenuItem>
-        )}
-        
-        <DropdownMenuSeparator />
-        
-        <DropdownMenuItem onClick={onOpenPlayerIndicatorSettings}>
-          <Eye size={14} className="mr-2" />
-          Player Indicator Settings
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
   );
 });
 
 EnhancedPlayButton.displayName = 'EnhancedPlayButton';
-const SaveStatusIndicator = ({ status, lastSaved }: { status: SaveStatus; lastSaved: number | null }) => {
+
+// Save Status Indicator - Enhanced
+const SaveStatusIndicator = memo<{
+  status: SaveStatus;
+  lastSaved: number | null;
+}>(({ status, lastSaved }) => {
+  const getTimeAgo = useCallback((timestamp: number) => {
+    const seconds = Math.floor((Date.now() - timestamp) / 1000);
+    if (seconds < 60) return 'just now';
+    if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
+    return new Date(timestamp).toLocaleTimeString(undefined, {
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  }, []);
+
   if (status === 'saving') {
     return (
-      <span className="text-[10px] text-muted-foreground flex items-center gap-1">
-        <Loader2 size={10} className="animate-spin text-blue-500" />
-        <span className="animate-pulse">Saving...</span>
-      </span>
+      <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-blue-500/10 border border-blue-500/20">
+        <Loader2 size={11} className="animate-spin text-blue-600 dark:text-blue-400" />
+        <span className="text-[10px] text-blue-700 dark:text-blue-400 font-semibold">Saving...</span>
+      </div>
     );
   }
-  
+
   if (status === 'saved' && lastSaved) {
-    const timeAgo = new Date(lastSaved).toLocaleTimeString();
     return (
       <Tooltip>
         <TooltipTrigger asChild>
-          <span className="text-[10px] text-green-600 flex items-center gap-1 cursor-pointer hover:bg-green-50 px-1 py-0.5 rounded transition-colors">
-            <CheckCircle size={10} className="text-green-500" />
-            <span>Saved</span>
-          </span>
+          <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-green-500/10 border border-green-500/20 cursor-pointer hover:bg-green-500/20 transition-colors">
+            <CheckCircle size={11} className="text-green-600 dark:text-green-400" />
+            <span className="text-[10px] text-green-700 dark:text-green-400 font-semibold">
+              Saved {getTimeAgo(lastSaved)}
+            </span>
+          </div>
         </TooltipTrigger>
-        <TooltipContent>
-          <p>Last saved: {timeAgo}</p>
+        <TooltipContent side="bottom" className="text-xs">
+          <p>Last saved: {new Date(lastSaved).toLocaleString()}</p>
         </TooltipContent>
       </Tooltip>
     );
   }
-  
+
   if (status === 'error') {
     return (
       <Tooltip>
         <TooltipTrigger asChild>
-          <span className="text-[10px] text-destructive flex items-center gap-1 cursor-pointer hover:bg-destructive/10 px-1 py-0.5 rounded transition-colors">
-            <AlertCircle size={10} className="text-red-500" />
-            <span>Save failed</span>
-          </span>
+          <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-red-500/10 border border-red-500/20 cursor-pointer hover:bg-red-500/20 transition-colors">
+            <AlertCircle size={11} className="text-red-600 dark:text-red-400" />
+            <span className="text-[10px] text-red-700 dark:text-red-400 font-semibold">Save failed</span>
+          </div>
         </TooltipTrigger>
-        <TooltipContent>
-          <p>Failed to save. Please try again.</p>
+        <TooltipContent side="bottom" className="text-xs">
+          <p>Failed to save. Click to retry.</p>
         </TooltipContent>
       </Tooltip>
     );
   }
-  
+
   return null;
-};
+});
+
+SaveStatusIndicator.displayName = 'SaveStatusIndicator';
 
 interface AppHeaderProps {
-  // Project state
   projectName: string;
   onProjectNameChange: (name: string) => void;
   hasUnsavedChanges: boolean;
   saveStatus: SaveStatus;
   lastSaved: number | null;
-  
-  // Editor mode
-  editorType: 'text' | 'visual';
-  onEditorTypeChange: (type: 'text' | 'visual') => void;
-  
-  // Actions
   onNewProject: () => void;
   onOpenProject: () => void;
   onSave: () => void;
@@ -240,18 +340,12 @@ interface AppHeaderProps {
   onOpenExternalDisplay: () => void;
   onPlay: () => void;
   onGoHome: () => void;
-  onToggleDevConsole?: () => void;
   onOpenPlayerIndicatorSettings?: () => void;
-  
-  // Recent projects
   recentProjects?: Array<{ id: string; name: string }>;
   onOpenRecentProject?: (id: string) => void;
-  
-  // Playback state
   canPlay?: boolean;
   isPlaying?: boolean;
   onPlayPause?: () => void;
-  
   className?: string;
 }
 
@@ -261,8 +355,6 @@ export const AppHeader = memo<AppHeaderProps>(({
   hasUnsavedChanges,
   saveStatus,
   lastSaved,
-  editorType,
-  onEditorTypeChange,
   onNewProject,
   onOpenProject,
   onSave,
@@ -282,7 +374,6 @@ export const AppHeader = memo<AppHeaderProps>(({
   onOpenExternalDisplay,
   onPlay,
   onGoHome,
-  onToggleDevConsole,
   onOpenPlayerIndicatorSettings,
   recentProjects = [],
   onOpenRecentProject,
@@ -291,88 +382,114 @@ export const AppHeader = memo<AppHeaderProps>(({
   onPlayPause,
   className,
 }) => {
-  // Mobile menu state
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
+  const safeProjectName = useMemo(() =>
+    typeof projectName === 'string' ? projectName : 'Untitled Project',
+    [projectName]
+  );
+
+  const handleSaveClick = useCallback(() => {
+    if (hasUnsavedChanges) {
+      onSave();
+    }
+  }, [hasUnsavedChanges, onSave]);
+
   return (
-    <header className={cn('flex flex-col border-b border-border bg-card', className)}>
-      {/* Consolidated Desktop Header */}
-      <div className="hidden sm:flex items-center h-12 px-3 border-b border-border/50">
-        {/* Logo */}
-        <AppLogo size="md" textSize="base" className="mr-4" />
-        
-        {/* Menu Bar */}
-        <MainMenuBar
-          onNewProject={onNewProject}
-          onOpenProject={onOpenProject}
-          onSave={onSave}
-          onExport={onExport}
-          onImport={onImport}
-          onOpenSettings={onOpenSettings}
-          onOpenShortcuts={onOpenShortcuts}
-          onOpenStatistics={onOpenStatistics}
-          onOpenCountdown={onOpenCountdown}
-          onOpenAbout={onOpenAbout}
-          onOpenAudioManager={onOpenAudioManager}
-          onOpenRemoteControl={onOpenRemoteControl}
-          onOpenVoiceInput={onOpenVoiceInput}
-          onOpenTimerCalculator={onOpenTimerCalculator}
-          onOpenTemplates={onOpenTemplates}
-          onExportPDF={onExportPDF}
-          onOpenExternalDisplay={onOpenExternalDisplay}
-          onPlay={onPlay}
-          onGoHome={onGoHome}
-          onToggleDevConsole={onToggleDevConsole}
-          recentProjects={recentProjects}
-          onOpenRecentProject={onOpenRecentProject}
-          editorType={editorType}
-          onEditorTypeChange={onEditorTypeChange}
-        />
-        
-        {/* Spacer */}
-        <div className="flex-1" />
-        
-        {/* Project Controls Section */}
-        <div className="flex items-center gap-3 mr-4">
-          {/* Editable Project Name */}
-          <EditableProjectName 
-            projectName={typeof projectName === 'string' ? projectName : ''}
+    <header className={cn(
+      'flex flex-col border-b border-border/50 bg-background/95 backdrop-blur-xl supports-[backdrop-filter]:bg-background/80',
+      className
+    )}>
+      {/* Desktop Header */}
+      <div className="hidden lg:flex items-center h-14 px-4 gap-4">
+        {/* Left Section: Logo + Menu */}
+        <div className="flex items-center gap-4 flex-shrink-0">
+          <SidebarTrigger className="h-8 w-8 hover:bg-accent/50 transition-colors" />
+          <AppLogo size="md" textSize="base" className="select-none" />
+
+          <div className="w-px h-6 bg-border/50" />
+
+          <MainMenuBar
+            onNewProject={onNewProject}
+            onOpenProject={onOpenProject}
+            onSave={onSave}
+            onExport={onExport}
+            onImport={onImport}
+            onOpenSettings={onOpenSettings}
+            onOpenShortcuts={onOpenShortcuts}
+            onOpenStatistics={onOpenStatistics}
+            onOpenCountdown={onOpenCountdown}
+            onOpenAbout={onOpenAbout}
+            onOpenAudioManager={onOpenAudioManager}
+            onOpenRemoteControl={onOpenRemoteControl}
+            onOpenVoiceInput={onOpenVoiceInput}
+            onOpenTimerCalculator={onOpenTimerCalculator}
+            onOpenTemplates={onOpenTemplates}
+            onExportPDF={onExportPDF}
+            onOpenExternalDisplay={onOpenExternalDisplay}
+            onPlay={onPlay}
+            onGoHome={onGoHome}
+            recentProjects={recentProjects}
+            onOpenRecentProject={onOpenRecentProject}
+          />
+        </div>
+
+        {/* Center Section: Project Info */}
+        <div className="flex items-center gap-3 flex-1 justify-center min-w-0">
+          <EditableProjectName
+            projectName={safeProjectName}
             onProjectNameChange={onProjectNameChange}
           />
-          
-          {/* Save status */}
-          <SaveStatusIndicator status={saveStatus} lastSaved={lastSaved} />
-          
-          {/* Unsaved indicator */}
-          {hasUnsavedChanges && saveStatus === 'idle' && (
-            <span className="text-[10px] px-1.5 py-0.5 bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 rounded border border-amber-200 dark:border-amber-800 animate-pulse">
-              Unsaved
-            </span>
-          )}
+
+          {/* Status Indicators */}
+          <div className="flex items-center gap-2">
+            <SaveStatusIndicator status={saveStatus} lastSaved={lastSaved} />
+
+            {hasUnsavedChanges && saveStatus === 'idle' && (
+              <div className="flex items-center gap-1 px-2 py-1 rounded-md bg-amber-500/10 border border-amber-500/20 animate-pulse">
+                <Circle size={6} className="text-amber-600 dark:text-amber-400 fill-current" />
+                <span className="text-[10px] text-amber-700 dark:text-amber-400 font-semibold">
+                  Unsaved
+                </span>
+              </div>
+            )}
+          </div>
         </div>
-        
-        {/* Quick Actions */}
-        <div className="flex items-center gap-1">
-          {/* Save Button */}
+
+        {/* Right Section: Actions */}
+        <div className="flex items-center gap-2 flex-shrink-0 ml-auto">
+          <>
+            <div>
+              <AspectRatioSelector />
+            </div>
+            <div className="w-px h-6 bg-border/50" />
+          </>
+
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button 
-                variant="ghost" 
-                size="sm" 
-                className="h-7 px-2 transition-all hover:bg-accent/50"
-                onClick={onSave}
+              <Button
+                variant="outline"
+                size="sm"
+                className={cn(
+                  "h-8 px-3 gap-1.5 font-medium transition-all shadow-sm hidden sm:flex",
+                  hasUnsavedChanges
+                    ? "border-primary/50 bg-primary/5 hover:bg-primary/10 text-primary hover:text-primary"
+                    : "opacity-50 cursor-not-allowed"
+                )}
+                onClick={handleSaveClick}
                 disabled={!hasUnsavedChanges}
               >
-                <Save size={12} className="mr-1" />
-                Save
+                <Save size={13} />
+                <span className="text-xs hidden lg:inline">Save</span>
               </Button>
             </TooltipTrigger>
-            <TooltipContent>
+            <TooltipContent side="bottom" className="text-xs">
               {hasUnsavedChanges ? 'Save project (Ctrl+S)' : 'No changes to save'}
             </TooltipContent>
           </Tooltip>
-          
-          {/* Enhanced Play Button with Teleprompter Settings */}
+
+          <div className="w-px h-6 bg-border/50 hidden sm:block" />
+
           <EnhancedPlayButton
             canPlay={canPlay}
             isPlaying={isPlaying}
@@ -385,105 +502,96 @@ export const AppHeader = memo<AppHeaderProps>(({
           />
         </div>
       </div>
-      
-      {/* Mobile Header - Enhanced with project controls */}
-      <div className="sm:hidden flex flex-col border-b border-border/50">
+
+      {/* Tablet Header (medium screens) */}
+      <div className="hidden md:flex lg:hidden items-center h-12 px-3 gap-3">
+        <SidebarTrigger className="h-8 w-8" />
+        <AppLogo size="sm" textSize="sm" />
+
+        <div className="w-px h-5 bg-border/50" />
+
+        <div className="flex-1 min-w-0 flex items-center gap-2 overflow-hidden">
+          <EditableProjectName
+            projectName={safeProjectName}
+            onProjectNameChange={onProjectNameChange}
+          />
+          <AspectRatioSelector className="hidden md:flex scale-90 origin-left" />
+        </div>
+
+        <SaveStatusIndicator status={saveStatus} lastSaved={lastSaved} />
+
+        <div className="flex items-center gap-1">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-8 w-8 p-0"
+            onClick={handleSaveClick}
+            disabled={!hasUnsavedChanges}
+          >
+            <Save size={14} />
+          </Button>
+
+          <Button
+            variant="default"
+            size="sm"
+            className="h-8 px-2 gap-1"
+            onClick={isPlaying && onPlayPause ? onPlayPause : onPlay}
+            disabled={!canPlay}
+          >
+            {isPlaying ? <Pause size={13} /> : <Play size={13} className="fill-current" />}
+            <span className="text-xs">{isPlaying ? 'Pause' : 'Play'}</span>
+          </Button>
+        </div>
+      </div>
+
+      {/* Mobile Header */}
+      <div className="flex md:hidden flex-col">
         {/* Top Mobile Bar */}
-        <div className="flex items-center justify-between h-10 px-3">
-          {/* Logo and Mobile Menu */}
-          <div className="flex items-center gap-3">
-            {/* Mobile Menu Trigger */}
-            <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
-              <SheetTrigger asChild>
-                <Button variant="ghost" size="icon" className="h-7 w-7">
-                  <Menu size={16} />
-                  <span className="sr-only">Toggle menu</span>
-                </Button>
-              </SheetTrigger>
-              <SheetContent side="left" className="w-80 p-0">
-                <div className="flex flex-col h-full">
-                  {/* Mobile Menu Header */}
-                  <div className="flex items-center justify-between p-4 border-b">
-                    <AppLogo size="md" textSize="base" />
-                    <Button variant="ghost" size="icon" onClick={() => setMobileMenuOpen(false)}>
-                      <X size={18} />
-                    </Button>
-                  </div>
-                  
-                  {/* Mobile Menu Content */}
-                  <div className="flex-1 overflow-y-auto">
-                    <MainMenuBar
-                      onNewProject={onNewProject}
-                      onOpenProject={onOpenProject}
-                      onSave={onSave}
-                      onExport={onExport}
-                      onImport={onImport}
-                      onOpenSettings={onOpenSettings}
-                      onOpenShortcuts={onOpenShortcuts}
-                      onOpenStatistics={onOpenStatistics}
-                      onOpenCountdown={onOpenCountdown}
-                      onOpenAbout={onOpenAbout}
-                      onOpenAudioManager={onOpenAudioManager}
-                      onOpenRemoteControl={onOpenRemoteControl}
-                      onOpenVoiceInput={onOpenVoiceInput}
-                      onOpenTimerCalculator={onOpenTimerCalculator}
-                      onOpenTemplates={onOpenTemplates}
-                      onExportPDF={onExportPDF}
-                      onOpenExternalDisplay={onOpenExternalDisplay}
-                      onPlay={onPlay}
-                      onGoHome={onGoHome}
-                      onToggleDevConsole={onToggleDevConsole}
-                      recentProjects={recentProjects}
-                      onOpenRecentProject={onOpenRecentProject}
-                      editorType={editorType}
-                      onEditorTypeChange={onEditorTypeChange}
-                    />
-                  </div>
-                </div>
-              </SheetContent>
-            </Sheet>
-            
-            {/* Logo - Mobile */}
-            <AppLogo size="sm" textSize="sm" />
+        <div className="flex items-center justify-between h-12 px-3 border-b border-border/30">
+          <div className="flex items-center gap-2 flex-1 min-w-0">
+            <SidebarTrigger className="h-8 w-8 flex-shrink-0" />
+            <AppLogo size="sm" textSize="sm" className="flex-shrink-0" />
           </div>
-          
-          {/* Mobile Quick Actions */}
-          <div className="flex items-center gap-1">
-            <Button 
-              variant="ghost" 
-              size="icon" 
-              className="h-7 w-7"
-              onClick={onSave}
+
+          <div className="flex items-center gap-1 flex-shrink-0">
+            {hasUnsavedChanges && (
+              <div className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+            )}
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              onClick={handleSaveClick}
               disabled={!hasUnsavedChanges}
             >
               <Save size={14} />
             </Button>
-            <Button 
-              variant="default" 
-              size="sm" 
-              className="h-7 px-2"
-              onClick={onPlay}
+            <Button
+              variant="default"
+              size="sm"
+              className="h-8 px-2.5 gap-1"
+              onClick={isPlaying && onPlayPause ? onPlayPause : onPlay}
               disabled={!canPlay}
             >
-              {isPlaying && onPlayPause ? (
+              {isPlaying ? (
                 <Pause size={12} />
               ) : (
-                <Play size={12} />
+                <Play size={12} className="fill-current" />
               )}
+              <span className="text-xs font-medium">{isPlaying ? 'Pause' : 'Play'}</span>
             </Button>
           </div>
         </div>
-        
-        {/* Mobile Project Bar */}
-        <div className="flex items-center gap-2 px-3 py-2 bg-muted/30">
-          <div className="flex-1 min-w-0">
-            <EditableProjectName 
-              projectName={typeof projectName === 'string' ? projectName : ''}
+
+        {/* Mobile Project Info Bar */}
+        <div className="flex items-center gap-2 px-3 py-2 bg-muted/30 border-b border-border/20 overflow-x-auto no-scrollbar">
+          <div className="flex-1 min-w-0 flex items-center gap-2">
+            <EditableProjectName
+              projectName={safeProjectName}
               onProjectNameChange={onProjectNameChange}
             />
+            <AspectRatioSelector className="scale-90 origin-left" />
           </div>
-          
-          {/* Mobile Save Status */}
           <SaveStatusIndicator status={saveStatus} lastSaved={lastSaved} />
         </div>
       </div>

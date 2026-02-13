@@ -8,17 +8,15 @@ if (typeof window !== 'undefined') {
   window.addEventListener('error', (event) => {
     console.error('Global error:', event.error);
   });
-  
+
   window.addEventListener('unhandledrejection', (event) => {
     console.error('Unhandled promise rejection:', event.reason);
     event.preventDefault();
   });
 }
 
-// Add debug information
-console.log("🚀 Initializing application...");
-console.log("📍 Environment:", typeof window !== 'undefined' && '__TAURI__' in window ? 'Tauri' : 'Browser');
-console.log("📂 Root element:", document.getElementById("root"));
+// Initial check
+const isTauri = typeof window !== 'undefined' && '__TAURI__' in window;
 
 // Catch any initialization errors
 try {
@@ -26,18 +24,15 @@ try {
   if (!root) {
     throw new Error("Root element not found");
   }
-  console.log("✅ Creating React root...");
   const reactRoot = createRoot(root);
-  console.log("✅ Rendering App component...");
   reactRoot.render(<App />);
-  console.log("✅ App initialized successfully");
 } catch (error) {
   console.error("❌ Failed to initialize app:", error);
-  
+
   // More detailed error information
   const errorMessage = error instanceof Error ? error.message : String(error);
   const errorStack = error instanceof Error ? error.stack : '';
-  
+
   document.body.innerHTML = `
     <div style="display: flex; align-items: center; justify-content: center; min-height: 100vh; background: #0a0a0a; color: white; font-family: system-ui;">
       <div style="text-align: center; padding: 2rem; max-width: 500px;">

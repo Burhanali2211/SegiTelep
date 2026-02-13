@@ -31,11 +31,11 @@ export const useRemoteControl = () => {
   const getCurrentStatus = useCallback(() => {
     const isPlaying = playback.isPlaying || visualIsPlaying;
     const currentSpeed = playback.speed || visualPlaybackSpeed || 1.0;
-    
+
     // Calculate current segment
     let currentSegment = 0;
     let totalSegments = 1;
-    
+
     if (project?.segments) {
       totalSegments = project.segments.length;
       const currentIndex = project.segments.findIndex(seg => seg.id === selectedSegmentId);
@@ -58,7 +58,7 @@ export const useRemoteControl = () => {
 
   // Handle remote commands
   const handleRemoteCommand = useCallback((command: RemoteCommand) => {
-    console.log('Handling remote command:', command);
+    setLastRemoteCommand(command);
     setLastRemoteCommand(command);
     setIsRemoteControlled(true);
 
@@ -135,9 +135,9 @@ export const useRemoteControl = () => {
         console.warn('Unknown remote command:', command.type);
     }
   }, [
-    project, play, pause, stop, nextSegment, prevSegment, 
+    project, play, pause, stop, nextSegment, prevSegment,
     setSpeed, toggleMirror,
-    visualSetPlaying, visualSetPlaybackTime, visualSetPlaybackSpeed
+    visualSetPlaying, visualSetPlaybackSpeed
   ]);
 
   // Set up Tauri event listeners for remote commands
@@ -155,11 +155,11 @@ export const useRemoteControl = () => {
     ];
 
     // Handle set speed command with value
-    const unlistenSpeed = window.__TAURI__.listen('remote-set-speed', (event: any) => {
-      handleRemoteCommand({ 
-        type: 'set_speed', 
-        value: event.payload, 
-        timestamp: Date.now() 
+    const unlistenSpeed = window.__TAURI__.listen<{ payload: number }>('remote-set-speed', (event) => {
+      handleRemoteCommand({
+        type: 'set_speed',
+        value: event.payload,
+        timestamp: Date.now()
       });
     });
 

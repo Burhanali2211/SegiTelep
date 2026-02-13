@@ -14,9 +14,18 @@ import {
   writeTextFile as fsWriteTextFile,
 } from '@tauri-apps/plugin-fs';
 
+import {
+  convertFileSrc as tauriConvertFileSrc
+} from '@tauri-apps/api/core';
+
 // Check if we're running in Tauri
 export function isTauriApp(): boolean {
   return typeof window !== 'undefined' && '__TAURI__' in window;
+}
+
+export function convertPathToSrc(path: string): string {
+  if (!isTauriApp()) return path;
+  return tauriConvertFileSrc(path);
 }
 
 const APP_DATA_BASE = BaseDirectory.AppData;

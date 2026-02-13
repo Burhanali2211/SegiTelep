@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react';
 
-type DialogType = 
+type DialogType =
   | 'projectManager'
   | 'projectList'
   | 'shortcuts'
@@ -14,7 +14,8 @@ type DialogType =
   | 'voiceInput'
   | 'timerCalculator'
   | 'templates'
-  | 'playerIndicatorSettings';
+  | 'playerIndicatorSettings'
+  | 'userProfile';
 
 export const useDialogController = () => {
   const [openDialogs, setOpenDialogs] = useState<Set<DialogType>>(new Set());

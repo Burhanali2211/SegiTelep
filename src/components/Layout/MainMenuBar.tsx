@@ -89,11 +89,8 @@ interface MainMenuBarProps {
   onOpenExternalDisplay: () => void;
   onPlay: () => void;
   onGoHome: () => void;
-  onToggleDevConsole?: () => void;
   recentProjects?: Array<{ id: string; name: string }>;
   onOpenRecentProject?: (id: string) => void;
-  editorType: 'text' | 'visual';
-  onEditorTypeChange: (type: 'text' | 'visual') => void;
   className?: string;
 }
 
@@ -117,11 +114,8 @@ export const MainMenuBar = memo<MainMenuBarProps>(({
   onOpenExternalDisplay,
   onPlay,
   onGoHome,
-  onToggleDevConsole,
   recentProjects = [],
   onOpenRecentProject,
-  editorType,
-  onEditorTypeChange,
   className,
 }) => {
   const hasUnsavedChanges = useTeleprompterStore((s) => s.hasUnsavedChanges);
@@ -129,29 +123,15 @@ export const MainMenuBar = memo<MainMenuBarProps>(({
   const previewCollapsed = useTeleprompterStore((s) => s.editor.previewCollapsed);
   const toggleSegmentListCollapsed = useTeleprompterStore((s) => s.toggleSegmentListCollapsed);
   const togglePreviewCollapsed = useTeleprompterStore((s) => s.togglePreviewCollapsed);
-  const playback = useTeleprompterStore((s) => s.playback);
-  const play = useTeleprompterStore((s) => s.play);
-  const pause = useTeleprompterStore((s) => s.pause);
-  const stop = useTeleprompterStore((s) => s.stop);
-  const nextSegment = useTeleprompterStore((s) => s.nextSegment);
-  const prevSegment = useTeleprompterStore((s) => s.prevSegment);
-  const setSpeed = useTeleprompterStore((s) => s.setSpeed);
-  const toggleMirror = useTeleprompterStore((s) => s.toggleMirror);
-  
+  const updateSettings = useTeleprompterStore((s) => s.updateSettings);
+
   const visualIsPlaying = useVisualEditorState((s) => s.isPlaying);
   const visualPlaybackTime = useVisualEditorState((s) => s.playbackTime);
   const visualPlaybackSpeed = useVisualEditorState((s) => s.playbackSpeed);
   const visualSetPlaying = useVisualEditorState((s) => s.setPlaying);
   const visualSetPlaybackTime = useVisualEditorState((s) => s.setPlaybackTime);
   const visualSetPlaybackSpeed = useVisualEditorState((s) => s.setPlaybackSpeed);
-  const project = useTeleprompterStore((s) => s.project);
-  const selectedSegmentId = useTeleprompterStore((s) => s.editor.selectedSegmentId);
-  const deleteSegment = useTeleprompterStore((s) => s.deleteSegment);
-  const duplicateSegmentText = useTeleprompterStore((s) => s.duplicateSegment);
-  const selectSegment = useTeleprompterStore((s) => s.selectSegment);
-  const addSegment = useTeleprompterStore((s) => s.addSegment);
-  const updateSettings = useTeleprompterStore((s) => s.updateSettings);
-  
+
   // Visual editor state
   const zoom = useVisualEditorState((s) => s.zoom);
   const setZoom = useVisualEditorState((s) => s.setZoom);
@@ -164,133 +144,88 @@ export const MainMenuBar = memo<MainMenuBarProps>(({
   const deselectAll = useVisualEditorState((s) => s.deselectAll);
   const pages = useVisualEditorState((s) => s.pages);
   const totalVisualSegments = pages.reduce((acc, p) => acc + p.segments.length, 0);
-  
+
   const { undo, redo, canUndo, canRedo, saveState } = useUndoRedo();
-  
+
   // Theme
   const { theme, setTheme } = useTheme();
-  
-  // Edit handlers - mode-aware
+
   const handleUndo = useCallback(() => {
-    if (editorType === 'visual') undo();
-  }, [editorType, undo]);
-  
+    undo();
+  }, [undo]);
+
   const handleRedo = useCallback(() => {
-    if (editorType === 'visual') redo();
-  }, [editorType, redo]);
-  
+    redo();
+  }, [redo]);
+
   const handleCopy = useCallback(() => {
-    if (editorType === 'visual') {
-      copySelected();
-    } else if (selectedSegmentId && project) {
-      const seg = project.segments.find(s => s.id === selectedSegmentId);
-      if (seg?.content) {
-        navigator.clipboard.writeText(seg.content).catch(() => {});
-      }
-    }
-  }, [editorType, copySelected, selectedSegmentId, project]);
-  
+    copySelected();
+  }, [copySelected]);
+
   const handlePaste = useCallback(() => {
-    if (editorType === 'visual') {
-      saveState();
-      paste();
-    } else {
-      navigator.clipboard.readText().then(text => {
-        if (text.trim()) addSegment({ content: text, name: 'Pasted' });
-      }).catch(() => {});
-    }
-  }, [editorType, paste, addSegment, saveState]);
-  
+    saveState();
+    paste();
+  }, [paste, saveState]);
+
   const handleDuplicate = useCallback(() => {
-    if (editorType === 'visual') {
-      const ids = Array.from(selectedSegmentIds);
-      if (ids.length === 1) {
-        saveState();
-        duplicateSegmentVisual(ids[0]);
-      }
-    } else if (selectedSegmentId) {
-      duplicateSegmentText(selectedSegmentId);
+    const ids = Array.from(selectedSegmentIds);
+    if (ids.length === 1) {
+      saveState();
+      duplicateSegmentVisual(ids[0]);
     }
-  }, [editorType, selectedSegmentIds, selectedSegmentId, duplicateSegmentVisual, duplicateSegmentText, saveState]);
-  
+  }, [selectedSegmentIds, duplicateSegmentVisual, saveState]);
+
   const handleDelete = useCallback(() => {
-    if (editorType === 'visual') {
-      if (selectedSegmentIds.size > 0) {
-        saveState();
-        deleteSegments(Array.from(selectedSegmentIds));
-      }
-    } else if (selectedSegmentId) {
-      deleteSegment(selectedSegmentId);
+    if (selectedSegmentIds.size > 0) {
+      saveState();
+      deleteSegments(Array.from(selectedSegmentIds));
     }
-  }, [editorType, selectedSegmentIds, selectedSegmentId, deleteSegments, deleteSegment, saveState]);
-  
+  }, [selectedSegmentIds, deleteSegments, saveState]);
+
   const handleSelectAll = useCallback(() => {
-    if (editorType === 'visual') selectAll();
-    else if (project?.segments.length) selectSegment(project.segments[0].id);
-  }, [editorType, selectAll, project, selectSegment]);
-  
+    selectAll();
+  }, [selectAll]);
+
   const handleDeselect = useCallback(() => {
-    if (editorType === 'visual') deselectAll();
-    else selectSegment(null);
-  }, [editorType, deselectAll, selectSegment]);
-  
+    deselectAll();
+  }, [deselectAll]);
+
   const handleShowGuideChange = useCallback((checked: boolean | 'indeterminate') => {
     if (typeof checked !== 'boolean' && checked !== 'indeterminate') return;
     updateSettings({ showGuide: checked === true });
   }, [updateSettings]);
-  
+
   const handlePlayPause = useCallback(() => {
-    if (editorType === 'visual') {
-      visualSetPlaying(!visualIsPlaying);
-    } else {
-      if (playback.isPlaying && !playback.isPaused) pause();
-      else play();
-    }
-  }, [editorType, visualIsPlaying, visualSetPlaying, playback.isPlaying, playback.isPaused, play, pause]);
-  
+    visualSetPlaying(!visualIsPlaying);
+  }, [visualIsPlaying, visualSetPlaying]);
+
   const handleStop = useCallback(() => {
-    if (editorType === 'visual') {
-      visualSetPlaying(false);
-      visualSetPlaybackTime(0);
-    } else {
-      stop();
-    }
-  }, [editorType, visualSetPlaying, visualSetPlaybackTime, stop]);
-  
+    visualSetPlaying(false);
+    visualSetPlaybackTime(0);
+  }, [visualSetPlaying, visualSetPlaybackTime]);
+
   const handlePrevSegment = useCallback(() => {
-    if (editorType === 'visual') {
-      const segs = pages.flatMap(p => p.segments.filter(s => !s.isHidden)).sort((a, b) => a.startTime - b.startTime);
-      const idx = segs.findIndex(s => visualPlaybackTime >= s.startTime && visualPlaybackTime < s.endTime);
-      if (idx > 0) visualSetPlaybackTime(segs[idx - 1].startTime);
-      else visualSetPlaybackTime(0);
-    } else {
-      prevSegment();
-    }
-  }, [editorType, pages, visualPlaybackTime, visualSetPlaybackTime, prevSegment]);
-  
+    const segs = pages.flatMap(p => p.segments.filter(s => !s.isHidden)).sort((a, b) => a.startTime - b.startTime);
+    const idx = segs.findIndex(s => visualPlaybackTime >= s.startTime && visualPlaybackTime < s.endTime);
+    if (idx > 0) visualSetPlaybackTime(segs[idx - 1].startTime);
+    else visualSetPlaybackTime(0);
+  }, [pages, visualPlaybackTime, visualSetPlaybackTime]);
+
   const handleNextSegment = useCallback(() => {
-    if (editorType === 'visual') {
-      const segs = pages.flatMap(p => p.segments.filter(s => !s.isHidden)).sort((a, b) => a.startTime - b.startTime);
-      const idx = segs.findIndex(s => visualPlaybackTime >= s.startTime && visualPlaybackTime < s.endTime);
-      if (idx >= 0 && idx < segs.length - 1) visualSetPlaybackTime(segs[idx + 1].startTime);
-      else if (segs.length > 0) visualSetPlaybackTime(segs[segs.length - 1].endTime);
-    } else {
-      nextSegment();
-    }
-  }, [editorType, pages, visualPlaybackTime, visualSetPlaybackTime, nextSegment]);
-  
+    const segs = pages.flatMap(p => p.segments.filter(s => !s.isHidden)).sort((a, b) => a.startTime - b.startTime);
+    const idx = segs.findIndex(s => visualPlaybackTime >= s.startTime && visualPlaybackTime < s.endTime);
+    if (idx >= 0 && idx < segs.length - 1) visualSetPlaybackTime(segs[idx + 1].startTime);
+    else if (segs.length > 0) visualSetPlaybackTime(segs[segs.length - 1].endTime);
+  }, [pages, visualPlaybackTime, visualSetPlaybackTime]);
+
   const handleSetSpeed = useCallback((speed: number) => {
-    if (editorType === 'visual') {
-      visualSetPlaybackSpeed(speed / 100);
-    } else {
-      setSpeed(speed);
-    }
-  }, [editorType, visualSetPlaybackSpeed, setSpeed]);
-  
-  const isPlaybackActive = editorType === 'visual' ? visualIsPlaying : (playback.isPlaying && !playback.isPaused);
-  
+    visualSetPlaybackSpeed(speed / 100);
+  }, [visualSetPlaybackSpeed]);
+
+  const isPlaybackActive = visualIsPlaying;
+
   const speedPresets = [50, 75, 100, 125, 150, 200];
-  
+
   return (
     <Menubar className={cn('border-none bg-transparent h-8 p-0 space-x-0', className)}>
       {/* File Menu - Simplified */}
@@ -309,17 +244,17 @@ export const MainMenuBar = memo<MainMenuBarProps>(({
             Open Project
             <MenubarShortcut>⌘O</MenubarShortcut>
           </MenubarItem>
-          
+
           <MenubarSeparator />
-          
+
           <MenubarItem onSelect={onSave} disabled={!hasUnsavedChanges}>
             <Save size={16} className="mr-2" />
             Save
             <MenubarShortcut>⌘S</MenubarShortcut>
           </MenubarItem>
-          
+
           <MenubarSeparator />
-          
+
           {/* Consolidated Export/Import */}
           <MenubarSub>
             <MenubarSubTrigger>
@@ -342,38 +277,38 @@ export const MainMenuBar = memo<MainMenuBarProps>(({
               </MenubarItem>
             </MenubarSubContent>
           </MenubarSub>
-          
+
           <MenubarSeparator />
-          
+
           <MenubarItem onSelect={onGoHome}>
             <LogOut size={16} className="mr-2" />
             Exit to Home
           </MenubarItem>
         </MenubarContent>
       </MenubarMenu>
-      
+
       {/* Edit Menu - Streamlined */}
       <MenubarMenu>
         <MenubarTrigger className="px-3 py-1 text-sm font-medium cursor-pointer">
           Edit
         </MenubarTrigger>
         <MenubarContent>
-          <MenubarItem onSelect={handleUndo} disabled={editorType !== 'visual' || !canUndo}>
+          <MenubarItem onSelect={handleUndo} disabled={!canUndo}>
             <Undo2 size={16} className="mr-2" />
             Undo
             <MenubarShortcut>⌘Z</MenubarShortcut>
           </MenubarItem>
-          <MenubarItem onSelect={handleRedo} disabled={editorType !== 'visual' || !canRedo}>
+          <MenubarItem onSelect={handleRedo} disabled={!canRedo}>
             <Redo2 size={16} className="mr-2" />
             Redo
             <MenubarShortcut>⇧⌘Z</MenubarShortcut>
           </MenubarItem>
-          
+
           <MenubarSeparator />
-          
+
           <MenubarItem
             onSelect={handleCopy}
-            disabled={(editorType === 'visual' && selectedSegmentIds.size === 0) || (editorType === 'text' && !selectedSegmentId)}
+            disabled={selectedSegmentIds.size === 0}
           >
             <Copy size={16} className="mr-2" />
             Copy
@@ -386,7 +321,7 @@ export const MainMenuBar = memo<MainMenuBarProps>(({
           </MenubarItem>
           <MenubarItem
             onSelect={handleDelete}
-            disabled={(editorType === 'visual' && selectedSegmentIds.size === 0) || (editorType === 'text' && !selectedSegmentId)}
+            disabled={selectedSegmentIds.size === 0}
           >
             <Trash2 size={16} className="mr-2" />
             Delete
@@ -394,14 +329,14 @@ export const MainMenuBar = memo<MainMenuBarProps>(({
           </MenubarItem>
         </MenubarContent>
       </MenubarMenu>
-      
+
       {/* View Menu - Simplified */}
       <MenubarMenu>
         <MenubarTrigger className="px-3 py-1 text-sm font-medium cursor-pointer">
           View
         </MenubarTrigger>
         <MenubarContent>
-          <MenubarCheckboxItem 
+          <MenubarCheckboxItem
             checked={!segmentListCollapsed}
             onCheckedChange={() => toggleSegmentListCollapsed()}
           >
@@ -409,16 +344,16 @@ export const MainMenuBar = memo<MainMenuBarProps>(({
             Sidebar
             <MenubarShortcut>⌘B</MenubarShortcut>
           </MenubarCheckboxItem>
-          
-          <MenubarCheckboxItem 
+
+          <MenubarCheckboxItem
             checked={!previewCollapsed}
             onCheckedChange={() => togglePreviewCollapsed()}
           >
             Preview Panel
           </MenubarCheckboxItem>
-          
+
           <MenubarSeparator />
-          
+
           {/* Simplified Theme Options */}
           <MenubarSub>
             <MenubarSubTrigger>
@@ -426,7 +361,7 @@ export const MainMenuBar = memo<MainMenuBarProps>(({
               Theme
             </MenubarSubTrigger>
             <MenubarSubContent>
-              <MenubarCheckboxItem 
+              <MenubarCheckboxItem
                 checked={theme === 'light'}
                 onCheckedChange={() => setTheme('light')}
               >
@@ -434,7 +369,7 @@ export const MainMenuBar = memo<MainMenuBarProps>(({
                 Light
                 {theme === 'light' && <Check size={14} className="ml-auto" />}
               </MenubarCheckboxItem>
-              <MenubarCheckboxItem 
+              <MenubarCheckboxItem
                 checked={theme === 'dark'}
                 onCheckedChange={() => setTheme('dark')}
               >
@@ -442,7 +377,7 @@ export const MainMenuBar = memo<MainMenuBarProps>(({
                 Dark
                 {theme === 'dark' && <Check size={14} className="ml-auto" />}
               </MenubarCheckboxItem>
-              <MenubarCheckboxItem 
+              <MenubarCheckboxItem
                 checked={theme === 'system'}
                 onCheckedChange={() => setTheme('system')}
               >
@@ -454,7 +389,7 @@ export const MainMenuBar = memo<MainMenuBarProps>(({
           </MenubarSub>
         </MenubarContent>
       </MenubarMenu>
-      
+
       {/* Playback Menu - Streamlined */}
       <MenubarMenu>
         <MenubarTrigger className="px-3 py-1 text-sm font-medium cursor-pointer">
@@ -475,9 +410,9 @@ export const MainMenuBar = memo<MainMenuBarProps>(({
             )}
             <MenubarShortcut>Space</MenubarShortcut>
           </MenubarItem>
-          
+
           <MenubarSeparator />
-          
+
           <MenubarSub>
             <MenubarSubTrigger>
               <Gauge size={16} className="mr-2" />
@@ -487,7 +422,7 @@ export const MainMenuBar = memo<MainMenuBarProps>(({
               {speedPresets.map((speed) => (
                 <MenubarCheckboxItem
                   key={speed}
-                  checked={(editorType === 'visual' ? visualPlaybackSpeed * 100 : playback.speed) === speed}
+                  checked={visualPlaybackSpeed * 100 === speed}
                   onCheckedChange={() => handleSetSpeed(speed)}
                 >
                   {speed}%
@@ -495,22 +430,22 @@ export const MainMenuBar = memo<MainMenuBarProps>(({
               ))}
             </MenubarSubContent>
           </MenubarSub>
-          
+
           <MenubarSeparator />
-          
+
           <MenubarItem onSelect={onPlay}>
             <Maximize size={16} className="mr-2" />
             Fullscreen Player
             <MenubarShortcut>F</MenubarShortcut>
           </MenubarItem>
-          
+
           <MenubarItem onSelect={onOpenExternalDisplay}>
             <Monitor size={16} className="mr-2" />
             External Display
           </MenubarItem>
         </MenubarContent>
       </MenubarMenu>
-      
+
       {/* Tools Menu - Consolidated */}
       <MenubarMenu>
         <MenubarTrigger className="px-3 py-1 text-sm font-medium cursor-pointer">
@@ -521,19 +456,19 @@ export const MainMenuBar = memo<MainMenuBarProps>(({
             <LayoutTemplate size={16} className="mr-2" />
             Templates
           </MenubarItem>
-          
+
           <MenubarItem onSelect={onOpenTimerCalculator}>
             <Calculator size={16} className="mr-2" />
             Timer Calculator
           </MenubarItem>
-          
+
           <MenubarItem onSelect={onOpenStatistics}>
             <BarChart3 size={16} className="mr-2" />
             Statistics
           </MenubarItem>
-          
+
           <MenubarSeparator />
-          
+
           {/* Consolidated Advanced Tools */}
           <MenubarSub>
             <MenubarSubTrigger>
@@ -561,7 +496,7 @@ export const MainMenuBar = memo<MainMenuBarProps>(({
           </MenubarSub>
         </MenubarContent>
       </MenubarMenu>
-      
+
       {/* Help Menu - Simplified */}
       <MenubarMenu>
         <MenubarTrigger className="px-3 py-1 text-sm font-medium cursor-pointer">
@@ -572,29 +507,19 @@ export const MainMenuBar = memo<MainMenuBarProps>(({
             <BookOpen size={16} className="mr-2" />
             Welcome Guide
           </MenubarItem>
-          
+
           <MenubarItem onSelect={onOpenShortcuts}>
             <Keyboard size={16} className="mr-2" />
             Keyboard Shortcuts
             <MenubarShortcut>?</MenubarShortcut>
           </MenubarItem>
-          
+
           <MenubarSeparator />
-          
+
           <MenubarItem onSelect={onOpenAbout}>
             <Info size={16} className="mr-2" />
             About SegiTelep
           </MenubarItem>
-          {import.meta.env.DEV && onToggleDevConsole && (
-            <>
-              <MenubarSeparator />
-              <MenubarItem onSelect={onToggleDevConsole}>
-                <Bug size={16} className="mr-2" />
-                Developer Console
-                <MenubarShortcut>Ctrl + `</MenubarShortcut>
-              </MenubarItem>
-            </>
-          )}
         </MenubarContent>
       </MenubarMenu>
     </Menubar>

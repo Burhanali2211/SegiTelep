@@ -9,14 +9,15 @@ interface DuplicateProjectButtonProps {
   projectId: string;
   projectName?: string;
   className?: string;
+  onClick?: () => void;
 }
 
 /** Clean duplicate project button */
 export const DuplicateProjectButton = memo<DuplicateProjectButtonProps>(
-  ({ projectId, projectName, className }) => {
+  ({ projectId, projectName, className, onClick }) => {
     const handleClick = (e: React.MouseEvent) => {
       e.stopPropagation();
-      toast.info(`Duplicate "${projectName || 'project'}" (mock)`);
+      if (onClick) onClick();
     };
 
     return (

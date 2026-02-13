@@ -9,6 +9,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Trash2, FilePlus, Upload, Check, FileText } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { AssetThumbnail } from '../../components/AssetThumbnail';
 import { PDFPageSelector } from '../../../PDFPageSelector';
 import { createDragDropHandlers, formatFileInfo } from '@/utils/dragDropUtils';
 import { toast } from 'sonner';
@@ -22,12 +23,12 @@ interface PDFSectionProps {
   onRemovePage: (index: number) => void;
 }
 
-export const PDFSection = memo<PDFSectionProps>(({ 
-  pages, 
-  currentPageIndex, 
-  onAddPages, 
-  onSelectPage, 
-  onRemovePage 
+export const PDFSection = memo<PDFSectionProps>(({
+  pages,
+  currentPageIndex,
+  onAddPages,
+  onSelectPage,
+  onRemovePage
 }) => {
   const [showPDFSelector, setShowPDFSelector] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
@@ -45,7 +46,7 @@ export const PDFSection = memo<PDFSectionProps>(({
 
   const handleDragDrop = useCallback((files: File[]) => {
     const pdfFiles = files.filter(file => file.type === 'application/pdf');
-    
+
     if (pdfFiles.length === 0) {
       toast.error('Please drop PDF files only');
       return;
@@ -100,8 +101,8 @@ export const PDFSection = memo<PDFSectionProps>(({
               <div
                 className={cn(
                   'w-full h-16 rounded-lg border border-dashed transition-all duration-200 group cursor-pointer',
-                  isDragOver 
-                    ? 'border-primary bg-primary/5 text-primary' 
+                  isDragOver
+                    ? 'border-primary bg-primary/5 text-primary'
                     : 'border-muted-foreground/25 text-muted-foreground hover:text-foreground hover:border-primary/50 hover:bg-primary/5'
                 )}
                 onClick={handleAddPDF}
@@ -148,7 +149,7 @@ export const PDFSection = memo<PDFSectionProps>(({
             {pdfPages.map((page, index) => {
               const actualPageIndex = pages.findIndex(p => p.id === page.id);
               const isSelected = actualPageIndex === currentPageIndex;
-              
+
               return (
                 <ContextMenu key={page.id}>
                   <ContextMenuTrigger asChild>
@@ -164,17 +165,12 @@ export const PDFSection = memo<PDFSectionProps>(({
                       )}
                     >
                       {/* Thumbnail */}
-                      <div className="relative w-8 h-8 rounded-md overflow-hidden flex-shrink-0">
-                        <img src={page.data} alt="" className="w-full h-full object-cover" />
-                        <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent" />
-                        <div className="absolute bottom-0.5 left-0.5 text-[7px] font-bold px-0.5 py-0.5 rounded bg-black/70 text-white">
-                          {actualPageIndex + 1}
-                        </div>
-                        {page.segments.length > 0 && (
-                          <div className="absolute top-0.5 right-0.5 text-[7px] font-medium px-0.5 py-0.5 rounded bg-black/70 text-white">{page.segments.length}</div>
-                        )}
-                      </div>
-                      
+                      <AssetThumbnail
+                        assetId={page.assetId}
+                        data={page.data}
+                        className="w-8 h-8 rounded-md flex-shrink-0"
+                      />
+
                       {/* Info */}
                       <div className="flex-1 min-w-0 overflow-hidden">
                         <div className="flex flex-col min-w-0">
@@ -187,7 +183,7 @@ export const PDFSection = memo<PDFSectionProps>(({
                           <span className="text-[8px] text-muted-foreground truncate">Click to select</span>
                         </div>
                       </div>
-                      
+
                       {/* Actions */}
                       <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
                         {pdfPages.length > 1 && (
@@ -223,7 +219,7 @@ export const PDFSection = memo<PDFSectionProps>(({
                 </ContextMenu>
               );
             })}
-            
+
             {/* Add More Button */}
             <Button
               variant="outline"

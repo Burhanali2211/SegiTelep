@@ -1,10 +1,10 @@
 import React, { memo, useCallback, useState } from 'react';
 import { useTeleprompterStore } from '@/store/teleprompterStore';
 import { Segment, isVisualSegment } from '@/types/teleprompter.types';
-import { 
-  GripVertical, 
-  Copy, 
-  Trash2, 
+import {
+  GripVertical,
+  Copy,
+  Trash2,
   MoreVertical,
   FileText,
   Image,
@@ -25,6 +25,8 @@ import { cn } from '@/lib/utils';
 import { ImageSegmentEditor } from './ImageSegmentEditor';
 import { PdfSegmentEditor } from './PdfSegmentEditor';
 import { AudioManagerDialog } from './AudioManager';
+import { AssetThumbnail } from './VisualEditor/components/AssetThumbnail';
+import { Region } from '@/types/teleprompter.types';
 
 interface SegmentItemProps {
   segment: Segment;
@@ -40,6 +42,26 @@ interface SegmentItemProps {
   isDragging: boolean;
   dragOverIndex: number | null;
 }
+
+const RegionThumbnail = memo<{ assetId?: string; data?: string; region: Region }>(({ assetId, data, region }) => {
+  return (
+    <div className="w-8 h-6 sm:w-12 sm:h-8 rounded overflow-hidden bg-muted shrink-0 border border-border/50 relative">
+      <div
+        className="absolute inset-0 w-full h-full"
+        style={{
+          transform: `scale(${100 / region.width}, ${100 / region.height})`,
+          transformOrigin: `${region.x}% ${region.y}%`,
+        }}
+      >
+        <AssetThumbnail
+          assetId={assetId}
+          data={data}
+          className="w-full h-full"
+        />
+      </div>
+    </div>
+  );
+});
 
 const SegmentItem = memo<SegmentItemProps>(({
   segment,
@@ -59,11 +81,11 @@ const SegmentItem = memo<SegmentItemProps>(({
   const preview = isVisualType
     ? `${segment.type === 'image' ? 'Image' : segment.type === 'image-region' ? 'Region' : 'PDF'} - ${segment.duration}s`
     : (segment.content?.slice(0, 80) || 'Empty segment');
-  
-  const SegmentIcon = segment.type === 'image' ? Image : 
-    segment.type === 'image-region' ? Crop : 
-    segment.type === 'pdf-page' ? FileImage : FileText;
-  
+
+  const SegmentIcon = segment.type === 'image' ? Image :
+    segment.type === 'image-region' ? Crop :
+      segment.type === 'pdf-page' ? FileImage : FileText;
+
   return (
     <div
       className={cn(
@@ -89,7 +111,7 @@ const SegmentItem = memo<SegmentItemProps>(({
       <div className="drag-handle cursor-grab active:cursor-grabbing shrink-0">
         <GripVertical size={14} className="sm:w-4 sm:h-4" />
       </div>
-      
+
       <div className="flex-1 min-w-0 overflow-hidden">
         <div className="flex items-center gap-1.5 sm:gap-2 mb-1">
           <SegmentIcon size={12} className="text-muted-foreground shrink-0 sm:w-3.5 sm:h-3.5" />
@@ -100,11 +122,22 @@ const SegmentItem = memo<SegmentItemProps>(({
             <div className="status-dot active ml-auto shrink-0" />
           )}
         </div>
-        {isVisualType && segment.content?.startsWith('data:') ? (
-          <div className="w-8 h-6 sm:w-12 sm:h-8 rounded overflow-hidden bg-muted shrink-0">
-            <img src={segment.content} alt="" className="w-full h-full object-cover" />
-          </div>
-        ) : (
+        {isVisualType && (segment.sourceAssetId || segment.content) && (
+          segment.type === 'image-region' && segment.region ? (
+            <RegionThumbnail
+              assetId={segment.sourceAssetId}
+              data={segment.content}
+              region={segment.region}
+            />
+          ) : (
+            <AssetThumbnail
+              assetId={segment.type === 'pdf-page' || segment.type === 'image' ? (segment.sourceAssetId || (segment.content.startsWith('data:') ? undefined : segment.content)) : undefined}
+              data={segment.content}
+              className="w-8 h-6 sm:w-12 sm:h-8 rounded overflow-hidden"
+            />
+          )
+        )}
+        {!isVisualType && (
           <p className="text-xs text-muted-foreground truncate leading-tight">
             {preview}
           </p>
@@ -122,12 +155,12 @@ const SegmentItem = memo<SegmentItemProps>(({
           )}
         </div>
       </div>
-      
+
       <DropdownMenu>
         <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-          <Button 
-            variant="ghost" 
-            size="icon" 
+          <Button
+            variant="ghost"
+            size="icon"
             className="h-7 w-7 sm:h-8 sm:w-8 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
           >
             <MoreVertical size={14} className="sm:w-4 sm:h-4" />
@@ -138,7 +171,7 @@ const SegmentItem = memo<SegmentItemProps>(({
             <Copy size={14} className="mr-2" />
             Duplicate
           </DropdownMenuItem>
-          <DropdownMenuItem 
+          <DropdownMenuItem
             onSelect={(e) => { e?.preventDefault?.(); onDelete(); }}
             className="text-destructive focus:text-destructive"
           >
@@ -163,42 +196,42 @@ export const SegmentList = memo<SegmentListProps>(({ onPlaySegment, editorType =
   const selectedSegmentId = useTeleprompterStore((s) => s.editor.selectedSegmentId);
   const currentSegmentId = useTeleprompterStore((s) => s.playback.currentSegmentId);
   const isPlaying = useTeleprompterStore((s) => s.playback.isPlaying);
-  
+
   const selectSegment = useTeleprompterStore((s) => s.selectSegment);
   const addSegment = useTeleprompterStore((s) => s.addSegment);
   const duplicateSegment = useTeleprompterStore((s) => s.duplicateSegment);
   const deleteSegment = useTeleprompterStore((s) => s.deleteSegment);
   const setCurrentSegment = useTeleprompterStore((s) => s.setCurrentSegment);
   const reorderSegments = useTeleprompterStore((s) => s.reorderSegments);
-  
+
   const [showImageEditor, setShowImageEditor] = useState(false);
   const [showPdfEditor, setShowPdfEditor] = useState(false);
   const [showAudioManager, setShowAudioManager] = useState(false);
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
-  
+
   const handleSelect = useCallback((segmentId: string, index: number) => {
     selectSegment(segmentId);
     setCurrentSegment(index);
   }, [selectSegment, setCurrentSegment]);
-  
+
   const handleAddText = useCallback(() => {
     addSegment({
       type: 'text',
       content: 'Enter your teleprompter text here...',
     });
   }, [addSegment]);
-  
+
   const handleDragStart = useCallback((index: number) => {
     setDraggedIndex(index);
   }, []);
-  
+
   const handleDragOver = useCallback((index: number) => {
     if (draggedIndex !== null && draggedIndex !== index) {
       setDragOverIndex(index);
     }
   }, [draggedIndex]);
-  
+
   const handleDragEnd = useCallback(() => {
     if (draggedIndex !== null && dragOverIndex !== null && draggedIndex !== dragOverIndex) {
       reorderSegments(draggedIndex, dragOverIndex);
@@ -206,12 +239,12 @@ export const SegmentList = memo<SegmentListProps>(({ onPlaySegment, editorType =
     setDraggedIndex(null);
     setDragOverIndex(null);
   }, [draggedIndex, dragOverIndex, reorderSegments]);
-  
+
   if (!project) return null;
-  
+
   // Show all segments - filtering is now optional display, playback still uses all
   const segments = project.segments;
-  
+
   return (
     <div className="flex flex-col h-full overflow-hidden">
       <div className="panel-header shrink-0">
@@ -222,7 +255,7 @@ export const SegmentList = memo<SegmentListProps>(({ onPlaySegment, editorType =
           </span>
         </div>
       </div>
-      
+
       <div className="flex-1 min-h-0 overflow-y-auto p-2 sm:p-3 space-y-1.5 sm:space-y-2">
         {segments.map((segment, index) => (
           <SegmentItem
@@ -241,7 +274,7 @@ export const SegmentList = memo<SegmentListProps>(({ onPlaySegment, editorType =
             dragOverIndex={dragOverIndex}
           />
         ))}
-        
+
         {segments.length === 0 && (
           <div className="flex flex-col items-center justify-center py-8 text-center">
             <FileText size={32} className="text-muted-foreground mb-2" />
@@ -251,7 +284,7 @@ export const SegmentList = memo<SegmentListProps>(({ onPlaySegment, editorType =
           </div>
         )}
       </div>
-      
+
       <div className="p-2 sm:p-3 border-t border-border space-y-1.5 sm:space-y-2 shrink-0">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -281,7 +314,7 @@ export const SegmentList = memo<SegmentListProps>(({ onPlaySegment, editorType =
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
-      
+
       {/* Dialogs */}
       <ImageSegmentEditor open={showImageEditor} onOpenChange={setShowImageEditor} />
       <PdfSegmentEditor open={showPdfEditor} onOpenChange={setShowPdfEditor} />

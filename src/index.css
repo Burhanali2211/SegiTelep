@@ -7,65 +7,68 @@
 @layer base {
   :root {
     /* Core background colors - deep dark for focus */
-    --background: 0 0% 4%;
-    --foreground: 0 0% 95%;
+    --background: 220 33% 4%;
+    --foreground: 220 20% 98%;
 
-    --card: 0 0% 7%;
-    --card-foreground: 0 0% 95%;
+    --card: 220 33% 7%;
+    --card-foreground: 220 20% 98%;
 
-    --popover: 0 0% 7%;
-    --popover-foreground: 0 0% 95%;
+    --popover: 220 33% 7%;
+    --popover-foreground: 220 20% 98%;
 
-    /* Primary - Broadcast Blue */
-    --primary: 210 100% 50%;
-    --primary-foreground: 0 0% 100%;
+    /* Primary - Electric Blue */
+    --primary: 210 100% 66%;
+    --primary-foreground: 220 33% 4%;
 
-    /* Secondary - Subtle gray */
-    --secondary: 0 0% 12%;
-    --secondary-foreground: 0 0% 80%;
+    /* Secondary - Steel Gray */
+    --secondary: 220 20% 12%;
+    --secondary-foreground: 220 20% 88%;
 
-    --muted: 0 0% 15%;
-    --muted-foreground: 0 0% 55%;
+    /* Success/Accent - Matrix Green */
+    --accent: 142 70% 50%;
+    --accent-foreground: 220 33% 4%;
 
-    /* Accent - Professional amber for active states */
-    --accent: 45 100% 50%;
-    --accent-foreground: 0 0% 5%;
+    --muted: 220 20% 16%;
+    --muted-foreground: 220 10% 60%;
 
-    --destructive: 0 72% 51%;
+    --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 0 0% 18%;
-    --input: 0 0% 15%;
-    --ring: 210 100% 50%;
+    --border: 220 20% 16%;
+    --input: 220 20% 16%;
+    --ring: 210 100% 66%;
 
-    --radius: 0.5rem;
+    --radius: 0.75rem;
 
     /* Teleprompter specific */
     --teleprompter-bg: 0 0% 0%;
-    --teleprompter-text: 120 100% 50%;
+    --teleprompter-text: 142 100% 50%;
+    /* Pure green for text brilliance */
     --teleprompter-text-white: 0 0% 100%;
-    --teleprompter-highlight: 45 100% 50%;
-    --teleprompter-guide: 0 0% 30%;
-    
-    /* Control overlay */
-    --overlay-bg: 0 0% 0% / 0.85;
-    --control-bg: 0 0% 10%;
-    --control-hover: 0 0% 20%;
-    
+    --teleprompter-highlight: 210 100% 66%;
+    /* Highlight now uses blue */
+    --teleprompter-guide: 220 20% 30%;
+
+    /* Glass Effects */
+    --glass-bg: 220 33% 7% / 0.7;
+    --glass-border: 220 20% 25% / 0.5;
+    --glass-blur: 12px;
+
     /* Status colors */
-    --status-active: 120 60% 45%;
-    --status-paused: 45 100% 50%;
-    --status-idle: 0 0% 40%;
+    --status-active: 142 70% 50%;
+    --status-paused: 210 100% 66%;
+    /* Blue for paused */
+    --status-idle: 220 10% 40%;
 
     /* Sidebar */
-    --sidebar-background: 0 0% 6%;
-    --sidebar-foreground: 0 0% 85%;
-    --sidebar-primary: 210 100% 50%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 0 0% 12%;
-    --sidebar-accent-foreground: 0 0% 95%;
-    --sidebar-border: 0 0% 15%;
-    --sidebar-ring: 210 100% 50%;
+    --sidebar-background: 220 33% 6%;
+    --sidebar-foreground: 220 20% 85%;
+    --sidebar-primary: 210 100% 66%;
+    --sidebar-primary-foreground: 220 33% 4%;
+    --sidebar-accent: 220 20% 14%;
+    --sidebar-accent-foreground: 220 20% 95%;
+    --sidebar-border: 220 20% 18%;
+    --sidebar-ring: 210 100% 66%;
   }
 }
 
@@ -88,6 +91,7 @@
 }
 
 @layer components {
+
   /* Teleprompter canvas container */
   .teleprompter-canvas {
     background: hsl(var(--teleprompter-bg));
@@ -97,8 +101,9 @@
 
   /* Playback controls overlay */
   .controls-overlay {
-    background: hsl(var(--overlay-bg));
-    backdrop-filter: blur(8px);
+    background: hsla(220, 33%, 4%, 0.8);
+    backdrop-filter: blur(var(--glass-blur));
+    border-top: 1px solid var(--glass-border);
     transition: opacity 0.3s ease-out;
   }
 
@@ -147,16 +152,16 @@
       @apply gap-2 p-2;
       min-height: 50px;
     }
-    
+
     .segment-item .drag-handle {
       @apply w-6 h-6;
     }
-    
+
     .segment-item .segment-icon {
       @apply w-3.5 h-3.5;
     }
   }
-  
+
   @media (max-width: 480px) {
     .segment-item {
       @apply p-1.5;
@@ -165,8 +170,9 @@
   }
 
   .segment-item.active {
-    background: hsl(var(--primary) / 0.15);
-    border-color: hsl(var(--primary));
+    background: hsl(var(--primary) / 0.1);
+    border-color: hsl(var(--primary) / 0.5);
+    backdrop-filter: blur(4px);
   }
 
   .segment-item.playing {
@@ -191,55 +197,55 @@
     background: hsl(var(--secondary));
     color: hsl(var(--accent));
   }
-  
+
   /* Panel header improvements */
   .panel-header {
     @apply flex items-center justify-between p-3 sm:p-4 border-b border-border shrink-0;
   }
-  
+
   /* Responsive sidebar improvements */
   @media (max-width: 768px) {
     .panel-header {
       @apply p-3;
     }
   }
-  
+
   @media (max-width: 640px) {
     .panel-header {
       @apply p-2.5;
     }
-    
+
     .panel-header h2 {
       @apply text-sm;
     }
   }
-  
+
   /* Mobile-specific improvements */
   @media (max-width: 480px) {
     .segment-item {
       @apply gap-1.5 p-2;
       min-height: 44px;
     }
-    
+
     .segment-item .drag-handle {
       @apply w-5 h-5;
     }
-    
+
     .segment-item .segment-icon {
       @apply w-3 h-3;
     }
-    
+
     .speed-badge {
       @apply px-1 text-xs;
     }
   }
-  
+
   /* Touch-friendly improvements */
   @media (hover: none) and (pointer: coarse) {
     .segment-item {
       @apply min-h-12;
     }
-    
+
     .segment-item button {
       @apply min-h-8 min-w-8;
     }
@@ -254,13 +260,11 @@
   .guide-line {
     @apply absolute left-0 right-0 pointer-events-none;
     height: 2px;
-    background: linear-gradient(
-      90deg,
-      transparent 0%,
-      hsl(var(--teleprompter-highlight)) 20%,
-      hsl(var(--teleprompter-highlight)) 80%,
-      transparent 100%
-    );
+    background: linear-gradient(90deg,
+        transparent 0%,
+        hsl(var(--teleprompter-highlight)) 20%,
+        hsl(var(--teleprompter-highlight)) 80%,
+        transparent 100%);
     box-shadow: 0 0 20px hsl(var(--teleprompter-highlight) / 0.5);
   }
 
@@ -367,9 +371,12 @@
 
 /* Animation keyframes */
 @keyframes pulse-glow {
-  0%, 100% {
+
+  0%,
+  100% {
     box-shadow: 0 0 5px hsl(var(--status-active) / 0.5);
   }
+
   50% {
     box-shadow: 0 0 20px hsl(var(--status-active) / 0.8);
   }
@@ -381,8 +388,29 @@
 
 /* Grid pattern utility */
 .bg-grid-pattern {
-  background-image: 
+  background-image:
     linear-gradient(to right, hsl(var(--border) / 0.1) 1px, transparent 1px),
     linear-gradient(to bottom, hsl(var(--border) / 0.1) 1px, transparent 1px);
   background-size: 24px 24px;
+}
+
+/* HomePage animations */
+@keyframes gradient {
+
+  0%,
+  100% {
+    background-position: 0% 50%;
+  }
+
+  50% {
+    background-position: 100% 50%;
+  }
+}
+
+.animate-gradient {
+  animation: gradient 3s ease infinite;
+}
+
+.bg-300-percent {
+  background-size: 300% 300%;
 }

@@ -4,14 +4,14 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { 
-  Smartphone, 
-  QrCode, 
-  Wifi, 
-  WifiOff, 
-  Copy, 
-  RefreshCw, 
-  CheckCircle, 
+import {
+  Smartphone,
+  QrCode,
+  Wifi,
+  WifiOff,
+  Copy,
+  RefreshCw,
+  CheckCircle,
   XCircle,
   Settings,
   ExternalLink
@@ -33,7 +33,7 @@ export const RemoteControlDialog: React.FC<RemoteControlDialogProps> = ({
   const [isStarting, setIsStarting] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<'idle' | 'starting' | 'connected' | 'error'>('idle');
   const [connectedDevices, setConnectedDevices] = useState<string[]>([]);
-  
+
   // Check if running in Tauri (not just browser dev mode)
   const isTauri = typeof window !== 'undefined' && window.__TAURI__ && window.__TAURI__.invoke;
 
@@ -51,16 +51,16 @@ export const RemoteControlDialog: React.FC<RemoteControlDialogProps> = ({
       const state = await window.__TAURI__.invoke('start_remote_server');
       setServerState(state);
       setConnectionStatus('connected');
-      
+
       // Generate QR code
-      const qrSvg = await window.__TAURI__.invoke('generate_remote_qr', { 
-        connectionUrl: state.connection_url 
+      const qrSvg = await window.__TAURI__.invoke('generate_remote_qr', {
+        connectionUrl: state.connection_url
       });
       setQrCodeSvg(qrSvg);
-      
+
       toast.success('Remote control server started successfully!');
       console.log('Remote server started:', state);
-      
+
     } catch (error) {
       console.error('Failed to start remote server:', error);
       setConnectionStatus('error');
@@ -84,7 +84,7 @@ export const RemoteControlDialog: React.FC<RemoteControlDialogProps> = ({
 
   const openMobileInterface = useCallback(() => {
     if (!serverState) return;
-    
+
     window.open(serverState.connection_url, '_blank');
   }, [serverState]);
 
@@ -92,9 +92,9 @@ export const RemoteControlDialog: React.FC<RemoteControlDialogProps> = ({
   useEffect(() => {
     if (!open || !isTauri) return;
 
-    const handleRemoteCommand = (event: any) => {
+    const handleRemoteCommand = (event: { event: string; payload: unknown }) => {
       console.log('Remote command received:', event.event);
-      
+
       // Handle different remote commands
       switch (event.event) {
         case 'remote-play':
@@ -125,7 +125,7 @@ export const RemoteControlDialog: React.FC<RemoteControlDialogProps> = ({
     };
 
     const unlistenPromise = window.__TAURI__.listen('remote-command', handleRemoteCommand);
-    
+
     return () => {
       unlistenPromise.then(fn => fn()).catch(console.error);
     };
@@ -138,9 +138,9 @@ export const RemoteControlDialog: React.FC<RemoteControlDialogProps> = ({
       case 'error':
         return <XCircle className="w-5 h-5 text-red-500" />;
       case 'starting':
-        return <RefreshCw className="w-5 h-5 text-yellow-500 animate-spin" />;
+        return <RefreshCw className="w-5 h-5 text-blue-400 animate-spin" />;
       default:
-        return <WifiOff className="w-5 h-5 text-gray-500" />;
+        return <WifiOff className="w-5 h-5 text-zinc-500" />;
     }
   };
 
@@ -164,9 +164,9 @@ export const RemoteControlDialog: React.FC<RemoteControlDialogProps> = ({
       case 'error':
         return 'bg-red-500';
       case 'starting':
-        return 'bg-yellow-500';
+        return 'bg-blue-500';
       default:
-        return 'bg-gray-500';
+        return 'bg-zinc-500';
     }
   };
 
@@ -183,13 +183,13 @@ export const RemoteControlDialog: React.FC<RemoteControlDialogProps> = ({
         <div className="space-y-6">
           {/* Tauri Check Warning */}
           {!isTauri && (
-            <Card className="border-yellow-200 bg-yellow-50">
+            <Card className="border-blue-500/20 bg-blue-500/5 backdrop-blur-sm">
               <CardContent className="pt-6">
                 <div className="flex items-center gap-3">
-                  <WifiOff className="w-5 h-5 text-yellow-600" />
+                  <WifiOff className="w-5 h-5 text-blue-400" />
                   <div>
-                    <h3 className="font-medium text-yellow-800">Tauri App Required</h3>
-                    <p className="text-sm text-yellow-700">
+                    <h3 className="font-medium text-blue-100">Tauri App Required</h3>
+                    <p className="text-sm text-blue-200/70">
                       Mobile remote control requires the desktop Tauri app. This feature is not available in browser mode.
                     </p>
                   </div>
@@ -211,10 +211,10 @@ export const RemoteControlDialog: React.FC<RemoteControlDialogProps> = ({
                     </p>
                   </div>
                 </div>
-                
+
                 <div className="flex items-center gap-2">
                   {connectionStatus === 'idle' && (
-                    <Button 
+                    <Button
                       onClick={startRemoteServer}
                       disabled={isStarting}
                       className="min-w-[120px]"
@@ -232,7 +232,7 @@ export const RemoteControlDialog: React.FC<RemoteControlDialogProps> = ({
                       )}
                     </Button>
                   )}
-                  
+
                   {serverState && (
                     <>
                       <Button variant="outline" size="sm" onClick={copyToClipboard}>
@@ -263,7 +263,7 @@ export const RemoteControlDialog: React.FC<RemoteControlDialogProps> = ({
                 <CardContent className="space-y-4">
                   <div className="flex flex-col items-center space-y-4">
                     <div className="bg-white p-4 rounded-lg" dangerouslySetInnerHTML={{ __html: qrCodeSvg }} />
-                    
+
                     <div className="text-center space-y-2">
                       <p className="text-sm font-medium">Scan QR code with your phone</p>
                       <p className="text-xs text-muted-foreground">
@@ -321,7 +321,7 @@ export const RemoteControlDialog: React.FC<RemoteControlDialogProps> = ({
                       </p>
                     </div>
                   </div>
-                  
+
                   <div className="flex items-start space-x-3">
                     <div className="w-6 h-6 bg-primary text-primary-foreground rounded-full flex items-center justify-center text-sm font-medium mt-0.5">
                       2
@@ -333,7 +333,7 @@ export const RemoteControlDialog: React.FC<RemoteControlDialogProps> = ({
                       </p>
                     </div>
                   </div>
-                  
+
                   <div className="flex items-start space-x-3">
                     <div className="w-6 h-6 bg-primary text-primary-foreground rounded-full flex items-center justify-center text-sm font-medium mt-0.5">
                       3

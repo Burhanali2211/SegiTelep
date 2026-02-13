@@ -73,7 +73,7 @@ export const SegmentPropertiesBar = memo<SegmentPropertiesBarProps>(({ segment, 
   const duration = segment.endTime - segment.startTime;
 
   return (
-    <div className={cn('flex items-center gap-3 px-3 py-2 bg-card border-t border-border', className)}>
+    <div className={cn('flex items-center gap-3 px-3 py-2 bg-card/95 backdrop-blur-sm', className)}>
       <div className="flex items-center gap-2 min-w-[140px]">
         <span className="text-[10px] text-muted-foreground shrink-0">Label</span>
         <Input

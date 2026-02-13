@@ -19,10 +19,9 @@ const SEGMENT_SNAP_THRESHOLD_PERCENT = 1.5;
 interface SegmentBoxProps {
   segment: VisualSegment;
   isSelected: boolean;
-  isPlaying: boolean;
 }
 
-export const SegmentBox = memo<SegmentBoxProps>(({ segment, isSelected, isPlaying }) => {
+export const SegmentBox = memo<SegmentBoxProps>(({ segment, isSelected }) => {
   const [isDragging, setIsDragging] = useState(false);
   const [isResizing, setIsResizing] = useState<'top' | 'bottom' | 'left' | 'right' | null>(null);
   const [snappedEdges, setSnappedEdges] = useState<{ left: boolean; right: boolean; top: boolean }>({ left: false, right: false, top: false });
@@ -34,38 +33,38 @@ export const SegmentBox = memo<SegmentBoxProps>(({ segment, isSelected, isPlayin
     startY: number;
     region: Region;
   } | null>(null);
-  
+
   const updateSegment = useVisualEditorState((s) => s.updateSegment);
   const selectSegment = useVisualEditorState((s) => s.selectSegment);
   const setActiveDrag = useVisualEditorState((s) => s.setActiveDrag);
   const { saveState } = useUndoRedo();
-  
+
   const applySegmentSnap = useCallback((region: Region): { region: Region; snapped: { left: boolean; right: boolean; top: boolean } } => {
     let { x, y, width, height } = region;
     const snapped = { left: false, right: false, top: false };
-    
+
     if (Math.abs(x) < SEGMENT_SNAP_THRESHOLD_PERCENT) {
       x = 0;
       snapped.left = true;
     }
-    
+
     const rightEdge = x + width;
     if (Math.abs(100 - rightEdge) < SEGMENT_SNAP_THRESHOLD_PERCENT) {
       x = 100 - width;
       snapped.right = true;
     }
-    
+
     if (Math.abs(y) < SEGMENT_SNAP_THRESHOLD_PERCENT) {
       y = 0;
       snapped.top = true;
     }
-    
+
     x = Math.max(0, Math.min(100 - width, x));
     y = Math.max(0, Math.min(100 - height, y));
-    
+
     return { region: { x, y, width, height }, snapped };
   }, []);
-  
+
   const handleClick = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
     if (e.ctrlKey || e.metaKey) {
@@ -76,7 +75,7 @@ export const SegmentBox = memo<SegmentBoxProps>(({ segment, isSelected, isPlayin
       selectSegment(segment.id, 'single');
     }
   }, [segment.id, selectSegment]);
-  
+
   const handleDragStart = useCallback((e: React.PointerEvent) => {
     e.stopPropagation();
     e.preventDefault();
@@ -87,7 +86,7 @@ export const SegmentBox = memo<SegmentBoxProps>(({ segment, isSelected, isPlayin
     dragDataRef.current = { startX: e.clientX, startY: e.clientY, region: { ...segment.region } };
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
   }, [segment, isSelected, selectSegment, saveState, setActiveDrag]);
-  
+
   const handleDragMove = useCallback((e: React.PointerEvent) => {
     if (!isDragging || !dragDataRef.current) return;
     const imageEl = document.getElementById('visual-editor-image');
@@ -104,7 +103,7 @@ export const SegmentBox = memo<SegmentBoxProps>(({ segment, isSelected, isPlayin
     provisionalRegionRef.current = snappedRegion;
     setProvisionalRegion(snappedRegion);
   }, [isDragging, segment.region.width, segment.region.height, applySegmentSnap]);
-  
+
   const handleDragEnd = useCallback((e: React.PointerEvent) => {
     (e.target as HTMLElement).releasePointerCapture(e.pointerId);
     const finalRegion = provisionalRegionRef.current ?? segment.region;
@@ -118,7 +117,7 @@ export const SegmentBox = memo<SegmentBoxProps>(({ segment, isSelected, isPlayin
     setSnappedEdges({ left: false, right: false, top: false });
     dragDataRef.current = null;
   }, [segment.id, segment.region, setActiveDrag, updateSegment]);
-  
+
   const handleResizeStart = useCallback((edge: 'top' | 'bottom' | 'left' | 'right', e: React.PointerEvent) => {
     e.stopPropagation();
     e.preventDefault();
@@ -128,7 +127,7 @@ export const SegmentBox = memo<SegmentBoxProps>(({ segment, isSelected, isPlayin
     dragDataRef.current = { startX: e.clientX, startY: e.clientY, region: { ...segment.region } };
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
   }, [segment.region, saveState, setActiveDrag]);
-  
+
   const handleResizeMove = useCallback((e: React.PointerEvent) => {
     if (!isResizing || !dragDataRef.current) return;
     const imageEl = document.getElementById('visual-editor-image');
@@ -138,7 +137,7 @@ export const SegmentBox = memo<SegmentBoxProps>(({ segment, isSelected, isPlayin
     const dy = ((e.clientY - dragDataRef.current.startY) / rect.height) * 100;
     let newRegion = { ...segment.region };
     const newSnapped = { left: false, right: false, top: false };
-    
+
     if (isResizing === 'top') {
       let newY = dragDataRef.current.region.y + dy;
       if (Math.abs(newY) < SEGMENT_SNAP_THRESHOLD_PERCENT) { newY = 0; newSnapped.top = true; }
@@ -164,12 +163,12 @@ export const SegmentBox = memo<SegmentBoxProps>(({ segment, isSelected, isPlayin
       newWidth = Math.max(5, Math.min(100 - dragDataRef.current.region.x, newWidth));
       newRegion = { ...newRegion, width: newWidth };
     }
-    
+
     setSnappedEdges(newSnapped);
     provisionalRegionRef.current = newRegion;
     setProvisionalRegion(newRegion);
   }, [isResizing, segment.region]);
-  
+
   const handleResizeEnd = useCallback((e: React.PointerEvent) => {
     (e.target as HTMLElement).releasePointerCapture(e.pointerId);
     const finalRegion = provisionalRegionRef.current ?? segment.region;
@@ -183,55 +182,55 @@ export const SegmentBox = memo<SegmentBoxProps>(({ segment, isSelected, isPlayin
     setSnappedEdges({ left: false, right: false, top: false });
     dragDataRef.current = null;
   }, [segment.id, segment.region, setActiveDrag, updateSegment]);
-  
+
+  const playbackTime = useVisualEditorState((s) => s.playbackTime);
+  const isPlaying = playbackTime >= segment.startTime && playbackTime < segment.endTime;
   const borderColor = segment.color || (isPlaying ? 'rgb(239, 68, 68)' : isSelected ? 'rgb(250, 204, 21)' : 'rgb(34, 197, 94)');
   const bgColor = isPlaying ? 'rgba(239, 68, 68, 0.2)' : isSelected ? 'rgba(250, 204, 21, 0.15)' : 'rgba(34, 197, 94, 0.1)';
 
   const displayRegion = provisionalRegion ?? segment.region;
-
-  const playbackTime = useVisualEditorState((s) => s.playbackTime);
   const duplicateSegment = useVisualEditorState((s) => s.duplicateSegment);
   const deleteSegments = useVisualEditorState((s) => s.deleteSegments);
   const toggleSegmentVisibility = useVisualEditorState((s) => s.toggleSegmentVisibility);
   const setPlaybackTime = useVisualEditorState((s) => s.setPlaybackTime);
   const setPlaying = useVisualEditorState((s) => s.setPlaying);
-  
+
   return (
     <ContextMenu>
       <ContextMenuTrigger asChild>
-    <div
-      className={cn(
-        'absolute border-2 transition-colors',
-        isDragging && 'cursor-grabbing',
-        !isDragging && 'cursor-grab'
-      )}
-      style={{
-        left: `${displayRegion.x}%`,
-        top: `${displayRegion.y}%`,
-        width: `${displayRegion.width}%`,
-        height: `${displayRegion.height}%`,
-        borderColor,
-        backgroundColor: bgColor,
-      }}
-      onClick={handleClick}
-      onPointerDown={handleDragStart}
-      onPointerMove={handleDragMove}
-      onPointerUp={handleDragEnd}
-      onPointerCancel={handleDragEnd}
-    >
-      {snappedEdges.left && <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-blue-500 animate-pulse" />}
-      {snappedEdges.right && <div className="absolute right-0 top-0 bottom-0 w-0.5 bg-blue-500 animate-pulse" />}
-      {snappedEdges.top && <div className="absolute top-0 left-0 right-0 h-0.5 bg-blue-500 animate-pulse" />}
-      
-      <div className="absolute -top-1 left-2 right-2 h-3 cursor-ns-resize hover:bg-primary/30 z-10" onPointerDown={(e) => handleResizeStart('top', e)} onPointerMove={handleResizeMove} onPointerUp={handleResizeEnd} onPointerCancel={handleResizeEnd} />
-      <div className="absolute -bottom-1 left-2 right-2 h-3 cursor-ns-resize hover:bg-primary/30 z-10" onPointerDown={(e) => handleResizeStart('bottom', e)} onPointerMove={handleResizeMove} onPointerUp={handleResizeEnd} onPointerCancel={handleResizeEnd} />
-      <div className="absolute -left-1 top-2 bottom-2 w-3 cursor-ew-resize hover:bg-primary/30 z-10" onPointerDown={(e) => handleResizeStart('left', e)} onPointerMove={handleResizeMove} onPointerUp={handleResizeEnd} onPointerCancel={handleResizeEnd} />
-      <div className="absolute -right-1 top-2 bottom-2 w-3 cursor-ew-resize hover:bg-primary/30 z-10" onPointerDown={(e) => handleResizeStart('right', e)} onPointerMove={handleResizeMove} onPointerUp={handleResizeEnd} onPointerCancel={handleResizeEnd} />
-      
-      <div className="absolute top-0 left-0 px-1.5 py-0.5 text-[10px] font-medium text-black max-w-full truncate" style={{ backgroundColor: borderColor }}>
-        {typeof segment.label === 'string' ? segment.label : ''}
-      </div>
-    </div>
+        <div
+          className={cn(
+            'absolute border-2 transition-colors',
+            isDragging && 'cursor-grabbing',
+            !isDragging && 'cursor-grab'
+          )}
+          style={{
+            left: `${displayRegion.x}%`,
+            top: `${displayRegion.y}%`,
+            width: `${displayRegion.width}%`,
+            height: `${displayRegion.height}%`,
+            borderColor,
+            backgroundColor: bgColor,
+          }}
+          onClick={handleClick}
+          onPointerDown={handleDragStart}
+          onPointerMove={handleDragMove}
+          onPointerUp={handleDragEnd}
+          onPointerCancel={handleDragEnd}
+        >
+          {snappedEdges.left && <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-blue-500 animate-pulse" />}
+          {snappedEdges.right && <div className="absolute right-0 top-0 bottom-0 w-0.5 bg-blue-500 animate-pulse" />}
+          {snappedEdges.top && <div className="absolute top-0 left-0 right-0 h-0.5 bg-blue-500 animate-pulse" />}
+
+          <div className="absolute -top-1 left-2 right-2 h-3 cursor-ns-resize hover:bg-primary/30 z-10" onPointerDown={(e) => handleResizeStart('top', e)} onPointerMove={handleResizeMove} onPointerUp={handleResizeEnd} onPointerCancel={handleResizeEnd} />
+          <div className="absolute -bottom-1 left-2 right-2 h-3 cursor-ns-resize hover:bg-primary/30 z-10" onPointerDown={(e) => handleResizeStart('bottom', e)} onPointerMove={handleResizeMove} onPointerUp={handleResizeEnd} onPointerCancel={handleResizeEnd} />
+          <div className="absolute -left-1 top-2 bottom-2 w-3 cursor-ew-resize hover:bg-primary/30 z-10" onPointerDown={(e) => handleResizeStart('left', e)} onPointerMove={handleResizeMove} onPointerUp={handleResizeEnd} onPointerCancel={handleResizeEnd} />
+          <div className="absolute -right-1 top-2 bottom-2 w-3 cursor-ew-resize hover:bg-primary/30 z-10" onPointerDown={(e) => handleResizeStart('right', e)} onPointerMove={handleResizeMove} onPointerUp={handleResizeEnd} onPointerCancel={handleResizeEnd} />
+
+          <div className="absolute top-0 left-0 px-1.5 py-0.5 text-[10px] font-medium text-black max-w-full truncate" style={{ backgroundColor: borderColor }}>
+            {typeof segment.label === 'string' ? segment.label : ''}
+          </div>
+        </div>
       </ContextMenuTrigger>
       <ContextMenuContent className="w-48">
         <ContextMenuItem onClick={() => { setPlaybackTime(segment.startTime); setPlaying(true); }}>

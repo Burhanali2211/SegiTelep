@@ -13,11 +13,11 @@ import { Label } from '@/components/ui/label';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
-import { 
-  LayoutTemplate, 
-  FileText, 
-  Mic, 
-  Video, 
+import {
+  LayoutTemplate,
+  FileText,
+  Mic,
+  Video,
   Presentation,
   Plus,
   Download,
@@ -181,14 +181,14 @@ export const TemplatesDialog = memo<TemplatesDialogProps>(({
     try {
       const stored = localStorage.getItem(TEMPLATES_STORAGE_KEY);
       const customTemplates: ScriptTemplate[] = stored ? JSON.parse(stored) : [];
-      
+
       // Combine built-in and custom templates
       const builtInWithIds = BUILT_IN_TEMPLATES.map(t => ({
         ...t,
         id: `builtin-${t.name.toLowerCase().replace(/\s+/g, '-')}`,
         createdAt: 0,
       }));
-      
+
       return [...builtInWithIds, ...customTemplates];
     } catch {
       return BUILT_IN_TEMPLATES.map(t => ({
@@ -198,37 +198,37 @@ export const TemplatesDialog = memo<TemplatesDialogProps>(({
       }));
     }
   });
-  
+
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
-  
+
   // Filter templates
   const filteredTemplates = templates.filter(t => {
     const matchesCategory = selectedCategory === 'all' || t.category === selectedCategory;
-    const matchesSearch = t.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                          t.description.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesSearch = (t.name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (t.description || '').toLowerCase().includes(searchQuery.toLowerCase());
     return matchesCategory && matchesSearch;
   });
-  
+
   // Sort: favorites first, then by name
   const sortedTemplates = [...filteredTemplates].sort((a, b) => {
     if (a.isFavorite && !b.isFavorite) return -1;
     if (!a.isFavorite && b.isFavorite) return 1;
     return a.name.localeCompare(b.name);
   });
-  
+
   const saveTemplates = useCallback((newTemplates: ScriptTemplate[]) => {
     const customOnly = newTemplates.filter(t => !t.isBuiltIn);
     localStorage.setItem(TEMPLATES_STORAGE_KEY, JSON.stringify(customOnly));
     setTemplates(newTemplates);
   }, []);
-  
+
   const toggleFavorite = useCallback((id: string) => {
-    saveTemplates(templates.map(t => 
+    saveTemplates(templates.map(t =>
       t.id === id ? { ...t, isFavorite: !t.isFavorite } : t
     ));
   }, [templates, saveTemplates]);
-  
+
   const deleteTemplate = useCallback((id: string) => {
     const template = templates.find(t => t.id === id);
     if (template?.isBuiltIn) {
@@ -238,13 +238,13 @@ export const TemplatesDialog = memo<TemplatesDialogProps>(({
     saveTemplates(templates.filter(t => t.id !== id));
     toast.success('Template deleted');
   }, [templates, saveTemplates]);
-  
+
   const handleUseTemplate = useCallback((template: ScriptTemplate) => {
     onSelectTemplate(template.content);
     onOpenChange(false);
     toast.success(`Applied template: ${template.name}`);
   }, [onSelectTemplate, onOpenChange]);
-  
+
   const categoryIcons: Record<string, React.ReactNode> = {
     presentation: <Presentation size={14} />,
     interview: <Mic size={14} />,
@@ -252,9 +252,9 @@ export const TemplatesDialog = memo<TemplatesDialogProps>(({
     speech: <FileText size={14} />,
     custom: <LayoutTemplate size={14} />,
   };
-  
+
   const categories = ['all', 'presentation', 'interview', 'video', 'speech', 'custom'];
-  
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl max-h-[85vh] overflow-hidden flex flex-col">
@@ -267,7 +267,7 @@ export const TemplatesDialog = memo<TemplatesDialogProps>(({
             Choose a template to quickly start your script
           </DialogDescription>
         </DialogHeader>
-        
+
         <div className="flex flex-col gap-4 flex-1 overflow-hidden">
           {/* Search and Filter */}
           <div className="flex gap-2">
@@ -278,7 +278,7 @@ export const TemplatesDialog = memo<TemplatesDialogProps>(({
               className="flex-1"
             />
           </div>
-          
+
           {/* Category Pills */}
           <div className="flex gap-2 flex-wrap">
             {categories.map(cat => (
@@ -298,9 +298,9 @@ export const TemplatesDialog = memo<TemplatesDialogProps>(({
               </Button>
             ))}
           </div>
-          
+
           <Separator />
-          
+
           {/* Templates List */}
           <ScrollArea className="flex-1">
             <div className="space-y-2 pr-4">
@@ -339,7 +339,7 @@ export const TemplatesDialog = memo<TemplatesDialogProps>(({
                           <span>~{Math.ceil(template.estimatedDuration / 60)} min</span>
                         </div>
                       </div>
-                      
+
                       <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                         <Button
                           variant="ghost"
@@ -377,7 +377,7 @@ export const TemplatesDialog = memo<TemplatesDialogProps>(({
             </div>
           </ScrollArea>
         </div>
-        
+
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Close
@@ -399,7 +399,7 @@ export function saveAsTemplate(
 ): ScriptTemplate {
   const wordCount = content.trim().split(/\s+/).filter(w => w.length > 0).length;
   const estimatedDuration = Math.ceil((wordCount / 150) * 60); // 150 WPM average
-  
+
   const template: ScriptTemplate = {
     id: uuidv4(),
     name,
@@ -412,7 +412,7 @@ export function saveAsTemplate(
     isBuiltIn: false,
     createdAt: Date.now(),
   };
-  
+
   // Save to storage
   try {
     const stored = localStorage.getItem(TEMPLATES_STORAGE_KEY);
@@ -422,6 +422,6 @@ export function saveAsTemplate(
   } catch (e) {
     console.error('Failed to save template:', e);
   }
-  
+
   return template;
 }

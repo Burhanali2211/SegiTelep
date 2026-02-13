@@ -32,7 +32,7 @@ import {
   Timer,
   Volume2,
 } from 'lucide-react';
-import { getCountdownSettings, saveCountdownSettings, CountdownSettings } from '@/components/Teleprompter/CountdownSettingsDialog';
+import { getCountdownSettings, saveCountdownSettings, CountdownSettings } from '@/utils/countdownUtils';
 
 interface SettingsPanelProps {
   open: boolean;
@@ -153,11 +153,10 @@ export const SettingsPanel = memo<SettingsPanelProps>(({ open, onOpenChange }) =
                           onClick={() =>
                             handleSettingChange('defaultTextColor', color.value)
                           }
-                          className={`w-8 h-8 rounded border-2 transition-all ${
-                            settings.defaultTextColor === color.value
+                          className={`w-8 h-8 rounded border-2 transition-all ${settings.defaultTextColor === color.value
                               ? 'border-primary scale-110'
                               : 'border-transparent hover:border-muted'
-                          }`}
+                            }`}
                           style={{ backgroundColor: color.hex }}
                           title={color.label}
                         />

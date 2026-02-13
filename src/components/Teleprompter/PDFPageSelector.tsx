@@ -1,10 +1,10 @@
-import React, { memo, useState, useCallback, useEffect } from 'react';
+import React, { memo, useState, useCallback, useEffect, useRef } from 'react';
 import { PDFProcessor, PDFInfo, PDFPageInfo, validatePDFFile, formatFileSize, formatDate } from '@/utils/pdfUtils';
-import { 
-  getPDFProcessor, 
-  isTauriEnvironment, 
-  openPDFFileDialog, 
-  processPDFInTauri 
+import {
+  getPDFProcessor,
+  isTauriEnvironment,
+  openPDFFileDialog,
+  processPDFInTauri
 } from '@/utils/tauriPDFUtils';
 import {
   Dialog,
@@ -15,10 +15,7 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { Separator } from '@/components/ui/separator';
 import {
   FileText,
   Upload,
@@ -29,13 +26,12 @@ import {
   Square,
   RotateCcw,
   Download,
-  Info,
-  ChevronLeft,
-  ChevronRight,
   FolderOpen,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { List as VirtualList, Grid as VirtualGrid } from 'react-window';
+import { AutoSizer } from 'react-virtualized-auto-sizer';
 
 interface PDFPageSelectorProps {
   open: boolean;
@@ -45,89 +41,94 @@ interface PDFPageSelectorProps {
 
 type ViewMode = 'grid' | 'list';
 
-export const PDFPageSelector = memo<PDFPageSelectorProps>(({ 
-  open, 
-  onOpenChange, 
-  onPagesSelected 
+interface GridItemData {
+  pages: PDFPageInfo[];
+  selectedPages: Set<number>;
+  thumbnails: { [key: number]: string };
+  togglePageSelection: (pageNumber: number) => void;
+  columnCount: number;
+}
+
+interface ListItemData {
+  pages: PDFPageInfo[];
+  selectedPages: Set<number>;
+  thumbnails: { [key: number]: string };
+  togglePageSelection: (pageNumber: number) => void;
+}
+
+export const PDFPageSelector = memo<PDFPageSelectorProps>(({
+  open,
+  onOpenChange,
+  onPagesSelected
 }) => {
-  const [pdfFile, setPdfFile] = useState<File | null>(null);
   const [pdfInfo, setPdfInfo] = useState<PDFInfo | null>(null);
   const [selectedPages, setSelectedPages] = useState<Set<number>>(new Set());
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
   const [searchTerm, setSearchTerm] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [thumbnails, setThumbnails] = useState<{ [key: number]: string }>({});
-  const [currentPage, setCurrentPage] = useState(1);
   const [processor, setProcessor] = useState<PDFProcessor | null>(null);
 
-  const pagesPerGrid = 12;
-  const totalPages = pdfInfo?.totalPages || 0;
-  const totalPagesGrid = Math.ceil(totalPages / pagesPerGrid);
+  const loadThumbnailsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Filter pages based on search
-  const filteredPages = pdfInfo?.pages.filter(page => 
-    searchTerm === '' || page.pageNumber.toString().includes(searchTerm)
-  ) || [];
+  const filteredPages = React.useMemo(() =>
+    pdfInfo?.pages.filter(page =>
+      searchTerm === '' || page.pageNumber.toString().includes(searchTerm)
+    ) || [],
+    [pdfInfo?.pages, searchTerm]
+  );
 
-  // Get pages for current grid view
-  const getPagesForCurrentGrid = () => {
-    const startIndex = (currentPage - 1) * pagesPerGrid;
-    const endIndex = Math.min(startIndex + pagesPerGrid, filteredPages.length);
-    return filteredPages.slice(startIndex, endIndex);
-  };
-
-  // Reset state when dialog closes
   const resetState = useCallback(() => {
-    setPdfFile(null);
     setPdfInfo(null);
     setSelectedPages(new Set());
     setThumbnails({});
-    setCurrentPage(1);
     setSearchTerm('');
     if (processor) {
       processor.cleanup();
       setProcessor(null);
     }
+    if (loadThumbnailsTimeoutRef.current) {
+      clearTimeout(loadThumbnailsTimeoutRef.current);
+    }
   }, [processor]);
 
-  // Debug environment detection
   useEffect(() => {
-    console.log('PDF Page Selector - Environment:', {
-      isTauri: isTauriEnvironment(),
-      hasTauriAPI: typeof window !== 'undefined' && '__TAURI__' in window,
-      userAgent: navigator.userAgent
-    });
-  }, []);
+    return () => {
+      if (processor) {
+        processor.cleanup();
+      }
+      if (loadThumbnailsTimeoutRef.current) {
+        clearTimeout(loadThumbnailsTimeoutRef.current);
+      }
+    };
+  }, [processor]);
 
-  // Handle file selection (both browser and Tauri)
   const handleFileSelect = useCallback(async (file?: File) => {
     setIsLoading(true);
 
     try {
       if (isTauriEnvironment()) {
-        // Use Tauri file dialog and processing
         const result = await processPDFInTauri();
-        
+
         if (result.error) {
           toast.error(result.error);
           resetState();
           return;
         }
-        
+
         if (result.pdfInfo) {
           setPdfInfo(result.pdfInfo);
           const newProcessor = getPDFProcessor();
           setProcessor(newProcessor);
-          
-          // Generate thumbnails for first few pages
+
           const initialPages = Array.from({ length: Math.min(12, result.pdfInfo.totalPages) }, (_, i) => i + 1);
           const thumbs = await newProcessor.generateThumbnails(initialPages, 150);
           setThumbnails(thumbs);
-          
+
           toast.success(`Loaded PDF with ${result.pdfInfo.totalPages} pages`);
         }
       } else {
-        // Browser environment - use provided file or file input
         if (!file) {
           resetState();
           return;
@@ -140,19 +141,16 @@ export const PDFPageSelector = memo<PDFPageSelectorProps>(({
           return;
         }
 
-        setPdfFile(file);
-        
         const newProcessor = getPDFProcessor();
         const info = await newProcessor.loadPDF(file);
-        
+
         setPdfInfo(info);
         setProcessor(newProcessor);
-        
-        // Generate thumbnails for first few pages
+
         const initialPages = Array.from({ length: Math.min(12, info.totalPages) }, (_, i) => i + 1);
         const thumbs = await newProcessor.generateThumbnails(initialPages, 150);
         setThumbnails(thumbs);
-        
+
         toast.success(`Loaded PDF with ${info.totalPages} pages`);
       }
     } catch (error) {
@@ -162,32 +160,29 @@ export const PDFPageSelector = memo<PDFPageSelectorProps>(({
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [resetState]);
 
-  // Handle Tauri file dialog
   const handleTauriFileDialog = useCallback(async () => {
     try {
       const filePath = await openPDFFileDialog();
       if (filePath) {
-        // Process the selected file path
         const result = await processPDFInTauri(filePath);
-        
+
         if (result.error) {
           toast.error(result.error);
           resetState();
           return;
         }
-        
+
         if (result.pdfInfo) {
           setPdfInfo(result.pdfInfo);
           const newProcessor = getPDFProcessor();
           setProcessor(newProcessor);
-          
-          // Generate thumbnails for first few pages
+
           const initialPages = Array.from({ length: Math.min(12, result.pdfInfo.totalPages) }, (_, i) => i + 1);
           const thumbs = await newProcessor.generateThumbnails(initialPages, 150);
           setThumbnails(thumbs);
-          
+
           toast.success(`Loaded PDF with ${result.pdfInfo.totalPages} pages`);
         }
       }
@@ -195,9 +190,8 @@ export const PDFPageSelector = memo<PDFPageSelectorProps>(({
       console.error('Error in Tauri file dialog:', error);
       toast.error('Failed to open file dialog');
     }
-  }, []);
+  }, [resetState]);
 
-  // Handle file input change
   const handleFileInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     e.preventDefault();
     e.stopPropagation();
@@ -205,61 +199,37 @@ export const PDFPageSelector = memo<PDFPageSelectorProps>(({
     if (file) {
       handleFileSelect(file);
     }
-    // Reset the input value to allow selecting the same file again
     e.target.value = '';
   }, [handleFileSelect]);
 
-  // Handle drag and drop
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    
+
     const files = e.dataTransfer.files;
     if (files && files.length > 0) {
       const file = files[0];
-      
-      // Validate file type
+
       if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
         toast.error('Please drop a PDF file');
         return;
       }
-      
-      // Validate file size (100MB)
+
       const maxSize = 100 * 1024 * 1024;
       if (file.size > maxSize) {
         toast.error('PDF file must be less than 100MB');
         return;
       }
-      
-      if (isTauriEnvironment()) {
-        // In Tauri, we can still process the dropped file using the browser method
-        handleFileSelect(file);
-      } else {
-        // In browser, use the regular file selection
-        handleFileSelect(file);
-      }
+
+      handleFileSelect(file);
     }
   }, [handleFileSelect]);
 
-  // Handle drag over
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
   }, []);
 
-  // Handle drag enter
-  const handleDragEnter = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-  }, []);
-
-  // Handle drag leave
-  const handleDragLeave = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-  }, []);
-
-  // Toggle page selection
   const togglePageSelection = useCallback((pageNumber: number) => {
     setSelectedPages(prev => {
       const newSet = new Set(prev);
@@ -272,19 +242,16 @@ export const PDFPageSelector = memo<PDFPageSelectorProps>(({
     });
   }, []);
 
-  // Select all pages
   const selectAllPages = useCallback(() => {
     if (pdfInfo) {
       setSelectedPages(new Set(pdfInfo.pages.map(p => p.pageNumber)));
     }
   }, [pdfInfo]);
 
-  // Deselect all pages
   const deselectAllPages = useCallback(() => {
     setSelectedPages(new Set());
   }, []);
 
-  // Load more thumbnails when needed
   const loadMoreThumbnails = useCallback(async (pageNumbers: number[]) => {
     if (!processor) return;
 
@@ -299,15 +266,15 @@ export const PDFPageSelector = memo<PDFPageSelectorProps>(({
     }
   }, [processor, thumbnails]);
 
-  // Load thumbnails for current grid view
-  useEffect(() => {
-    if (viewMode === 'grid' && pdfInfo) {
-      const currentPages = getPagesForCurrentGrid();
-      loadMoreThumbnails(currentPages.map(p => p.pageNumber));
+  const debouncedLoadThumbnails = useCallback((pageNumbers: number[]) => {
+    if (loadThumbnailsTimeoutRef.current) {
+      clearTimeout(loadThumbnailsTimeoutRef.current);
     }
-  }, [currentPage, viewMode, pdfInfo, loadMoreThumbnails]);
+    loadThumbnailsTimeoutRef.current = setTimeout(() => {
+      loadMoreThumbnails(pageNumbers);
+    }, 150);
+  }, [loadMoreThumbnails]);
 
-  // Handle import selected pages
   const handleImport = useCallback(async () => {
     if (!processor || selectedPages.size === 0) {
       toast.error('Please select at least one page');
@@ -315,11 +282,11 @@ export const PDFPageSelector = memo<PDFPageSelectorProps>(({
     }
 
     setIsLoading(true);
-    
+
     try {
       const selectedPageNumbers = Array.from(selectedPages).sort((a, b) => a - b);
       const pages = await processor.getSelectedPages(selectedPageNumbers, 2.0);
-      
+
       onPagesSelected(pages);
       toast.success(`Imported ${pages.length} pages`);
       onOpenChange(false);
@@ -331,13 +298,123 @@ export const PDFPageSelector = memo<PDFPageSelectorProps>(({
     }
   }, [processor, selectedPages, onPagesSelected, onOpenChange]);
 
-  // Handle dialog close
   const handleOpenChange = useCallback((open: boolean) => {
     if (!open) {
       resetState();
     }
     onOpenChange(open);
   }, [resetState, onOpenChange]);
+
+  const GridCell = memo(({ columnIndex, rowIndex, style, data }: any) => {
+    const { pages, selectedPages, thumbnails, togglePageSelection, columnCount } = data as GridItemData;
+    const index = rowIndex * columnCount + columnIndex;
+
+    if (index >= pages.length) return null;
+
+    const page = pages[index];
+    const isSelected = selectedPages.has(page.pageNumber);
+
+    return (
+      <div style={style} className="p-2">
+        <div
+          className={cn(
+            'h-full border rounded-lg overflow-hidden cursor-pointer transition-all hover:ring-2 hover:ring-primary flex flex-col bg-background relative group',
+            isSelected && 'ring-2 ring-primary bg-primary/5'
+          )}
+          onClick={() => togglePageSelection(page.pageNumber)}
+        >
+          <div className={cn(
+            "absolute top-2 right-2 z-10 transition-opacity duration-200",
+            isSelected ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+          )}>
+            <div className={cn(
+              'w-6 h-6 rounded border-2 flex items-center justify-center shadow-sm',
+              isSelected
+                ? 'bg-primary border-primary text-primary-foreground'
+                : 'bg-background border-muted-foreground'
+            )}>
+              {isSelected && <div className="w-3 h-3 bg-current rounded-sm" />}
+            </div>
+          </div>
+
+          <div className="flex-1 relative bg-muted/20 flex items-center justify-center overflow-hidden">
+            {thumbnails[page.pageNumber] ? (
+              <img
+                src={thumbnails[page.pageNumber]}
+                alt={`Page ${page.pageNumber}`}
+                className="w-full h-full object-contain"
+                loading="lazy"
+              />
+            ) : (
+              <div className="flex flex-col items-center gap-2 text-muted-foreground/50">
+                <FileText size={40} />
+                <span className="text-xs">Loading...</span>
+              </div>
+            )}
+          </div>
+
+          <div className="p-3 border-t bg-card">
+            <div className="flex items-center justify-between">
+              <span className="font-medium text-sm">Page {page.pageNumber}</span>
+              <span className="text-xs text-muted-foreground">{page.width}x{page.height}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  });
+
+  GridCell.displayName = 'GridCell';
+
+  const ListRow = memo(({ index, style, data }: any) => {
+    const { pages, selectedPages, thumbnails, togglePageSelection } = data as ListItemData;
+    const page = pages[index];
+    const isSelected = selectedPages.has(page.pageNumber);
+
+    return (
+      <div style={style} className="p-2">
+        <div
+          className={cn(
+            'flex items-center gap-4 p-2 border rounded-lg cursor-pointer transition-all hover:bg-muted/50 h-full bg-background',
+            isSelected && 'bg-primary/5 border-primary'
+          )}
+          onClick={() => togglePageSelection(page.pageNumber)}
+        >
+          <div className="flex items-center justify-center w-10">
+            <Checkbox
+              checked={isSelected}
+              onCheckedChange={() => togglePageSelection(page.pageNumber)}
+              className="data-[state=checked]:bg-primary"
+              onClick={(e) => e.stopPropagation()}
+            />
+          </div>
+
+          <div className="w-12 h-16 bg-muted rounded flex-shrink-0 relative overflow-hidden border">
+            {thumbnails[page.pageNumber] ? (
+              <img
+                src={thumbnails[page.pageNumber]}
+                alt={`Page ${page.pageNumber}`}
+                className="w-full h-full object-cover"
+              />
+            ) : (
+              <div className="w-full h-full flex items-center justify-center bg-muted/30">
+                <FileText size={16} className="text-muted-foreground/50" />
+              </div>
+            )}
+          </div>
+
+          <div className="flex-1">
+            <p className="font-medium text-sm">Page {page.pageNumber}</p>
+            <div className="flex items-center gap-2 mt-1">
+              <span className="text-xs text-muted-foreground">Original Size: {page.width} × {page.height} px</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  });
+
+  ListRow.displayName = 'ListRow';
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -350,122 +427,98 @@ export const PDFPageSelector = memo<PDFPageSelectorProps>(({
         </DialogHeader>
 
         <div className="flex-1 overflow-hidden flex flex-col">
-        {!pdfFile && !pdfInfo ? (
-          <div className="space-y-4">
-            {isTauriEnvironment() ? (
-              // Tauri environment - show file dialog button with drag-drop support
-              <div
-                className="border-2 border-dashed border-muted rounded-lg p-12 flex flex-col items-center justify-center gap-4 cursor-pointer hover:border-primary/50 transition-colors flex-1"
-                onClick={handleTauriFileDialog}
-                onDragOver={handleDragOver}
-                onDragEnter={handleDragEnter}
-                onDragLeave={handleDragLeave}
-                onDrop={handleDrop}
-              >
-                <FolderOpen size={48} className="text-muted-foreground" />
-                <div className="text-center">
-                  <p className="font-medium text-lg">Click to browse or drop PDF files</p>
-                  <p className="text-sm text-muted-foreground mt-1">
-                    Max 100MB, supports multi-page PDFs
-                  </p>
-                </div>
-              </div>
-            ) : (
-              // Browser environment - show drag and drop
-              <>
+          {!pdfInfo ? (
+            <div className="space-y-4">
+              {isTauriEnvironment() ? (
                 <div
                   className="border-2 border-dashed border-muted rounded-lg p-12 flex flex-col items-center justify-center gap-4 cursor-pointer hover:border-primary/50 transition-colors flex-1"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    const fileInput = document.getElementById('pdf-file-input') as HTMLInputElement;
-                    if (fileInput) {
-                      fileInput.click();
-                    } else {
-                      console.error('PDF file input not found');
-                    }
-                  }}
+                  onClick={handleTauriFileDialog}
                   onDragOver={handleDragOver}
-                  onDragEnter={handleDragEnter}
-                  onDragLeave={handleDragLeave}
                   onDrop={handleDrop}
                 >
-                  <Upload size={48} className="text-muted-foreground" />
+                  <FolderOpen size={48} className="text-muted-foreground" />
                   <div className="text-center">
-                    <p className="font-medium text-lg">Drop PDF here or click to upload</p>
+                    <p className="font-medium text-lg">Click to browse or drop PDF files</p>
                     <p className="text-sm text-muted-foreground mt-1">
                       Max 100MB, supports multi-page PDFs
                     </p>
                   </div>
                 </div>
-                
-                {/* Fallback button */}
-                <Button 
-                  onClick={() => {
-                    const fileInput = document.getElementById('pdf-file-input') as HTMLInputElement;
-                    if (fileInput) {
-                      fileInput.click();
-                    }
-                  }}
-                  className="w-full"
-                  variant="outline"
-                >
-                  <Upload size={16} className="mr-2" />
-                  Choose PDF File
-                </Button>
-                
-                <input
-                  id="pdf-file-input"
-                  type="file"
-                  accept="application/pdf"
-                  className="hidden"
-                  onChange={handleFileInputChange}
-                />
-              </>
-            )}
-          </div>
-        ) : (
-          // PDF content area
-          <div className="flex-1 overflow-hidden flex flex-col">
-            {/* PDF Info Bar */}
-            <div className="bg-muted/30 rounded-lg p-4 mb-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-4">
-                  <FileText size={24} className="text-primary" />
-                  <div>
-                    <p className="font-medium">{pdfInfo?.fileName}</p>
-                    <p className="text-sm text-muted-foreground">
-                      {formatFileSize(pdfInfo?.fileSize || 0)} • {pdfInfo?.totalPages} pages
-                    </p>
+              ) : (
+                <>
+                  <div
+                    className="border-2 border-dashed border-muted rounded-lg p-12 flex flex-col items-center justify-center gap-4 cursor-pointer hover:border-primary/50 transition-colors flex-1"
+                    onClick={() => fileInputRef.current?.click()}
+                    onDragOver={handleDragOver}
+                    onDrop={handleDrop}
+                  >
+                    <Upload size={48} className="text-muted-foreground" />
+                    <div className="text-center">
+                      <p className="font-medium text-lg">Drop PDF here or click to upload</p>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        Max 100MB, supports multi-page PDFs
+                      </p>
+                    </div>
                   </div>
-                </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={resetState}
-                  disabled={isLoading}
-                >
-                  <RotateCcw size={16} className="mr-2" />
-                  Choose Different
-                </Button>
-              </div>
-              
-              {pdfInfo?.metadata && (
-                <div className="mt-3 text-sm text-muted-foreground">
-                  {pdfInfo.metadata.title && (
-                    <p>Title: {pdfInfo.metadata.title}</p>
-                  )}
-                  {pdfInfo.metadata.author && (
-                    <p>Author: {pdfInfo.metadata.author}</p>
-                  )}
-                  {pdfInfo.metadata.creationDate && (
-                    <p>Created: {formatDate(pdfInfo.metadata.creationDate)}</p>
-                  )}
-                </div>
+
+                  <Button
+                    onClick={() => fileInputRef.current?.click()}
+                    className="w-full"
+                    variant="outline"
+                  >
+                    <Upload size={16} className="mr-2" />
+                    Choose PDF File
+                  </Button>
+
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="application/pdf"
+                    className="hidden"
+                    onChange={handleFileInputChange}
+                  />
+                </>
               )}
             </div>
+          ) : (
+            <div className="flex-1 overflow-hidden flex flex-col">
+              <div className="bg-muted/30 rounded-lg p-4 mb-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-4">
+                    <FileText size={24} className="text-primary" />
+                    <div>
+                      <p className="font-medium">{pdfInfo.fileName}</p>
+                      <p className="text-sm text-muted-foreground">
+                        {formatFileSize(pdfInfo.fileSize)} • {pdfInfo.totalPages} pages
+                      </p>
+                    </div>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={resetState}
+                    disabled={isLoading}
+                  >
+                    <RotateCcw size={16} className="mr-2" />
+                    Choose Different
+                  </Button>
+                </div>
 
-              {/* Controls */}
+                {pdfInfo.metadata && (
+                  <div className="mt-3 text-sm text-muted-foreground">
+                    {pdfInfo.metadata.title && (
+                      <p>Title: {pdfInfo.metadata.title}</p>
+                    )}
+                    {pdfInfo.metadata.author && (
+                      <p>Author: {pdfInfo.metadata.author}</p>
+                    )}
+                    {pdfInfo.metadata.creationDate && (
+                      <p>Created: {formatDate(pdfInfo.metadata.creationDate)}</p>
+                    )}
+                  </div>
+                )}
+              </div>
+
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-2">
                   <div className="flex items-center border rounded-md">
@@ -486,7 +539,7 @@ export const PDFPageSelector = memo<PDFPageSelectorProps>(({
                       <List size={16} />
                     </Button>
                   </div>
-                  
+
                   <div className="relative">
                     <Search size={16} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground" />
                     <Input
@@ -523,122 +576,84 @@ export const PDFPageSelector = memo<PDFPageSelectorProps>(({
                 </div>
               </div>
 
-              {/* Pages Display */}
-              <ScrollArea className="flex-1">
+              <div className="flex-1 min-h-0 bg-muted/10">
                 {viewMode === 'grid' ? (
-                  // Grid view
-                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 p-4">
-                    {getPagesForCurrentGrid().map((page) => (
-                      <div
-                        key={page.pageNumber}
-                        className={cn(
-                          'relative border rounded-lg overflow-hidden cursor-pointer transition-all hover:ring-2 hover:ring-primary',
-                          selectedPages.has(page.pageNumber) && 'ring-2 ring-primary bg-primary/5'
-                        )}
-                        onClick={() => togglePageSelection(page.pageNumber)}
-                      >
-                        <div className="aspect-[3/4] bg-muted relative">
-                          {thumbnails[page.pageNumber] ? (
-                            <img
-                              src={thumbnails[page.pageNumber]}
-                              alt={`Page ${page.pageNumber}`}
-                              className="w-full h-full object-cover"
-                            />
-                          ) : (
-                            <div className="w-full h-full flex items-center justify-center">
-                              <FileText size={32} className="text-muted-foreground" />
-                            </div>
-                          )}
-                          
-                          {/* Selection overlay */}
-                          <div className="absolute top-2 right-2">
-                            <div className={cn(
-                              'w-6 h-6 rounded border-2 flex items-center justify-center',
-                              selectedPages.has(page.pageNumber) 
-                                ? 'bg-primary border-primary text-primary-foreground' 
-                                : 'bg-background border-muted-foreground'
-                            )}>
-                              {selectedPages.has(page.pageNumber) && (
-                                <div className="w-3 h-3 bg-current rounded-sm" />
-                              )}
-                            </div>
-                          </div>
+                  <AutoSizer>
+                    {({ height, width }) => {
+                      const BOX_WIDTH = 200;
+                      const COLUMN_COUNT = Math.max(2, Math.floor(width / BOX_WIDTH));
+                      const ROW_COUNT = Math.ceil(filteredPages.length / COLUMN_COUNT);
+                      const ROW_HEIGHT = 280;
 
-                          {/* Page number */}
-                          <div className="absolute bottom-2 left-2 bg-black/70 text-white px-2 py-1 rounded text-xs">
-                            Page {page.pageNumber}
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
+                      const gridItemData: GridItemData = {
+                        pages: filteredPages,
+                        selectedPages,
+                        thumbnails,
+                        togglePageSelection,
+                        columnCount: COLUMN_COUNT
+                      };
+
+                      return (
+                        <VirtualGrid
+                          columnCount={COLUMN_COUNT}
+                          columnWidth={width / COLUMN_COUNT}
+                          height={height}
+                          rowCount={ROW_COUNT}
+                          rowHeight={ROW_HEIGHT}
+                          width={width}
+                          cellProps={{ data: gridItemData }}
+                          onCellsRendered={({ rowStartIndex, rowStopIndex }) => {
+                            const startItem = rowStartIndex * COLUMN_COUNT;
+                            const endItem = Math.min(filteredPages.length, (rowStopIndex + 1) * COLUMN_COUNT);
+
+                            const neededPages: number[] = [];
+                            for (let i = startItem; i < endItem; i++) {
+                              if (filteredPages[i]) {
+                                neededPages.push(filteredPages[i].pageNumber);
+                              }
+                            }
+                            debouncedLoadThumbnails(neededPages);
+                          }}
+                        >
+                          {GridCell}
+                        </VirtualGrid>
+                      );
+                    }}
+                  </AutoSizer>
                 ) : (
-                  // List view
-                  <div className="p-4 space-y-2">
-                    {filteredPages.map((page) => (
-                      <div
-                        key={page.pageNumber}
-                        className={cn(
-                          'flex items-center gap-4 p-3 border rounded-lg cursor-pointer transition-all hover:bg-muted/50',
-                          selectedPages.has(page.pageNumber) && 'bg-primary/5 border-primary'
-                        )}
-                        onClick={() => togglePageSelection(page.pageNumber)}
-                      >
-                        <Checkbox
-                          checked={selectedPages.has(page.pageNumber)}
-                          className="pointer-events-none"
-                        />
-                        
-                        <div className="w-16 h-20 bg-muted rounded flex-shrink-0 relative">
-                          {thumbnails[page.pageNumber] ? (
-                            <img
-                              src={thumbnails[page.pageNumber]}
-                              alt={`Page ${page.pageNumber}`}
-                              className="w-full h-full object-cover rounded"
-                            />
-                          ) : (
-                            <div className="w-full h-full flex items-center justify-center">
-                              <FileText size={20} className="text-muted-foreground" />
-                            </div>
-                          )}
-                        </div>
+                  <AutoSizer>
+                    {({ height, width }) => {
+                      const listItemData: ListItemData = {
+                        pages: filteredPages,
+                        selectedPages,
+                        thumbnails,
+                        togglePageSelection
+                      };
 
-                        <div className="flex-1">
-                          <p className="font-medium">Page {page.pageNumber}</p>
-                          <p className="text-sm text-muted-foreground">
-                            {page.width} × {page.height} px
-                          </p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
+                      return (
+                        <VirtualList
+                          height={height}
+                          width={width}
+                          rowCount={filteredPages.length}
+                          itemSize={80}
+                          rowProps={{ data: listItemData }}
+                          onRowsRendered={({ startIndex, stopIndex }) => {
+                            const neededPages: number[] = [];
+                            for (let i = startIndex; i <= stopIndex; i++) {
+                              if (filteredPages[i]) {
+                                neededPages.push(filteredPages[i].pageNumber);
+                              }
+                            }
+                            debouncedLoadThumbnails(neededPages);
+                          }}
+                        >
+                          {ListRow}
+                        </VirtualList>
+                      );
+                    }}
+                  </AutoSizer>
                 )}
-
-                {/* Grid pagination */}
-                {viewMode === 'grid' && totalPagesGrid > 1 && (
-                  <div className="flex items-center justify-center gap-2 p-4 border-t">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-                      disabled={currentPage === 1}
-                    >
-                      <ChevronLeft size={16} />
-                    </Button>
-                    <span className="text-sm text-muted-foreground">
-                      Page {currentPage} of {totalPagesGrid}
-                    </span>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setCurrentPage(prev => Math.min(totalPagesGrid, prev + 1))}
-                      disabled={currentPage === totalPagesGrid}
-                    >
-                      <ChevronRight size={16} />
-                    </Button>
-                  </div>
-                )}
-              </ScrollArea>
+              </div>
             </div>
           )}
         </div>
@@ -647,7 +662,7 @@ export const PDFPageSelector = memo<PDFPageSelectorProps>(({
           <Button variant="outline" onClick={() => handleOpenChange(false)}>
             Cancel
           </Button>
-          {pdfFile && (
+          {pdfInfo && (
             <Button
               onClick={handleImport}
               disabled={selectedPages.size === 0 || isLoading}

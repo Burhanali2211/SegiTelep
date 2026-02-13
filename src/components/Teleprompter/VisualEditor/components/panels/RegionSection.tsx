@@ -10,6 +10,7 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger,
 } from '@/components/ui/context-menu';
+import { AssetThumbnail } from '../AssetThumbnail';
 
 interface RegionSectionProps {
   pages: ImagePage[];
@@ -24,6 +25,30 @@ interface RegionSectionProps {
   onDuplicate?: (id: string) => void;
   onDelete?: (id: string) => void;
 }
+
+
+
+import { Region } from '@/types/teleprompter.types';
+
+const RegionThumbnail = memo<{ assetId?: string; data?: string; region: Region }>(({ assetId, data, region }) => {
+  return (
+    <div className="w-8 h-8 rounded bg-muted overflow-hidden shrink-0 border border-border/50 relative">
+      <div
+        className="absolute inset-0 w-full h-full"
+        style={{
+          transform: `scale(${100 / region.width}, ${100 / region.height})`,
+          transformOrigin: `${region.x}% ${region.y}%`,
+        }}
+      >
+        <AssetThumbnail
+          assetId={assetId}
+          data={data}
+          className="w-full h-full"
+        />
+      </div>
+    </div>
+  );
+});
 
 export const RegionSection = memo<RegionSectionProps>(({
   pages,
@@ -100,59 +125,66 @@ export const RegionSection = memo<RegionSectionProps>(({
                     return (
                       <ContextMenu key={segment.id}>
                         <ContextMenuTrigger asChild>
-                      <div
-                        role="button"
-                        tabIndex={0}
-                        onClick={(e) => onSegmentClick(e, segment, pageIndex)}
-                        onDoubleClick={() => onPlaySegment(segment)}
-                        onKeyDown={(e) => e.key === 'Enter' && onSegmentClick(e as unknown as React.MouseEvent, segment, pageIndex)}
-                        className={cn(
-                          'w-full flex items-center gap-1.5 px-2 py-1.5 rounded-lg transition-all duration-150 text-left group cursor-pointer relative pr-16',
-                          isPlaying && 'bg-destructive/15 ring-1 ring-destructive/30',
-                          isSelected && !isPlaying && 'bg-primary/15 ring-1 ring-primary/30',
-                          !isSelected && !isPlaying && 'hover:bg-muted/50',
-                          !isCurrentPage && 'opacity-60'
-                        )}
-                      >
-                        <div
-                          className={cn(
-                            'flex items-center justify-center w-6 h-6 rounded-md text-[10px] font-bold shrink-0',
-                            isPlaying ? 'bg-destructive text-destructive-foreground' : isSelected ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'
-                          )}
-                        >
-                          {globalNum}
-                        </div>
-                        <div className="flex-1 min-w-0 overflow-hidden">
-                          <div className="flex items-center gap-1.5 min-w-0">
-                            {segment.color && <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: segment.color }} />}
-                            <span className={cn('text-[11px] font-medium truncate', segment.isHidden && 'opacity-50')}>{typeof segment.label === 'string' ? segment.label : ''}</span>
-                            {segment.isHidden && <EyeOff size={10} className="text-muted-foreground shrink-0" />}
-                            {!isCurrentPage && pages.length > 1 && <span className="text-[9px] text-muted-foreground shrink-0">(P{pageIndex + 1})</span>}
+                          <div
+                            role="button"
+                            tabIndex={0}
+                            onClick={(e) => onSegmentClick(e, segment, pageIndex)}
+                            onDoubleClick={() => onPlaySegment(segment)}
+                            onKeyDown={(e) => e.key === 'Enter' && onSegmentClick(e as unknown as React.MouseEvent, segment, pageIndex)}
+                            className={cn(
+                              'w-full flex items-center gap-1.5 px-2 py-1.5 rounded-lg transition-all duration-150 text-left group cursor-pointer relative pr-16',
+                              isPlaying && 'bg-destructive/15 ring-1 ring-destructive/30',
+                              isSelected && !isPlaying && 'bg-primary/15 ring-1 ring-primary/30',
+                              !isSelected && !isPlaying && 'hover:bg-muted/50',
+                              !isCurrentPage && 'opacity-60'
+                            )}
+                          >
+                            <div className="flex items-center gap-2">
+                              <div
+                                className={cn(
+                                  'flex items-center justify-center w-6 h-6 rounded-md text-[10px] font-bold shrink-0',
+                                  isPlaying ? 'bg-destructive text-destructive-foreground' : isSelected ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'
+                                )}
+                              >
+                                {globalNum}
+                              </div>
+                              <RegionThumbnail
+                                assetId={page.assetId}
+                                data={page.data}
+                                region={segment.region}
+                              />
+                            </div>
+                            <div className="flex-1 min-w-0 overflow-hidden">
+                              <div className="flex items-center gap-1.5 min-w-0">
+                                {segment.color && <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: segment.color }} />}
+                                <span className={cn('text-[11px] font-medium truncate', segment.isHidden && 'opacity-50')}>{typeof segment.label === 'string' ? segment.label : ''}</span>
+                                {segment.isHidden && <EyeOff size={10} className="text-muted-foreground shrink-0" />}
+                                {!isCurrentPage && pages.length > 1 && <span className="text-[9px] text-muted-foreground shrink-0">(P{pageIndex + 1})</span>}
+                              </div>
+                              <div className="flex items-center gap-1 text-[10px] text-muted-foreground font-mono tabular-nums whitespace-nowrap">
+                                <Clock size={9} className="shrink-0" />
+                                {formatTime(segment.startTime)} – {formatTime(segment.endTime)}
+                              </div>
+                            </div>
+                            <div className="absolute right-1.5 top-1/2 -translate-y-1/2 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity bg-background/80 rounded px-0.5">
+                              {onMoveUp && (
+                                <button onClick={(e) => { e.stopPropagation(); onMoveUp(segment.id); }} disabled={!canMoveUp} className="w-5 h-5 rounded flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors disabled:opacity-30 disabled:pointer-events-none" title="Move up">
+                                  <ChevronUp size={10} />
+                                </button>
+                              )}
+                              {onMoveDown && (
+                                <button onClick={(e) => { e.stopPropagation(); onMoveDown(segment.id); }} disabled={!canMoveDown} className="w-5 h-5 rounded flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors disabled:opacity-30 disabled:pointer-events-none" title="Move down">
+                                  <ChevronDown size={10} />
+                                </button>
+                              )}
+                              <button onClick={(e) => { e.stopPropagation(); onPlaySegment(segment); }} className="w-5 h-5 rounded flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors">
+                                <Play size={10} />
+                              </button>
+                              <button onClick={(e) => { e.stopPropagation(); onToggleVisibility(segment.id); }} className="w-5 h-5 rounded flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors">
+                                {segment.isHidden ? <EyeOff size={10} /> : <Eye size={10} />}
+                              </button>
+                            </div>
                           </div>
-                          <div className="flex items-center gap-1 text-[10px] text-muted-foreground font-mono tabular-nums whitespace-nowrap">
-                            <Clock size={9} className="shrink-0" />
-                            {formatTime(segment.startTime)} – {formatTime(segment.endTime)}
-                          </div>
-                        </div>
-                        <div className="absolute right-1.5 top-1/2 -translate-y-1/2 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity bg-background/80 rounded px-0.5">
-                          {onMoveUp && (
-                            <button onClick={(e) => { e.stopPropagation(); onMoveUp(segment.id); }} disabled={!canMoveUp} className="w-5 h-5 rounded flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors disabled:opacity-30 disabled:pointer-events-none" title="Move up">
-                              <ChevronUp size={10} />
-                            </button>
-                          )}
-                          {onMoveDown && (
-                            <button onClick={(e) => { e.stopPropagation(); onMoveDown(segment.id); }} disabled={!canMoveDown} className="w-5 h-5 rounded flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors disabled:opacity-30 disabled:pointer-events-none" title="Move down">
-                              <ChevronDown size={10} />
-                            </button>
-                          )}
-                          <button onClick={(e) => { e.stopPropagation(); onPlaySegment(segment); }} className="w-5 h-5 rounded flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors">
-                            <Play size={10} />
-                          </button>
-                          <button onClick={(e) => { e.stopPropagation(); onToggleVisibility(segment.id); }} className="w-5 h-5 rounded flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors">
-                            {segment.isHidden ? <EyeOff size={10} /> : <Eye size={10} />}
-                          </button>
-                        </div>
-                      </div>
                         </ContextMenuTrigger>
                         <ContextMenuContent className="w-48">
                           <ContextMenuItem onClick={() => onPlaySegment(segment)}>

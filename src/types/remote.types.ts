@@ -2,7 +2,7 @@
 
 export interface RemoteCommand {
   type: string;
-  value?: any;
+  value?: unknown;
   timestamp: number;
 }
 
@@ -25,8 +25,8 @@ export interface RemoteServerState {
 declare global {
   interface Window {
     __TAURI__?: {
-      invoke: (command: string, args?: any) => Promise<any>;
-      listen: (event: string, handler: (event: any) => void) => Promise<() => Promise<void>>;
+      invoke: <T = unknown>(command: string, args?: Record<string, unknown>) => Promise<T>;
+      listen: <T = unknown>(event: string, handler: (event: { event: string; payload: T }) => void) => Promise<() => void>;
     };
   }
 }

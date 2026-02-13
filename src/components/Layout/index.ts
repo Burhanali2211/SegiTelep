@@ -1,4 +1,3 @@
 export { AppHeader } from './AppHeader';
+export { AppSidebar } from './AppSidebar';
 export { MainMenuBar } from './MainMenuBar';
-export { SecondaryToolbar } from './SecondaryToolbar';
-export type { SaveStatus } from './SecondaryToolbar';

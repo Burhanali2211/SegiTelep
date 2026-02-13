@@ -1,12 +1,12 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { stopAllExcept, registerStopCallback } from '@/utils/audioPlaybackCoordinator';
 import { AudioFile, AudioManagerState, SUPPORTED_AUDIO_TYPES, MAX_FILE_SIZE } from './types';
-import { 
-  getAllAudioFiles, 
-  saveAudioFile, 
+import {
+  getAllAudioFiles,
+  saveAudioFile,
   deleteAudioFile as deleteAudioFromStorage,
   renameAudioFile as renameAudioInStorage,
-  isDesktopAudioStorage 
+  isDesktopAudioStorage
 } from '@/core/storage/AudioStorage';
 import { toast } from 'sonner';
 
@@ -21,7 +21,7 @@ export function useAudioManager() {
     volume: 100,
     isLoading: false,
   });
-  
+
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const playbackRetryRef = useRef(0);
 
@@ -52,7 +52,7 @@ export function useAudioManager() {
       }
     };
     loadFiles();
-    
+
     // Cleanup on unmount
     return () => {
       cleanupAudio();
@@ -77,10 +77,10 @@ export function useAudioManager() {
 
     return new Promise((resolve) => {
       const reader = new FileReader();
-      
+
       reader.onload = (event) => {
         const data = event.target?.result as string;
-        
+
         // Get audio duration
         const audio = new Audio(data);
         audio.onloadedmetadata = async () => {
@@ -107,8 +107,8 @@ export function useAudioManager() {
             console.error('Failed to save audio file:', e);
             const msg = e instanceof Error ? e.message : 'Unknown error';
             const isQuota = /quota|storage|full|limit/i.test(msg) || (e instanceof Error && e.name === 'QuotaExceededError');
-            toast.error(isQuota 
-              ? 'Storage limit reached. Delete some audio files or use the desktop app.' 
+            toast.error(isQuota
+              ? 'Storage limit reached. Delete some audio files or use the desktop app.'
               : `Failed to save: ${msg}`);
             setState(prev => ({ ...prev, isLoading: false }));
             resolve(null);
@@ -194,15 +194,14 @@ export function useAudioManager() {
       playbackRetryRef.current = 0;
 
       const audio = new Audio();
-      
+
       // Set up error handling before loading
       audio.onerror = (e) => {
         console.error('Audio playback error:', e);
-        
+
         // Retry playback a few times
         if (playbackRetryRef.current < MAX_PLAYBACK_RETRIES) {
           playbackRetryRef.current++;
-          console.log(`[Audio] Retry attempt ${playbackRetryRef.current}`);
           setTimeout(() => togglePlayback(audioFile), 500);
         } else {
           setState(prev => ({ ...prev, playingId: null }));
@@ -210,19 +209,19 @@ export function useAudioManager() {
           playbackRetryRef.current = 0;
         }
       };
-      
+
       audio.onended = () => {
         setState(prev => ({ ...prev, playingId: null }));
         playbackRetryRef.current = 0;
       };
-      
+
       audio.oncanplaythrough = () => {
         audio.play().catch((err) => {
           console.error('Audio play() failed:', err);
           setState(prev => ({ ...prev, playingId: null }));
         });
       };
-      
+
       // Set volume and source
       audio.volume = state.volume / 100;
       audio.src = audioFile.data;

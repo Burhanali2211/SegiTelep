@@ -31,6 +31,25 @@ export interface PDFInfo {
   };
 }
 
+interface PDFMetadataInfo {
+  Title?: string;
+  Author?: string;
+  Subject?: string;
+  Creator?: string;
+  Producer?: string;
+  CreationDate?: string;
+  ModDate?: string;
+}
+
+interface PDFTextItem {
+  str: string;
+  dir?: string;
+  width?: number;
+  height?: number;
+  transform?: number[];
+  fontName?: string;
+}
+
 export class PDFProcessor {
   private pdfDocument: PDFDocumentProxy | null = null;
 
@@ -47,12 +66,12 @@ export class PDFProcessor {
       const totalPages = this.pdfDocument.numPages;
 
       const pages: PDFPageInfo[] = [];
-      
+
       // Process each page
       for (let pageNum = 1; pageNum <= totalPages; pageNum++) {
         const page = await this.pdfDocument.getPage(pageNum);
         const viewport = page.getViewport({ scale: 1.0 });
-        
+
         pages.push({
           pageNumber: pageNum,
           width: viewport.width,
@@ -67,13 +86,13 @@ export class PDFProcessor {
         totalPages,
         pages,
         metadata: {
-          title: (metadata.info as any)?.Title,
-          author: (metadata.info as any)?.Author,
-          subject: (metadata.info as any)?.Subject,
-          creator: (metadata.info as any)?.Creator,
-          producer: (metadata.info as any)?.Producer,
-          creationDate: this.parsePDFDate((metadata.info as any)?.CreationDate),
-          modificationDate: this.parsePDFDate((metadata.info as any)?.ModDate),
+          title: (metadata.info as PDFMetadataInfo)?.Title,
+          author: (metadata.info as PDFMetadataInfo)?.Author,
+          subject: (metadata.info as PDFMetadataInfo)?.Subject,
+          creator: (metadata.info as PDFMetadataInfo)?.Creator,
+          producer: (metadata.info as PDFMetadataInfo)?.Producer,
+          creationDate: this.parsePDFDate((metadata.info as PDFMetadataInfo)?.CreationDate),
+          modificationDate: this.parsePDFDate((metadata.info as PDFMetadataInfo)?.ModDate),
         }
       };
     } catch (error) {
@@ -98,9 +117,13 @@ export class PDFProcessor {
 
       const canvas = document.createElement('canvas');
       const context = canvas.getContext('2d')!;
-      
+
       canvas.width = scaledViewport.width;
       canvas.height = scaledViewport.height;
+
+      // Fill with white background (fixes black images on transparency)
+      context.fillStyle = '#FFFFFF';
+      context.fillRect(0, 0, canvas.width, canvas.height);
 
       await page.render({
         canvasContext: context,
@@ -129,9 +152,13 @@ export class PDFProcessor {
 
       const canvas = document.createElement('canvas');
       const context = canvas.getContext('2d')!;
-      
+
       canvas.width = viewport.width;
       canvas.height = viewport.height;
+
+      // Fill with white background (fixes black images on transparency)
+      context.fillStyle = '#FFFFFF';
+      context.fillRect(0, 0, canvas.width, canvas.height);
 
       await page.render({
         canvasContext: context,
@@ -157,7 +184,7 @@ export class PDFProcessor {
 
     const results = await Promise.all(promises);
     const thumbnails: { [key: number]: string } = {};
-    
+
     results.forEach(({ pageNum, thumbnail }) => {
       thumbnails[pageNum] = thumbnail;
     });
@@ -192,11 +219,11 @@ export class PDFProcessor {
     try {
       const page = await this.pdfDocument.getPage(pageNumber);
       const textContent = await page.getTextContent();
-      
+
       const text = textContent.items
-        .map((item: any) => item.str)
+        .map((item) => (item as PDFTextItem).str)
         .join(' ');
-      
+
       return text.trim();
     } catch (error) {
       console.error(`Error extracting text from page ${pageNumber}:`, error);
@@ -223,20 +250,20 @@ export class PDFProcessor {
    */
   private parsePDFDate(dateString?: string): Date | undefined {
     if (!dateString) return undefined;
-    
+
     try {
       // PDF dates are in format: D:YYYYMMDDHHmmSSOHH'mm'
       // Remove the D: prefix if present
       const cleanDate = dateString.replace(/^D:/, '');
-      
+
       // Try to create a date object
       const date = new Date(cleanDate);
-      
+
       // Check if the date is valid
       if (isNaN(date.getTime())) {
         return undefined;
       }
-      
+
       return date;
     } catch (error) {
       console.warn('Error parsing PDF date:', error);
@@ -273,11 +300,11 @@ export function validatePDFFile(file: File): { valid: boolean; error?: string } 
  */
 export function formatFileSize(bytes: number): string {
   if (bytes === 0) return '0 Bytes';
-  
+
   const k = 1024;
   const sizes = ['Bytes', 'KB', 'MB', 'GB'];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
-  
+
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 }
 
@@ -286,12 +313,12 @@ export function formatFileSize(bytes: number): string {
  */
 export function formatDate(date?: Date): string {
   if (!date) return 'Unknown';
-  
+
   // Check if the date is valid
   if (isNaN(date.getTime())) {
     return 'Unknown';
   }
-  
+
   try {
     return new Intl.DateTimeFormat('en-US', {
       year: 'numeric',

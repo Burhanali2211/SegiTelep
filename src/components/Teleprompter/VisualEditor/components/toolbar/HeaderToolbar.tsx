@@ -48,6 +48,42 @@ const SaveStatusIndicator = ({ status, lastSaved }: { status: SaveStatus; lastSa
   return null;
 };
 
+const ProjectNameInput = ({ value, onSave }: { value: string; onSave: (v: string) => void }) => {
+  const [temp, setTemp] = React.useState(value);
+
+  React.useEffect(() => {
+    setTemp(value);
+  }, [value]);
+
+  const handleBlur = () => {
+    if (temp.trim() && temp !== value) {
+      onSave(temp.trim());
+    } else {
+      setTemp(value);
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      (e.target as HTMLInputElement).blur();
+    } else if (e.key === 'Escape') {
+      setTemp(value);
+      (e.target as HTMLInputElement).blur();
+    }
+  };
+
+  return (
+    <Input
+      value={temp}
+      onChange={(e) => setTemp(e.target.value)}
+      onBlur={handleBlur}
+      onKeyDown={handleKeyDown}
+      className="h-7 w-32 sm:w-40 text-sm min-w-0"
+      placeholder="Project name"
+    />
+  );
+};
+
 interface HeaderToolbarProps {
   projectName: string;
   setProjectName: (v: string) => void;
@@ -139,12 +175,7 @@ export const HeaderToolbar = memo<HeaderToolbarProps>(({
     {/* Project name + Save status */}
     <div className="flex items-center gap-1.5 shrink-0">
       <span className="text-xs text-muted-foreground hidden sm:inline">Project:</span>
-      <Input
-        value={typeof projectName === 'string' ? projectName : ''}
-        onChange={(e) => setProjectName(e.target.value)}
-        className="h-7 w-32 sm:w-40 text-sm min-w-0"
-        placeholder="Project name"
-      />
+      <ProjectNameInput value={projectName} onSave={setProjectName} />
       <SaveStatusIndicator status={saveStatus} lastSaved={lastSaved} />
       {isDirty && saveStatus === 'idle' && (
         <span className="text-[10px] px-1.5 py-0.5 bg-accent/20 text-accent rounded shrink-0">Unsaved</span>

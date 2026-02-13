@@ -1,6 +1,6 @@
 import { useCallback } from 'react';
 
-export function useImageProcessing(addPage: (data: string, isPDF?: boolean) => void) {
+export function useImageProcessing(addPage: (data: string | Blob, isPDF?: boolean) => Promise<void>) {
   const processImage = useCallback((file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -38,13 +38,13 @@ export function useImageProcessing(addPage: (data: string, isPDF?: boolean) => v
     for (const file of Array.from(files)) {
       try {
         const processedData = await processImage(file);
-        addPage(processedData, false); // false for regular images
+        await addPage(processedData, false); // false for regular images
       } catch (error) {
         console.error('Failed to process image:', error);
         const reader = new FileReader();
-        reader.onload = (event) => {
+        reader.onload = async (event) => {
           const data = event.target?.result as string;
-          if (data) addPage(data, false); // false for regular images
+          if (data) await addPage(data, false); // false for regular images
         };
         reader.readAsDataURL(file);
       }

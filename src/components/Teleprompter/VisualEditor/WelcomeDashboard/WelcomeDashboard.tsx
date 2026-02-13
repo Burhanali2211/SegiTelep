@@ -1,26 +1,23 @@
 import React, { memo, useEffect, useState, useCallback } from 'react';
-import { formatDistanceToNow } from 'date-fns';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Plus, FolderOpen, FileImage, Sparkles, Zap, Shield, Download } from 'lucide-react';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Plus, FolderOpen, FileImage, Sparkles, Zap, Shield, Download, Grid, List as ListIcon } from 'lucide-react';
 import { AppLogo } from '@/components/Layout/AppLogo';
 import { cn } from '@/lib/utils';
-import { getAllVisualProjects, type VisualProject } from '@/core/storage/VisualProjectStorage';
+import { getAllVisualProjects, duplicateVisualProject, deleteVisualProject, type VisualProject } from '@/core/storage/VisualProjectStorage';
 import { WELCOME_CONTENT } from '@/constants/welcomeContent';
 import { ProjectCard } from './ProjectCard';
+import { toast } from 'sonner';
 import {
-  ThemeSwitcherButton,
-  TutorialButton,
   ImportProjectButton,
   SearchProjectsInput,
   SortProjectsDropdown,
-  CloudSyncButton,
   KeyboardShortcutsButton,
-  ExportBackupButton,
+  type SortOption,
 } from './features';
 
 interface WelcomeDashboardProps {
@@ -28,6 +25,7 @@ interface WelcomeDashboardProps {
   onOpenProject: (projectId: string) => void;
   onOpenProjectList: () => void;
   onOpenShortcuts?: () => void;
+  onImport?: () => void;
   autoResumeEnabled: boolean;
   onAutoResumeChange: (enabled: boolean) => void;
   className?: string;
@@ -38,6 +36,7 @@ export const WelcomeDashboard = memo<WelcomeDashboardProps>(({
   onOpenProject,
   onOpenProjectList,
   onOpenShortcuts,
+  onImport,
   autoResumeEnabled,
   onAutoResumeChange,
   className,
@@ -46,26 +45,52 @@ export const WelcomeDashboard = memo<WelcomeDashboardProps>(({
   const [isLoading, setIsLoading] = useState(true);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [sortOption, setSortOption] = useState<SortOption>('recent');
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
 
   // Content from constants (fix: no longer hardcoded / from backend)
   const { title, tagline, sections, keyboardHints } = WELCOME_CONTENT;
 
+  const loadProjects = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const allProjects = await getAllVisualProjects();
+      setProjects(allProjects.slice(0, 10));
+    } catch (error) {
+      console.error('Failed to load projects:', error);
+      toast.error('Failed to load projects');
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
   // Load recent projects
   useEffect(() => {
-    const loadProjects = async () => {
-      setIsLoading(true);
-      try {
-        const allProjects = await getAllVisualProjects();
-        setProjects(allProjects.slice(0, 10));
-      } catch (error) {
-        console.error('Failed to load projects:', error);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
     loadProjects();
-  }, []);
+  }, [loadProjects]);
+
+  const handleDuplicateProject = useCallback(async (projectId: string) => {
+    try {
+      await duplicateVisualProject(projectId);
+      toast.success('Project duplicated');
+      loadProjects();
+    } catch (error) {
+      toast.error('Failed to duplicate project');
+    }
+  }, [loadProjects]);
+
+  const handleDeleteProject = useCallback(async (projectId: string) => {
+    if (confirm('Are you sure you want to delete this project?')) {
+      try {
+        await deleteVisualProject(projectId);
+        toast.success('Project deleted');
+        if (selectedProjectId === projectId) setSelectedProjectId(null);
+        loadProjects();
+      } catch (error) {
+        toast.error('Failed to delete project');
+      }
+    }
+  }, [loadProjects, selectedProjectId]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -74,7 +99,7 @@ export const WelcomeDashboard = memo<WelcomeDashboardProps>(({
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
         return;
       }
-      
+
       if (e.key === 'n' || e.key === 'N') {
         e.preventDefault();
         onNewProject();
@@ -112,19 +137,31 @@ export const WelcomeDashboard = memo<WelcomeDashboardProps>(({
     onOpenProject(projectId);
   }, [onOpenProject]);
 
-  // Filter projects by search (mock: filters in memory)
-  const filteredProjects = searchQuery.trim()
-    ? projects.filter(
-        (p) =>
-          (typeof p.name === 'string' && p.name.toLowerCase().includes(searchQuery.toLowerCase()))
-      )
-    : projects;
+  // Filter and Sort projects
+  const filteredProjects = projects
+    .filter((p) => {
+      if (!searchQuery.trim()) return true;
+      return typeof p.name === 'string' && p.name.toLowerCase().includes(searchQuery.toLowerCase());
+    })
+    .sort((a, b) => {
+      switch (sortOption) {
+        case 'name':
+          return (a.name || '').localeCompare(b.name || '');
+        case 'modified':
+          return b.modifiedAt - a.modifiedAt;
+        case 'recent':
+        default:
+          return b.modifiedAt - a.modifiedAt;
+      }
+    });
 
   return (
-    <div className={cn('flex flex-col items-center justify-center min-h-screen bg-gradient-to-br from-background via-background to-muted/20 p-6 relative', className)}>
+    <div className={cn('flex flex-col items-center justify-center min-h-screen bg-gradient-to-br from-slate-950 via-blue-950/20 to-emerald-950/20 p-6 relative overflow-hidden', className)}>
       {/* Background decoration */}
-      <div className="absolute inset-0 bg-grid-pattern opacity-[0.02] pointer-events-none" />
-      
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-from)_0%,_transparent_100%)] from-blue-500/5 via-transparent to-transparent opacity-50" />
+      <div className="absolute inset-0 bg-grid-pattern opacity-[0.03] pointer-events-none" />
+      <div className="absolute top-0 left-0 w-full h-full bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:24px_24px] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_0%,#000_70%,transparent_100%)]" />
+
       <div className="w-full max-w-5xl relative z-10">
         {/* Enhanced Header with better icon layout */}
         <div className="text-center mb-10">
@@ -133,26 +170,23 @@ export const WelcomeDashboard = memo<WelcomeDashboardProps>(({
               <AppLogo size="lg" showText={false} />
               <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-500 rounded-full animate-pulse" />
             </div>
-            <ThemeSwitcherButton />
+            {/* ThemeSwitcher removed */}
           </div>
-          
-          <h1 className="text-4xl font-bold mb-3 bg-gradient-to-r from-foreground to-muted-foreground bg-clip-text text-transparent">
+
+          <h1 className="text-4xl sm:text-6xl font-black mb-3 bg-gradient-to-r from-blue-400 to-emerald-400 bg-clip-text text-transparent tracking-tight">
             {title}
           </h1>
-          <p className="text-muted-foreground text-lg mb-8 max-w-2xl mx-auto leading-relaxed">
+          <p className="text-blue-200/50 text-lg mb-8 max-w-2xl mx-auto leading-relaxed font-light">
             {tagline}
           </p>
-          
+
           {/* Improved Feature Icons Layout */}
           <div className="flex flex-wrap items-center justify-center gap-3 mb-8">
             <div className="flex items-center gap-2 p-1 bg-muted/30 rounded-lg">
-              <TutorialButton />
-              <ImportProjectButton />
-              <CloudSyncButton />
+              <ImportProjectButton onClick={onImport} />
             </div>
             <div className="flex items-center gap-2 p-1 bg-muted/30 rounded-lg">
               <KeyboardShortcutsButton onClick={onOpenShortcuts} />
-              <ExportBackupButton />
             </div>
           </div>
         </div>
@@ -161,13 +195,13 @@ export const WelcomeDashboard = memo<WelcomeDashboardProps>(({
         <div className="mb-8">
           <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-6">
             <div className="flex items-center gap-3">
-              <div className="w-1 h-6 bg-primary rounded-full" />
-              <h2 className="text-xl font-semibold">{sections.recentProjects}</h2>
-              <span className="text-sm text-muted-foreground bg-muted/50 px-2 py-1 rounded-full">
+              <div className="w-1.5 h-6 bg-gradient-to-b from-blue-400 to-emerald-400 rounded-full" />
+              <h2 className="text-xl font-bold tracking-tight text-blue-50/90">{sections.recentProjects}</h2>
+              <span className="text-[10px] font-bold uppercase tracking-widest text-emerald-400 bg-emerald-400/10 px-2.5 py-1 rounded-full border border-emerald-400/20">
                 {filteredProjects.length} {filteredProjects.length === 1 ? 'project' : 'projects'}
               </span>
             </div>
-            
+
             <div className="flex flex-wrap items-center gap-3">
               <SearchProjectsInput
                 value={searchQuery}
@@ -175,12 +209,24 @@ export const WelcomeDashboard = memo<WelcomeDashboardProps>(({
                 placeholder="Search projects..."
                 className="min-w-[200px]"
               />
-              <SortProjectsDropdown />
-              <Button 
-                variant="outline" 
-                size="sm" 
+              <SortProjectsDropdown value={sortOption} onSort={setSortOption} />
+
+              <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as any)} className="hidden sm:block">
+                <TabsList className="bg-white/5 border border-white/10 h-9 p-0.5">
+                  <TabsTrigger value="grid" className="h-8 px-2.5 data-[state=active]:bg-blue-500/20 data-[state=active]:text-blue-400">
+                    <Grid size={14} />
+                  </TabsTrigger>
+                  <TabsTrigger value="list" className="h-8 px-2.5 data-[state=active]:bg-blue-500/20 data-[state=active]:text-blue-400">
+                    <ListIcon size={14} />
+                  </TabsTrigger>
+                </TabsList>
+              </Tabs>
+
+              <Button
+                variant="outline"
+                size="sm"
                 onClick={onOpenProjectList}
-                className="hover:bg-primary hover:text-primary-foreground transition-colors"
+                className="hover:bg-primary hover:text-primary-foreground transition-colors border-white/10 text-slate-300"
               >
                 <FolderOpen size={14} className="mr-2" />
                 {sections.viewAll}
@@ -189,7 +235,7 @@ export const WelcomeDashboard = memo<WelcomeDashboardProps>(({
           </div>
 
           {/* Fixed ScrollArea with proper corners and Z-index */}
-          <div className="relative rounded-xl border bg-card shadow-sm overflow-hidden">
+          <div className="relative rounded-2xl border border-white/5 bg-black/40 backdrop-blur-xl shadow-2xl overflow-hidden">
             {isLoading ? (
               <div className="p-6 space-y-4">
                 {[1, 2, 3].map((i) => (
@@ -206,15 +252,23 @@ export const WelcomeDashboard = memo<WelcomeDashboardProps>(({
                 </p>
               </div>
             ) : (
-              <ScrollArea className="h-[320px]">
-                <div className="p-4 space-y-3">
+              <ScrollArea className="h-[480px]">
+                <div className={cn(
+                  'p-6',
+                  viewMode === 'grid'
+                    ? 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6'
+                    : 'space-y-3'
+                )}>
                   {filteredProjects.map((project) => (
                     <ProjectCard
                       key={project.id}
                       project={project}
+                      variant={viewMode}
                       isSelected={selectedProjectId === project.id}
                       onSelect={() => handleProjectSelect(project.id)}
                       onOpen={() => handleProjectOpen(project.id)}
+                      onDuplicate={handleDuplicateProject}
+                      onDelete={handleDeleteProject}
                     />
                   ))}
                 </div>
@@ -225,20 +279,20 @@ export const WelcomeDashboard = memo<WelcomeDashboardProps>(({
 
         {/* Enhanced Actions Section */}
         <div className="flex flex-col sm:flex-row gap-4 mb-8">
-          <Button 
-            size="lg" 
-            className="flex-1 h-14 text-base font-medium group relative overflow-hidden" 
+          <Button
+            size="lg"
+            className="flex-1 h-14 text-base font-bold group relative overflow-hidden bg-blue-600 hover:bg-blue-500 text-white border-0"
             onClick={onNewProject}
           >
-            <div className="absolute inset-0 bg-gradient-to-r from-primary/0 via-primary/20 to-primary/0 -translate-x-full group-hover:translate-x-full transition-transform duration-700" />
+            <div className="absolute inset-0 bg-gradient-to-r from-white/0 via-white/20 to-white/0 -translate-x-full group-hover:translate-x-full transition-transform duration-700" />
             <Plus size={20} className="mr-3 relative z-10" />
             <span className="relative z-10">{sections.newProject}</span>
-            <span className="ml-3 text-xs opacity-60 bg-muted/30 px-2 py-1 rounded-full relative z-10">N</span>
+            <span className="ml-3 text-[10px] font-bold bg-black/20 px-2 py-1 rounded-md relative z-10 border border-white/10 uppercase">N</span>
           </Button>
-          <Button 
-            variant="outline" 
-            size="lg" 
-            className="flex-1 h-14 text-base font-medium hover:border-primary hover:bg-primary/5 transition-all" 
+          <Button
+            variant="outline"
+            size="lg"
+            className="flex-1 h-14 text-base font-bold bg-emerald-600/10 border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/20 hover:border-emerald-500/40 transition-all"
             onClick={onOpenProjectList}
           >
             <FolderOpen size={20} className="mr-3" />
@@ -247,7 +301,7 @@ export const WelcomeDashboard = memo<WelcomeDashboardProps>(({
         </div>
 
         {/* Enhanced Settings Section */}
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-6 p-6 bg-muted/20 rounded-xl border">
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-6 p-6 bg-white/5 backdrop-blur-lg rounded-2xl border border-white/5">
           <div className="flex items-center gap-3">
             <Checkbox
               id="auto-resume"
@@ -255,12 +309,12 @@ export const WelcomeDashboard = memo<WelcomeDashboardProps>(({
               onCheckedChange={(checked) => onAutoResumeChange(checked === true)}
               className="w-5 h-5"
             />
-            <Label htmlFor="auto-resume" className="text-sm font-medium cursor-pointer flex items-center gap-2">
-              <Shield size={14} className="text-muted-foreground" />
+            <Label htmlFor="auto-resume" className="text-sm font-bold cursor-pointer flex items-center gap-2 text-blue-200/70">
+              <Shield size={14} className="text-blue-400" />
               {sections.autoResume}
             </Label>
           </div>
-          
+
           {/* Enhanced Keyboard hints */}
           <div className="flex items-center gap-4 text-xs text-muted-foreground">
             <div className="flex items-center gap-2">

@@ -3,7 +3,6 @@ export { ImageCanvas } from './ImageCanvas';
 export { SegmentOverlay } from './SegmentOverlay';
 export { TimelineStrip } from './TimelineStrip';
 export { AudioWaveform } from './AudioWaveform';
-export { LeftControlPanel } from './LeftControlPanel';
 export { SelectionToolbar } from './SelectionToolbar';
 export { FullscreenPlayer } from './FullscreenPlayer';
 export { WelcomeDashboard } from './WelcomeDashboard';

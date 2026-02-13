@@ -1,8 +1,8 @@
 import React, { memo, useCallback, useEffect, useState, useRef } from 'react';
-import { 
-  Play, 
-  Pause, 
-  SkipBack, 
+import {
+  Play,
+  Pause,
+  SkipBack,
   SkipForward,
   Square,
   FlipHorizontal,
@@ -35,7 +35,12 @@ export const PlaybackControls = memo<PlaybackControlsProps>(({
   visible = true,
 }) => {
   const project = useTeleprompterStore((s) => s.project);
-  const playback = useTeleprompterStore((s) => s.playback);
+  const isPlaying = useTeleprompterStore((s) => s.playback.isPlaying);
+  const isPaused = useTeleprompterStore((s) => s.playback.isPaused);
+  const currentSegmentIndex = useTeleprompterStore((s) => s.playback.currentSegmentIndex);
+  const progress = useTeleprompterStore((s) => s.playback.progress);
+  const speed = useTeleprompterStore((s) => s.playback.speed);
+
   const play = useTeleprompterStore((s) => s.play);
   const pause = useTeleprompterStore((s) => s.pause);
   const stop = useTeleprompterStore((s) => s.stop);
@@ -43,14 +48,13 @@ export const PlaybackControls = memo<PlaybackControlsProps>(({
   const prevSegment = useTeleprompterStore((s) => s.prevSegment);
   const setSpeed = useTeleprompterStore((s) => s.setSpeed);
   const toggleMirror = useTeleprompterStore((s) => s.toggleMirror);
-  
-  const { isPlaying, isPaused, currentSegmentIndex, progress, speed } = playback;
+
   const totalSegments = project?.segments.length || 0;
   const currentSegment = project?.segments[currentSegmentIndex];
-  
+
   const handlePlayPause = useCallback(() => {
     if (!project || totalSegments === 0) return;
-    
+
     if (!isPlaying) {
       play();
     } else if (isPaused) {
@@ -59,11 +63,11 @@ export const PlaybackControls = memo<PlaybackControlsProps>(({
       pause();
     }
   }, [isPlaying, isPaused, play, pause, project, totalSegments]);
-  
+
   const handleSpeedChange = useCallback((delta: number) => {
     setSpeed(speed + delta);
   }, [speed, setSpeed]);
-  
+
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -71,7 +75,7 @@ export const PlaybackControls = memo<PlaybackControlsProps>(({
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
         return;
       }
-      
+
       switch (e.key) {
         case ' ':
           e.preventDefault();
@@ -112,15 +116,15 @@ export const PlaybackControls = memo<PlaybackControlsProps>(({
           break;
       }
     };
-    
+
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handlePlayPause, prevSegment, nextSegment, handleSpeedChange, toggleMirror, stop, isFullscreen, onToggleFullscreen]);
-  
+
   const isOverlay = variant === 'overlay';
-  
+
   return (
-    <div 
+    <div
       className={cn(
         'flex items-center gap-3',
         isOverlay ? 'controls-overlay p-4 rounded-xl' : 'p-3 bg-card border-t border-border',
@@ -139,7 +143,7 @@ export const PlaybackControls = memo<PlaybackControlsProps>(({
         >
           <SkipBack size={isOverlay ? 20 : 16} />
         </Button>
-        
+
         <Button
           variant={isPlaying && !isPaused ? 'default' : 'ghost'}
           size="icon"
@@ -153,7 +157,7 @@ export const PlaybackControls = memo<PlaybackControlsProps>(({
             <Play size={isOverlay ? 24 : 18} className="ml-0.5" />
           )}
         </Button>
-        
+
         <Button
           variant="ghost"
           size="icon"
@@ -163,7 +167,7 @@ export const PlaybackControls = memo<PlaybackControlsProps>(({
         >
           <Square size={isOverlay ? 18 : 14} />
         </Button>
-        
+
         <Button
           variant="ghost"
           size="icon"
@@ -174,11 +178,11 @@ export const PlaybackControls = memo<PlaybackControlsProps>(({
           <SkipForward size={isOverlay ? 20 : 16} />
         </Button>
       </div>
-      
+
       {/* Progress Bar */}
       <div className="flex-1 mx-2">
         <div className="progress-track">
-          <div 
+          <div
             className="progress-fill"
             style={{ width: `${progress * 100}%` }}
           />
@@ -190,7 +194,7 @@ export const PlaybackControls = memo<PlaybackControlsProps>(({
           </div>
         )}
       </div>
-      
+
       {/* Speed Control */}
       <div className="flex items-center gap-2">
         <Button
@@ -201,12 +205,12 @@ export const PlaybackControls = memo<PlaybackControlsProps>(({
         >
           <ChevronDown size={16} />
         </Button>
-        
+
         <div className="speed-badge min-w-[70px] text-center">
           <Gauge size={12} className="inline mr-1" />
           {speed}
         </div>
-        
+
         <Button
           variant="ghost"
           size="icon"
@@ -216,7 +220,7 @@ export const PlaybackControls = memo<PlaybackControlsProps>(({
           <ChevronUp size={16} />
         </Button>
       </div>
-      
+
       {/* Mirror & Fullscreen */}
       <div className="flex items-center gap-1">
         <Button
@@ -228,7 +232,7 @@ export const PlaybackControls = memo<PlaybackControlsProps>(({
         >
           <FlipHorizontal size={isOverlay ? 18 : 16} />
         </Button>
-        
+
         {onToggleFullscreen && (
           <Button
             variant="ghost"
@@ -245,7 +249,7 @@ export const PlaybackControls = memo<PlaybackControlsProps>(({
           </Button>
         )}
       </div>
-      
+
       {/* Segment counter for overlay */}
       {isOverlay && (
         <div className="text-sm text-muted-foreground ml-2">

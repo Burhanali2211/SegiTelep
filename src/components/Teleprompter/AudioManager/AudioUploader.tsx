@@ -3,15 +3,15 @@ import { Button } from '@/components/ui/button';
 import { Upload, Loader2 } from 'lucide-react';
 
 interface AudioUploaderProps {
-  onUpload: (file: File) => Promise<any>;
+  onUpload: (file: File) => Promise<void>;
   isLoading?: boolean;
   className?: string;
 }
 
-export const AudioUploader = memo<AudioUploaderProps>(({ 
-  onUpload, 
+export const AudioUploader = memo<AudioUploaderProps>(({
+  onUpload,
   isLoading = false,
-  className 
+  className
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -35,8 +35,8 @@ export const AudioUploader = memo<AudioUploaderProps>(({
 
   return (
     <div className={className}>
-      <Button 
-        onClick={handleClick} 
+      <Button
+        onClick={handleClick}
         disabled={isLoading}
         className="gap-2"
       >
@@ -47,7 +47,7 @@ export const AudioUploader = memo<AudioUploaderProps>(({
         )}
         Add Audio Files
       </Button>
-      
+
       <input
         ref={fileInputRef}
         type="file"
@@ -56,7 +56,7 @@ export const AudioUploader = memo<AudioUploaderProps>(({
         className="hidden"
         onChange={handleFileSelect}
       />
-      
+
       <span className="text-xs text-muted-foreground ml-3">
         MP3, WAV, OGG, M4A (max 50MB)
       </span>

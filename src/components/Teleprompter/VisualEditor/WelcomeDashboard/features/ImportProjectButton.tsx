@@ -6,18 +6,15 @@ import { toast } from 'sonner';
 
 interface ImportProjectButtonProps {
   className?: string;
+  onClick?: () => void;
 }
 
-/** Mock: Import project from file */
-export const ImportProjectButton = memo<ImportProjectButtonProps>(({ className }) => {
-  const handleClick = () => {
-    toast.info('Import project (mock)');
-  };
-
+/** Import project from file */
+export const ImportProjectButton = memo<ImportProjectButtonProps>(({ className, onClick }) => {
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <Button variant="outline" size="sm" className={className} onClick={handleClick}>
+        <Button variant="outline" size="sm" className={className} onClick={onClick}>
           <FileDown size={14} className="mr-1.5" />
           Import
         </Button>
