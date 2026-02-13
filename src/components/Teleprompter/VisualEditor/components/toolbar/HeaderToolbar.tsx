@@ -3,7 +3,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Eye, Save, FolderOpen, Play, Pause, Loader2, Keyboard, Cloud, CloudOff, RectangleHorizontal, Plus, Download, Upload, Home, FileText, Image, Settings, HelpCircle } from 'lucide-react';
+import { Eye, Save, FolderOpen, Play, Pause, Loader2, Cloud, CloudOff, Plus, Download, Upload, Home, FileText, Image, Settings, HelpCircle } from 'lucide-react';
+import { AspectRatioSelector } from './AspectRatioSelector';
+
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -12,10 +14,8 @@ import {
   DropdownMenuTrigger,
   DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { ASPECT_RATIO_PRESETS } from '../../constants/aspectRatioPresets';
 import type { SaveStatus } from '../../types/visualEditor.types';
+
 import { cn } from '@/lib/utils';
 
 const SaveStatusIndicator = ({ status, lastSaved }: { status: SaveStatus; lastSaved: number | null }) => {
@@ -182,57 +182,9 @@ export const HeaderToolbar = memo<HeaderToolbarProps>(({
       )}
     </div>
     <div className="w-px h-5 bg-border shrink-0" />
-    {/* Aspect ratio */}
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <div className="flex items-center gap-1 shrink-0">
-          <Select value={aspectRatioConstraint || 'free'} onValueChange={(val) => setAspectRatioConstraint(val === 'free' ? null : val)}>
-            <SelectTrigger className="h-7 w-[72px] sm:w-20 text-xs gap-1 px-2">
-              <RectangleHorizontal size={12} className="shrink-0 text-muted-foreground" />
-              <SelectValue placeholder="Ratio" />
-            </SelectTrigger>
-            <SelectContent align="start">
-              {ASPECT_RATIO_PRESETS.map((preset) => (
-                <SelectItem key={preset.value} value={preset.value} className="text-xs">
-                  <span className="font-medium">{preset.label}</span>
-                  <span className="ml-2 text-muted-foreground">{preset.description}</span>
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          {aspectRatioConstraint === 'custom' && (
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button variant="ghost" size="sm" className="h-7 px-2 text-[10px] font-mono shrink-0">
-                  {customAspectRatio.width}:{customAspectRatio.height}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-44 p-2" align="start">
-                <p className="text-[10px] font-medium mb-2">Custom Ratio</p>
-                <div className="flex items-center gap-1">
-                  <Input
-                    type="number"
-                    value={customAspectRatio.width}
-                    onChange={(e) => setCustomAspectRatio({ ...customAspectRatio, width: parseInt(e.target.value) || 1 })}
-                    className="h-6 w-14 text-xs px-2"
-                    min={1}
-                  />
-                  <span className="text-muted-foreground text-xs">:</span>
-                  <Input
-                    type="number"
-                    value={customAspectRatio.height}
-                    onChange={(e) => setCustomAspectRatio({ ...customAspectRatio, height: parseInt(e.target.value) || 1 })}
-                    className="h-6 w-14 text-xs px-2"
-                    min={1}
-                  />
-                </div>
-              </PopoverContent>
-            </Popover>
-          )}
-        </div>
-      </TooltipTrigger>
-      <TooltipContent side="bottom">Aspect ratio constraint for drawing</TooltipContent>
-    </Tooltip>
+    <AspectRatioSelector />
+
+
     <div className="flex-1 min-w-2" />
     {/* File dropdown */}
     <DropdownMenu>

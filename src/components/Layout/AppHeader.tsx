@@ -16,8 +16,17 @@ import {
   Timer,
   Eye,
   Circle,
-  Check
+  Check,
+  User,
+  LogOut,
+  Bell,
+  Settings as SettingsIcon,
+  CreditCard
 } from 'lucide-react';
+import { useUserStore } from '@/store/userStore';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Badge } from '@/components/ui/badge';
+
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -132,125 +141,7 @@ const EditableProjectName = memo<{
 
 EditableProjectName.displayName = 'EditableProjectName';
 
-// Enhanced Play Button with Teleprompter Settings
-const EnhancedPlayButton = memo<{
-  canPlay: boolean;
-  isPlaying: boolean;
-  onPlay: () => void;
-  onPlayPause?: () => void;
-  onOpenCountdown: () => void;
-  onOpenAudioManager?: () => void;
-  onOpenTimerCalculator: () => void;
-  onOpenPlayerIndicatorSettings?: () => void;
-}>(({
-  canPlay,
-  isPlaying,
-  onPlay,
-  onPlayPause,
-  onOpenCountdown,
-  onOpenAudioManager,
-  onOpenTimerCalculator,
-  onOpenPlayerIndicatorSettings
-}) => {
-  const handleMainAction = useCallback(() => {
-    if (isPlaying && onPlayPause) {
-      onPlayPause();
-    } else {
-      onPlay();
-    }
-  }, [isPlaying, onPlayPause, onPlay]);
 
-  return (
-    <div className="flex items-center gap-0.5">
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            variant={isPlaying ? "default" : "default"}
-            size="sm"
-            className={cn(
-              "h-8 px-3 gap-1.5 font-semibold transition-all shadow-sm",
-              isPlaying
-                ? "bg-primary hover:bg-primary/90 shadow-primary/20"
-                : "bg-primary hover:bg-primary/90"
-            )}
-            disabled={!canPlay}
-            onClick={handleMainAction}
-          >
-            {isPlaying ? (
-              <>
-                <div className="w-1.5 h-1.5 bg-white rounded-full animate-pulse" />
-                <span className="text-xs">Pause</span>
-              </>
-            ) : (
-              <>
-                <Play size={13} className="fill-current" />
-                <span className="text-xs">Play</span>
-              </>
-            )}
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent side="bottom">
-          {isPlaying ? 'Pause playback (Space)' : 'Start playback (Space)'}
-        </TooltipContent>
-      </Tooltip>
-
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button
-            variant={isPlaying ? "default" : "default"}
-            size="sm"
-            className={cn(
-              "h-8 w-7 p-0 transition-all shadow-sm border-l border-white/10",
-              isPlaying
-                ? "bg-primary hover:bg-primary/90"
-                : "bg-primary hover:bg-primary/90"
-            )}
-            disabled={!canPlay}
-          >
-            <ChevronDown size={12} />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-56 bg-popover/95 backdrop-blur-xl border-border/50 shadow-xl">
-          <DropdownMenuItem onClick={onPlay} className="cursor-pointer focus:bg-accent/50">
-            <Play size={14} className="mr-2 text-primary" />
-            <span className="font-medium">{isPlaying ? 'Restart Playback' : 'Start Playback'}</span>
-          </DropdownMenuItem>
-
-          <DropdownMenuSeparator className="bg-border/50" />
-
-          <DropdownMenuItem onClick={onOpenCountdown} className="cursor-pointer focus:bg-accent/50">
-            <Clock size={14} className="mr-2 text-muted-foreground" />
-            <span>Countdown Settings</span>
-          </DropdownMenuItem>
-
-          <DropdownMenuItem onClick={onOpenTimerCalculator} className="cursor-pointer focus:bg-accent/50">
-            <Timer size={14} className="mr-2 text-muted-foreground" />
-            <span>Timer Calculator</span>
-          </DropdownMenuItem>
-
-          {onOpenAudioManager && (
-            <DropdownMenuItem onClick={onOpenAudioManager} className="cursor-pointer focus:bg-accent/50">
-              <Music size={14} className="mr-2 text-muted-foreground" />
-              <span>Audio Manager</span>
-            </DropdownMenuItem>
-          )}
-
-          {onOpenPlayerIndicatorSettings && (
-            <>
-              <DropdownMenuSeparator className="bg-border/50" />
-              <DropdownMenuItem onClick={onOpenPlayerIndicatorSettings} className="cursor-pointer focus:bg-accent/50">
-                <Eye size={14} className="mr-2 text-muted-foreground" />
-                <span>Player Indicator Settings</span>
-              </DropdownMenuItem>
-            </>
-          )}
-        </DropdownMenuContent>
-      </DropdownMenu>
-    </div>
-  );
-});
-
-EnhancedPlayButton.displayName = 'EnhancedPlayButton';
 
 // Save Status Indicator - Enhanced
 const SaveStatusIndicator = memo<{
@@ -346,8 +237,11 @@ interface AppHeaderProps {
   canPlay?: boolean;
   isPlaying?: boolean;
   onPlayPause?: () => void;
+  onNavigate?: (section: string) => void;
   className?: string;
 }
+
+
 
 export const AppHeader = memo<AppHeaderProps>(({
   projectName,
@@ -380,8 +274,12 @@ export const AppHeader = memo<AppHeaderProps>(({
   canPlay = true,
   isPlaying = false,
   onPlayPause,
+  onNavigate,
   className,
 }) => {
+
+  const user = useUserStore((s) => s.user);
+
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const safeProjectName = useMemo(() =>
@@ -488,19 +386,67 @@ export const AppHeader = memo<AppHeaderProps>(({
             </TooltipContent>
           </Tooltip>
 
-          <div className="w-px h-6 bg-border/50 hidden sm:block" />
+          <div className="w-px h-6 bg-border/50" />
 
-          <EnhancedPlayButton
-            canPlay={canPlay}
-            isPlaying={isPlaying}
-            onPlay={onPlay}
-            onPlayPause={onPlayPause}
-            onOpenCountdown={onOpenCountdown}
-            onOpenAudioManager={onOpenAudioManager}
-            onOpenTimerCalculator={onOpenTimerCalculator}
-            onOpenPlayerIndicatorSettings={onOpenPlayerIndicatorSettings}
-          />
+          {/* User Profile */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" className="h-9 px-2 hover:bg-accent/50 gap-2 transition-all">
+                <div className="flex items-center gap-2">
+                  <Avatar className="h-7 w-7 border border-primary/20">
+                    <AvatarImage src={user?.avatar} />
+                    <AvatarFallback className="bg-primary/10 text-primary text-[10px] font-bold">
+                      {user?.name?.charAt(0).toUpperCase() || "U"}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="hidden xl:flex flex-col items-start leading-tight">
+                    <span className="text-xs font-bold text-foreground/90">{user?.name || "Guest User"}</span>
+                    <span className="text-[9px] text-muted-foreground font-medium uppercase tracking-tighter">{user?.role || "Viewer"}</span>
+                  </div>
+                  <ChevronDown size={12} className="text-muted-foreground/50" />
+                </div>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-64 bg-popover/95 backdrop-blur-xl border-border/50 shadow-xl">
+              <div className="flex items-center gap-3 p-4 bg-primary/5 border-b border-border/50">
+                <Avatar className="h-10 w-10 border-2 border-primary/20">
+                  <AvatarImage src={user?.avatar} />
+                  <AvatarFallback>{user?.name?.charAt(0).toUpperCase() || "U"}</AvatarFallback>
+                </Avatar>
+                <div className="min-w-0">
+                  <p className="text-sm font-bold truncate">{user?.name || "Guest User"}</p>
+                  <p className="text-xs text-muted-foreground truncate">{user?.email || "No email"}</p>
+                </div>
+              </div>
+              <div className="p-1">
+                <DropdownMenuItem onClick={() => onNavigate?.('profile')} className="cursor-pointer focus:bg-accent/50 py-2">
+                  <User size={14} className="mr-2 text-muted-foreground" />
+                  <span className="text-xs">Profile Settings</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem className="cursor-pointer focus:bg-accent/50 py-2">
+                  <Bell size={14} className="mr-2 text-muted-foreground" />
+                  <span className="text-xs">Notifications</span>
+                  <Badge className="ml-auto h-4 px-1 bg-primary/10 text-primary border-none text-[9px]">3</Badge>
+                </DropdownMenuItem>
+                <DropdownMenuItem className="cursor-pointer focus:bg-accent/50 py-2">
+                  <CreditCard size={14} className="mr-2 text-muted-foreground" />
+                  <span className="text-xs">Subscription</span>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator className="bg-border/50" />
+                <DropdownMenuItem onClick={onOpenSettings} className="cursor-pointer focus:bg-accent/50 py-2">
+                  <SettingsIcon size={14} className="mr-2 text-muted-foreground" />
+                  <span className="text-xs">Preferences</span>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator className="bg-border/50" />
+                <DropdownMenuItem className="text-destructive focus:bg-destructive/10 cursor-pointer py-2">
+                  <LogOut size={14} className="mr-2" />
+                  <span className="text-xs font-medium">Log Out</span>
+                </DropdownMenuItem>
+              </div>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
+
       </div>
 
       {/* Tablet Header (medium screens) */}
@@ -531,16 +477,23 @@ export const AppHeader = memo<AppHeaderProps>(({
             <Save size={14} />
           </Button>
 
-          <Button
-            variant="default"
-            size="sm"
-            className="h-8 px-2 gap-1"
-            onClick={isPlaying && onPlayPause ? onPlayPause : onPlay}
-            disabled={!canPlay}
-          >
-            {isPlaying ? <Pause size={13} /> : <Play size={13} className="fill-current" />}
-            <span className="text-xs">{isPlaying ? 'Pause' : 'Play'}</span>
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full border border-primary/20">
+                <Avatar className="h-7 w-7">
+                  <AvatarImage src={user?.avatar} />
+                  <AvatarFallback className="text-[10px]">{user?.name?.charAt(0) || "U"}</AvatarFallback>
+                </Avatar>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56">
+              <DropdownMenuItem onClick={() => onNavigate?.('profile')}>Profile</DropdownMenuItem>
+              <DropdownMenuItem onClick={onOpenSettings}>Settings</DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem className="text-destructive">Log Out</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+
         </div>
       </div>
 
@@ -566,21 +519,25 @@ export const AppHeader = memo<AppHeaderProps>(({
             >
               <Save size={14} />
             </Button>
-            <Button
-              variant="default"
-              size="sm"
-              className="h-8 px-2.5 gap-1"
-              onClick={isPlaying && onPlayPause ? onPlayPause : onPlay}
-              disabled={!canPlay}
-            >
-              {isPlaying ? (
-                <Pause size={12} />
-              ) : (
-                <Play size={12} className="fill-current" />
-              )}
-              <span className="text-xs font-medium">{isPlaying ? 'Pause' : 'Play'}</span>
-            </Button>
+
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full border border-primary/20">
+                  <Avatar className="h-6 w-6">
+                    <AvatarImage src={user?.avatar} />
+                    <AvatarFallback className="text-[8px]">{user?.name?.charAt(0) || "U"}</AvatarFallback>
+                  </Avatar>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuItem onClick={() => onNavigate?.('profile')}>Profile</DropdownMenuItem>
+                <DropdownMenuItem onClick={onOpenSettings}>Settings</DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem className="text-destructive">Log Out</DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
+
         </div>
 
         {/* Mobile Project Info Bar */}

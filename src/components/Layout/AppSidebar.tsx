@@ -50,7 +50,10 @@ import {
   ChevronUp,
   PenTool,
   Layers,
+  Maximize,
+  Eye,
 } from 'lucide-react';
+
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -86,8 +89,14 @@ interface AppSidebarProps {
   onNavigate?: (section: string) => void;
   onProjectSelect?: (projectId: string) => void;
   onTogglePlayback?: () => void;
+  onOpenCountdown?: () => void;
+  onOpenAudioManager?: () => void;
+  onOpenTimerCalculator?: () => void;
+  onOpenPlayerIndicatorSettings?: () => void;
+  onPlay?: () => void;
   className?: string;
 }
+
 
 export const AppSidebar = memo<AppSidebarProps>(({
   projectName = 'Untitled Project',
@@ -96,8 +105,14 @@ export const AppSidebar = memo<AppSidebarProps>(({
   onNavigate,
   onProjectSelect,
   onTogglePlayback,
+  onOpenCountdown,
+  onOpenAudioManager,
+  onOpenTimerCalculator,
+  onOpenPlayerIndicatorSettings,
+  onPlay,
   className,
 }) => {
+
   const { toggleSidebar } = useSidebar();
   const { user, loadUser } = useUserStore();
   const [searchQuery, setSearchQuery] = useState('');
@@ -185,7 +200,14 @@ export const AppSidebar = memo<AppSidebarProps>(({
       id: 'dashboard',
       badge: null,
       shortcut: 'D',
-    }
+    },
+    {
+      title: 'Director Profile',
+      icon: User,
+      id: 'profile',
+      description: 'Manager your account',
+    },
+
   ];
 
   const toolItems = [
@@ -310,7 +332,25 @@ export const AppSidebar = memo<AppSidebarProps>(({
 
           {/* Expanded View Content */}
           <div className="contents group-data-[collapsible=icon]:hidden">
+            <SidebarGroup className="p-0 mb-4">
+              <SidebarGroupLabel className="px-2 mb-2 text-muted-foreground/70 font-bold tracking-wider text-[10px] uppercase">Navigation</SidebarGroupLabel>
+              <SidebarMenu className="gap-1 px-1">
+                {navigationItems.map((item) => (
+                  <SidebarMenuItem key={item.id}>
+                    <SidebarMenuButton
+                      onClick={() => onNavigate?.(item.id)}
+                      className="h-9 px-3 rounded-lg hover:bg-white/5 transition-all group"
+                    >
+                      <item.icon size={16} className="text-muted-foreground group-hover:text-primary transition-colors" />
+                      <span className="text-xs font-medium">{item.title}</span>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ))}
+              </SidebarMenu>
+            </SidebarGroup>
+
             <SidebarGroup className="p-0">
+
               <SidebarGroupLabel className="px-2 mb-2 text-primary/70 font-bold tracking-wider text-[10px] uppercase">Visual Tools</SidebarGroupLabel>
               <div className="bg-sidebar-accent/50 rounded-xl border border-white/5 mx-1">
                 <ToolSection
@@ -384,80 +424,85 @@ export const AppSidebar = memo<AppSidebarProps>(({
           <p className="text-[10px] text-muted-foreground leading-relaxed mb-3">
             Your stream is ready. Check all inputs before starting.
           </p>
-          <Button
-            variant="default"
-            size="sm"
-            className="w-full h-8 text-[11px] font-bold bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20"
-            onClick={onTogglePlayback}
-          >
-            {isPlaying ? <Pause size={12} className="mr-1.5 fill-current" /> : <Play size={12} className="mr-1.5 fill-current" />}
-            {isPlaying ? 'PAUSE BROADCAST' : 'GO LIVE NOW'}
-          </Button>
+
+          <div className="flex items-center gap-0.5">
+            <Button
+              variant="default"
+              size="sm"
+              className="flex-1 h-9 text-[11px] font-bold bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20 gap-2"
+              onClick={isPlaying ? onTogglePlayback : onPlay}
+            >
+              {isPlaying ? (
+                <>
+                  <Pause size={12} className="fill-current" />
+                  <span>PAUSE SIGNAL</span>
+                </>
+              ) : (
+                <>
+                  <div className="w-2 h-2 rounded-full bg-white animate-pulse" />
+                  <span>GO LIVE NOW</span>
+                </>
+              )}
+            </Button>
+
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="default"
+                  size="icon"
+                  className="w-9 h-9 bg-primary/90 hover:bg-primary border-l border-white/10"
+                >
+                  <Settings size={14} />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent side="right" align="end" className="w-56 bg-sidebar/95 backdrop-blur-2xl border-white/10 shadow-2xl">
+                <DropdownMenuLabel className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground p-3">
+                  Broadcast Settings
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator className="bg-white/5" />
+
+                <DropdownMenuItem onClick={onPlay} className="cursor-pointer focus:bg-white/5 py-2.5">
+                  <Maximize size={14} className="mr-3 text-primary" />
+                  <span className="text-xs font-semibold">Start Fullscreen Player</span>
+                </DropdownMenuItem>
+
+                <DropdownMenuSeparator className="bg-white/5" />
+
+                <DropdownMenuItem onClick={onOpenCountdown} className="cursor-pointer focus:bg-white/5 py-2.5">
+                  <Clock size={14} className="mr-3 text-muted-foreground" />
+                  <span className="text-xs">Countdown Delay</span>
+                </DropdownMenuItem>
+
+                <DropdownMenuItem onClick={onOpenTimerCalculator} className="cursor-pointer focus:bg-white/5 py-2.5">
+                  <Calculator size={14} className="mr-3 text-muted-foreground" />
+                  <span className="text-xs">Timer Calculator</span>
+                </DropdownMenuItem>
+
+                {onOpenAudioManager && (
+                  <DropdownMenuItem onClick={onOpenAudioManager} className="cursor-pointer focus:bg-white/5 py-2.5">
+                    <Music size={14} className="mr-3 text-muted-foreground" />
+                    <span className="text-xs">Audio Manager</span>
+                  </DropdownMenuItem>
+                )}
+
+                {onOpenPlayerIndicatorSettings && (
+                  <>
+                    <DropdownMenuSeparator className="bg-white/5" />
+                    <DropdownMenuItem onClick={onOpenPlayerIndicatorSettings} className="cursor-pointer focus:bg-white/5 py-2.5">
+                      <Eye size={14} className="mr-3 text-muted-foreground" />
+                      <span className="text-xs">Player Indicators</span>
+                    </DropdownMenuItem>
+                  </>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         </div>
 
         <Separator className="bg-white/5 mb-2" />
 
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" className="w-full h-14 p-2 hover:bg-white/5 group-data-[collapsible=icon]:h-10 group-data-[collapsible=icon]:p-0 transition-all duration-300 overflow-hidden">
-              <div className="flex items-center gap-3 w-full">
-                <Avatar className="h-9 w-9 border-2 border-primary/20 ring-2 ring-primary/10">
-                  <AvatarImage src={user?.avatar} />
-                  <AvatarFallback className="bg-primary/10 text-primary text-[10px] font-bold">{user?.name?.charAt(0).toUpperCase() || "U"}</AvatarFallback>
-                </Avatar>
-                <div className="flex-1 text-left min-w-0 group-data-[collapsible=icon]:hidden">
-                  <p className="text-sm font-bold text-foreground/90 truncate">{user?.name || "Guest User"}</p>
-                  <p className="text-[10px] text-muted-foreground font-medium opacity-70 uppercase tracking-tighter">{user?.role || "Viewer"}</p>
-                </div>
-                <ChevronUp size={14} className="opacity-40 group-data-[collapsible=icon]:hidden" />
-              </div>
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent side="right" align="end" className="w-64 mb-4 bg-sidebar/95 backdrop-blur-2xl border-white/10 shadow-2xl">
-            <DropdownMenuLabel className="p-4 bg-primary/5">
-              <div className="flex items-center gap-3">
-                <Avatar className="h-10 w-10 border-2 border-primary/20">
-                  <AvatarImage src={user?.avatar} />
-                  <AvatarFallback>{user?.name?.charAt(0).toUpperCase() || "U"}</AvatarFallback>
-                </Avatar>
-                <div>
-                  <p className="text-sm font-bold">{user?.name || "Guest User"}</p>
-                  <p className="text-xs text-muted-foreground">{user?.email || (user?.role || "Viewer")}</p>
-                </div>
-              </div>
-            </DropdownMenuLabel>
-            <DropdownMenuSeparator className="bg-white/5" />
-            <DropdownMenuGroup className="p-1">
-              <DropdownMenuItem className="focus:bg-white/5 cursor-pointer" onClick={() => onNavigate?.('profile')}>
-                <User size={16} className="mr-3 opacity-70" />
-                <span>Director Profile</span>
-                <DropdownMenuShortcut>⌘P</DropdownMenuShortcut>
-              </DropdownMenuItem>
-              <DropdownMenuItem className="focus:bg-white/5 cursor-pointer">
-                <Bell size={16} className="mr-3 opacity-70" />
-                <span>Signal Alerts</span>
-                <Badge className="ml-auto h-5 bg-accent text-accent-foreground border-none text-[10px]">3</Badge>
-              </DropdownMenuItem>
-              <DropdownMenuItem className="focus:bg-white/5 cursor-pointer">
-                <CreditCard size={16} className="mr-3 opacity-70" />
-                <span>Pro Subscription</span>
-              </DropdownMenuItem>
-              <DropdownMenuItem className="focus:bg-white/5 cursor-pointer">
-                <Settings size={16} className="mr-3 opacity-70" />
-                <span>Terminal Settings</span>
-                <DropdownMenuShortcut>⌘S</DropdownMenuShortcut>
-              </DropdownMenuItem>
-            </DropdownMenuGroup>
-            <DropdownMenuSeparator className="bg-white/5" />
-            <div className="p-1">
-              <DropdownMenuItem className="text-destructive focus:bg-destructive/10 cursor-pointer">
-                <LogOut size={16} className="mr-3" />
-                <span>Terminate Session</span>
-                <DropdownMenuShortcut>⇧⌘Q</DropdownMenuShortcut>
-              </DropdownMenuItem>
-            </div>
-          </DropdownMenuContent>
-        </DropdownMenu>
+
+
       </SidebarFooter>
     </Sidebar>
   );

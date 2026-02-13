@@ -327,6 +327,11 @@ const Index = () => {
           onNavigate={handleSidebarNavigate}
           onProjectSelect={handleLoadVisualProject}
           onTogglePlayback={() => visualSetPlaying(!visualIsPlaying)}
+          onOpenCountdown={() => dialogs.open('countdown')}
+          onOpenAudioManager={() => dialogs.open('audioManager')}
+          onOpenTimerCalculator={() => dialogs.open('timerCalculator')}
+          onOpenPlayerIndicatorSettings={() => dialogs.open('playerIndicatorSettings')}
+          onPlay={handlePlay}
         />
       )}
 
@@ -364,7 +369,9 @@ const Index = () => {
               canPlay={canPlay}
               isPlaying={visualIsPlaying}
               onPlayPause={() => visualSetPlaying(false)}
+              onNavigate={handleSidebarNavigate}
             />
+
           )}
 
           <VisualEditorLayout
