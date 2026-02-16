@@ -154,4 +154,4 @@ npm run tauri build
 
 ## 📄 License
 
-This project is private and intended for professional use. All rights reserved.
+This project is free and open-source intended for any type of use. All rights reserved.
