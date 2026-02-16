@@ -3,6 +3,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { MousePointer2, PenTool, Link2, Link2Off, ZoomIn, ZoomOut, Maximize2, Undo2, Redo2, Copy, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useUndoRedo } from '../../useUndoRedo';
+import { useVisualEditorState } from '../../useVisualEditorState';
 
 interface ToolButtonProps {
   active?: boolean;
@@ -73,14 +74,14 @@ export const ToolSection = memo<ToolSectionProps>(({
   };
 
   return (
-    <div className="p-3 space-y-3">
-      <div className="flex items-center justify-center gap-1.5">
+    <div className="p-2 space-y-2">
+      <div className="flex items-center justify-center gap-1">
         <ToolButton active={!isDrawing} onClick={() => setDrawing(false)} icon={MousePointer2} tooltip="Select" shortcut="Esc" />
         <ToolButton active={isDrawing} onClick={() => setDrawing(true)} icon={PenTool} tooltip="Draw Region" shortcut="N" />
         <ToolButton active={chainTimesMode} onClick={toggleChainMode} icon={chainTimesMode ? Link2 : Link2Off} tooltip={chainTimesMode ? 'Chain Mode ON' : 'Chain Mode OFF'} variant="accent" />
       </div>
 
-      <div className="flex items-center gap-1 p-1.5 bg-muted/30 rounded-lg">
+      <div className="flex items-center gap-1 p-1 bg-muted/30 rounded-lg">
         <Tooltip>
           <TooltipTrigger asChild>
             <button onClick={() => setZoom(zoom - 0.25)} disabled={zoom <= 0.5} className="flex items-center justify-center w-7 h-7 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/50 disabled:opacity-30 transition-colors">
@@ -110,28 +111,16 @@ export const ToolSection = memo<ToolSectionProps>(({
         </Tooltip>
       </div>
       <div className="flex items-center gap-1">
-        {[0.5, 1, 2].map((preset) => (
-          <Tooltip key={preset}>
-            <TooltipTrigger asChild>
-              <button
-                onClick={() => setZoom(preset)}
-                className={cn(
-                  'flex-1 h-6 rounded text-[10px] font-medium',
-                  Math.abs(zoom - preset) < 0.05 ? 'bg-primary text-primary-foreground' : 'bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground'
-                )}
-              >
-                {preset * 100}%
-              </button>
-            </TooltipTrigger>
-            <TooltipContent>Zoom to {preset * 100}%</TooltipContent>
-          </Tooltip>
-        ))}
-      </div>
-
-      <div className="flex items-center gap-1">
         <Tooltip>
           <TooltipTrigger asChild>
-            <button onClick={undo} disabled={!canUndo} className={cn('flex-1 flex items-center justify-center gap-1.5 h-8 rounded-md text-xs font-medium transition-all', canUndo ? 'text-muted-foreground hover:text-foreground hover:bg-muted/50' : 'text-muted-foreground/30')}>
+            <button
+              onClick={undo}
+              disabled={!canUndo}
+              className={cn(
+                'flex-1 flex items-center justify-center gap-1.5 h-8 rounded-md text-xs font-medium transition-all',
+                canUndo ? 'text-muted-foreground hover:text-foreground hover:bg-muted/50' : 'text-muted-foreground/30'
+              )}
+            >
               <Undo2 size={14} /> Undo
             </button>
           </TooltipTrigger>
@@ -139,7 +128,14 @@ export const ToolSection = memo<ToolSectionProps>(({
         </Tooltip>
         <Tooltip>
           <TooltipTrigger asChild>
-            <button onClick={redo} disabled={!canRedo} className={cn('flex-1 flex items-center justify-center gap-1.5 h-8 rounded-md text-xs font-medium transition-all', canRedo ? 'text-muted-foreground hover:text-foreground hover:bg-muted/50' : 'text-muted-foreground/30')}>
+            <button
+              onClick={redo}
+              disabled={!canRedo}
+              className={cn(
+                'flex-1 flex items-center justify-center gap-1.5 h-8 rounded-md text-xs font-medium transition-all',
+                canRedo ? 'text-muted-foreground hover:text-foreground hover:bg-muted/50' : 'text-muted-foreground/30'
+              )}
+            >
               <Redo2 size={14} /> Redo
             </button>
           </TooltipTrigger>

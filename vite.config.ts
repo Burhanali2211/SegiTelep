@@ -84,7 +84,6 @@ export default defineConfig({
       '@radix-ui/react-tooltip',
       '@radix-ui/react-select',
       '@radix-ui/react-checkbox',
-      'simple-peer',
     ],
   },
 });

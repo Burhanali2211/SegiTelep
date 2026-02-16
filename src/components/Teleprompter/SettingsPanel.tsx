@@ -1,4 +1,4 @@
-import React, { memo, useCallback, useState, useEffect } from 'react';
+import { memo, useCallback, useState, useEffect } from 'react';
 import { useTeleprompterStore } from '@/store/teleprompterStore';
 import { FONT_OPTIONS, TEXT_COLOR_OPTIONS, SPEED_PRESETS } from '@/types/teleprompter.types';
 import {
@@ -6,6 +6,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
 } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
@@ -21,16 +22,15 @@ import { Separator } from '@/components/ui/separator';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Checkbox } from '@/components/ui/checkbox';
 import {
-  Settings,
+  Settings as SettingsIcon,
   Palette,
   Type,
   Gauge,
   Monitor,
   Eye,
   Timer,
-  Volume2,
+  Smartphone,
 } from 'lucide-react';
 import { getCountdownSettings, saveCountdownSettings, CountdownSettings } from '@/utils/countdownUtils';
 
@@ -42,6 +42,8 @@ interface SettingsPanelProps {
 export const SettingsPanel = memo<SettingsPanelProps>(({ open, onOpenChange }) => {
   const project = useTeleprompterStore((s) => s.project);
   const updateSettings = useTeleprompterStore((s) => s.updateSettings);
+  const appSettings = useTeleprompterStore((s) => s.settings);
+  const setRemoteEnabled = useTeleprompterStore((s) => s.setRemoteEnabled);
   const [countdownSettings, setCountdownSettings] = useState<CountdownSettings>(getCountdownSettings());
 
   // Load countdown settings when dialog opens
@@ -82,19 +84,23 @@ export const SettingsPanel = memo<SettingsPanelProps>(({ open, onOpenChange }) =
       <DialogContent className="max-w-2xl max-h-[85vh] overflow-hidden flex flex-col">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Settings size={20} />
+            <SettingsIcon size={20} />
             Project Settings
           </DialogTitle>
+          <DialogDescription>
+            Configure defaults, display options, and playback behavior for this project.
+          </DialogDescription>
         </DialogHeader>
 
         <Tabs defaultValue="defaults" className="flex-1 overflow-hidden flex flex-col">
-          <TabsList className="grid w-full grid-cols-3">
+          <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="defaults">Defaults</TabsTrigger>
             <TabsTrigger value="display">Display</TabsTrigger>
             <TabsTrigger value="playback">Playback</TabsTrigger>
+            <TabsTrigger value="integrations">Integrations</TabsTrigger>
           </TabsList>
 
-          <div className="flex-1 overflow-y-auto mt-4">
+          <div className="flex-1 overflow-y-auto mt-4 px-1">
             {/* Default Segment Settings */}
             <TabsContent value="defaults" className="space-y-6 m-0">
               <div className="space-y-4">
@@ -154,8 +160,8 @@ export const SettingsPanel = memo<SettingsPanelProps>(({ open, onOpenChange }) =
                             handleSettingChange('defaultTextColor', color.value)
                           }
                           className={`w-8 h-8 rounded border-2 transition-all ${settings.defaultTextColor === color.value
-                              ? 'border-primary scale-110'
-                              : 'border-transparent hover:border-muted'
+                            ? 'border-primary scale-110'
+                            : 'border-transparent hover:border-muted'
                             }`}
                           style={{ backgroundColor: color.hex }}
                           title={color.label}
@@ -387,6 +393,48 @@ export const SettingsPanel = memo<SettingsPanelProps>(({ open, onOpenChange }) =
                     </Select>
                   </div>
                 )}
+              </div>
+            </TabsContent>
+
+            {/* Integrations Settings */}
+            <TabsContent value="integrations" className="space-y-6 m-0">
+              <div className="space-y-4">
+                <h3 className="text-sm font-medium flex items-center gap-2">
+                  <Smartphone size={16} />
+                  Remote Control
+                </h3>
+
+                <div className="p-4 bg-primary/5 rounded-xl border border-primary/20 space-y-3">
+                  <div className="flex items-center justify-between text-card-foreground">
+                    <div>
+                      <Label className="text-base font-bold">Remote Features</Label>
+                      <p className="text-xs text-muted-foreground max-w-[280px]">
+                        Enable WebSocket for mobile remote control.
+                        When off, no background servers will be active.
+                      </p>
+                    </div>
+                    <Switch
+                      checked={appSettings.remoteEnabled}
+                      onCheckedChange={(v) => setRemoteEnabled(v)}
+                      className="data-[state=checked]:bg-primary"
+                    />
+                  </div>
+
+                  {!appSettings.remoteEnabled && (
+                    <div className="flex items-center gap-2 text-[10px] font-bold text-amber-500 uppercase tracking-widest bg-amber-500/10 p-2 rounded-lg">
+                      <SettingsIcon size={12} />
+                      Service currently offline
+                    </div>
+                  )}
+                </div>
+
+                <div className="space-y-2 px-1">
+                  <h4 className="text-xs font-bold uppercase tracking-widest text-muted-foreground">About Remote Control</h4>
+                  <ul className="text-xs space-y-2 text-muted-foreground list-disc pl-4">
+                    <li>Local Remote: Uses your local network (highest performance).</li>
+                    <li>Privacy: No data ever leaves your network.</li>
+                  </ul>
+                </div>
               </div>
             </TabsContent>
           </div>

@@ -8,8 +8,6 @@ repository = "https://github.com/Burhanali2211/segitelep"
 edition = "2021"
 rust-version = "1.77.2"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [lib]
 name = "segitelep_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
@@ -18,31 +16,45 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2.5.4", features = [] }
 
 [dependencies]
-serde_json = "1.0"
+# Core dependencies
 serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
 log = "0.4"
+
+# Tauri
 tauri = { version = "2.1", features = ["custom-protocol"] }
 tauri-plugin-log = "2"
 tauri-plugin-process = "2"
 tauri-plugin-clipboard-manager = "2"
 tauri-plugin-fs = "2"
 tauri-plugin-dialog = "2"
+tauri-plugin-sql = { version = "2", features = ["sqlite"] }
 
-# Remote control server dependencies
+# Cryptography
+sha2 = "0.10"
+
+# Async runtime
 tokio = { version = "1", features = ["full"] }
-tokio-tungstenite = "0.21"
 futures-util = "0.3"
-uuid = { version = "1.6", features = ["v4", "serde"] }
-chrono = { version = "0.4", features = ["serde"] }
-local-ip-address = { version = "0.5" }
 
-# HTTP server for mobile interface
+# WebSocket (Update to 0.24 for better compatibility - OPTIONAL)
+tokio-tungstenite = "0.24"  # Updated from 0.21
+
+# HTTP server
 axum = "0.7"
 tower = "0.4"
 tower-http = { version = "0.5", features = ["cors"] }
 
-# QR code generation
-qrcode = "0.13"
-
-# Additional utilities
+# Utilities
+uuid = { version = "1.6", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
 dirs = "5.0"
+
+# Networking
+local-ip-address = "0.6"  # Updated from 0.5
+
+# QR code
+qrcode = "0.14"  # Updated from 0.13
+
+[target.'cfg(target_os = "macos")'.dependencies]
+# macOS-specific dependencies if needed

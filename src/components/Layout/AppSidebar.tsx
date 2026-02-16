@@ -21,37 +21,22 @@ import {
   from '@/components/ui/sidebar';
 import {
   Home,
-  FileText,
-  Image,
-  Settings,
-  BarChart3,
-  Calculator,
-  LayoutTemplate,
-  Music,
-  Radio,
-  Mic,
-  Search,
-  Clock,
-  Star,
-  Folder,
-  Play,
-  Pause,
-  ChevronDown,
-  ChevronRight,
-  LogOut,
   User,
-  CreditCard,
-  Bell,
-  CheckCircle2,
-  AlertCircle,
-  Command,
-  Plus,
-  MoreVertical,
-  ChevronUp,
+  Image,
   PenTool,
   Layers,
+  Search,
+  Settings,
+  Clock,
+  Play,
+  Pause,
+  ChevronUp,
+  ChevronDown,
+  ChevronRight,
+  Command,
   Maximize,
   Eye,
+  Music,
 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -76,7 +61,6 @@ import { useVisualEditorState } from '@/components/Teleprompter/VisualEditor/use
 import { ToolSection } from '@/components/Teleprompter/VisualEditor/components/panels/ToolSection';
 import { ImageSection } from '@/components/Teleprompter/VisualEditor/components/panels/ImageSection';
 import { PDFSection } from '@/components/Teleprompter/VisualEditor/components/panels/PDFSection';
-import { RegionSection } from '@/components/Teleprompter/VisualEditor/components/panels/RegionSection';
 import { useImageProcessing } from '@/components/Teleprompter/VisualEditor/hooks/useImageProcessing';
 import { useUndoRedo } from '@/components/Teleprompter/VisualEditor/useUndoRedo';
 import { VisualSegment } from '@/components/Teleprompter/VisualEditor/types/visualEditor.types';
@@ -91,7 +75,6 @@ interface AppSidebarProps {
   onTogglePlayback?: () => void;
   onOpenCountdown?: () => void;
   onOpenAudioManager?: () => void;
-  onOpenTimerCalculator?: () => void;
   onOpenPlayerIndicatorSettings?: () => void;
   onPlay?: () => void;
   className?: string;
@@ -107,13 +90,13 @@ export const AppSidebar = memo<AppSidebarProps>(({
   onTogglePlayback,
   onOpenCountdown,
   onOpenAudioManager,
-  onOpenTimerCalculator,
   onOpenPlayerIndicatorSettings,
   onPlay,
   className,
 }) => {
 
-  const { toggleSidebar } = useSidebar();
+  const { toggleSidebar, state } = useSidebar();
+  const isCollapsed = state === 'collapsed';
   const { user, loadUser } = useUserStore();
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedSections, setExpandedSections] = useState(['navigation', 'tools']);
@@ -139,7 +122,6 @@ export const AppSidebar = memo<AppSidebarProps>(({
   const visualPages = useVisualEditorState((s) => s.pages);
   const currentPageIndex = useVisualEditorState((s) => s.currentPageIndex);
   const selectedSegmentIds = useVisualEditorState((s) => s.selectedSegmentIds);
-  const playbackTime = useVisualEditorState((s) => s.playbackTime);
   const isDrawing = useVisualEditorState((s) => s.isDrawing);
   const chainTimesMode = useVisualEditorState((s) => s.chainTimesMode);
   const zoom = useVisualEditorState((s) => s.zoom);
@@ -148,7 +130,6 @@ export const AppSidebar = memo<AppSidebarProps>(({
   const removePage = useVisualEditorState((s) => s.removePage);
   const setCurrentPage = useVisualEditorState((s) => s.setCurrentPage);
   const selectSegment = useVisualEditorState((s) => s.selectSegment);
-  const toggleSegmentVisibility = useVisualEditorState((s) => s.toggleSegmentVisibility);
   const setPlaybackTime = useVisualEditorState((s) => s.setPlaybackTime);
   const setPlaying = useVisualEditorState((s) => s.setPlaying);
   const setDrawing = useVisualEditorState((s) => s.setDrawing);
@@ -157,9 +138,6 @@ export const AppSidebar = memo<AppSidebarProps>(({
   const deleteSegments = useVisualEditorState((s) => s.deleteSegments);
   const setZoom = useVisualEditorState((s) => s.setZoom);
   const resetView = useVisualEditorState((s) => s.resetView);
-  const moveSegmentUp = useVisualEditorState((s) => s.moveSegmentUp);
-  const moveSegmentDown = useVisualEditorState((s) => s.moveSegmentDown);
-  const duplicateSegment = useVisualEditorState((s) => s.duplicateSegment);
 
   const { undo, redo, canUndo, canRedo, saveState } = useUndoRedo();
   const { handleFileChange } = useImageProcessing(addPage);
@@ -174,24 +152,6 @@ export const AppSidebar = memo<AppSidebarProps>(({
   const handleAddImage = React.useCallback(() => {
     fileInputRef.current?.click();
   }, []);
-
-  const handlePlaySegment = React.useCallback(
-    (segment: VisualSegment) => {
-      setPlaybackTime(segment.startTime);
-      setPlaying(true);
-    },
-    [setPlaybackTime, setPlaying]
-  );
-
-  const handleSegmentClick = React.useCallback(
-    (e: React.MouseEvent, segment: VisualSegment, pageIndex: number) => {
-      if (pageIndex !== currentPageIndex) setCurrentPage(pageIndex);
-      if (e.ctrlKey || e.metaKey) selectSegment(segment.id, 'toggle');
-      else if (e.shiftKey) selectSegment(segment.id, 'range');
-      else selectSegment(segment.id, 'single');
-    },
-    [currentPageIndex, setCurrentPage, selectSegment]
-  );
 
   const navigationItems = [
     {
@@ -210,57 +170,15 @@ export const AppSidebar = memo<AppSidebarProps>(({
 
   ];
 
-  const toolItems = [
-    {
-      title: 'Templates',
-      icon: LayoutTemplate,
-      id: 'templates',
-      description: 'Browse project templates',
-    },
-    {
-      title: 'Timer Calculator',
-      icon: Calculator,
-      id: 'timer-calculator',
-      description: 'Calculate segment timings',
-    },
-    {
-      title: 'Statistics',
-      icon: BarChart3,
-      id: 'statistics',
-      description: 'View project statistics',
-    },
-  ];
-
-  const advancedTools = [
-    {
-      title: 'Audio Manager',
-      icon: Music,
-      id: 'audio-manager',
-      description: 'Manage audio files',
-    },
-    {
-      title: 'Remote Control',
-      icon: Radio,
-      id: 'remote-control',
-      description: 'Remote playback control',
-    },
-    {
-      title: 'Voice Input',
-      icon: Mic,
-      id: 'voice-input',
-      description: 'Voice-to-text input',
-    },
-  ];
-
   return (
     <Sidebar
       collapsible="icon"
       className={cn(
-        'border-r border-border bg-sidebar/50 backdrop-blur-xl transition-all duration-300 ease-in-out',
+        'border-r border-border bg-sidebar transition-all duration-300 ease-in-out will-change-[width]',
         className
       )}
     >
-      <SidebarHeader className="p-4 space-y-4 group-data-[collapsible=icon]:p-2">
+      <SidebarHeader className="p-3 space-y-2 group-data-[collapsible=icon]:p-2">
         <div className="flex items-center justify-between group-data-[collapsible=icon]:justify-center">
           <div className="flex items-center gap-3 group-data-[collapsible=icon]:hidden">
             <div className="relative group/logo">
@@ -330,88 +248,70 @@ export const AppSidebar = memo<AppSidebarProps>(({
             </Tooltip>
           </div>
 
-          {/* Expanded View Content */}
-          <div className="contents group-data-[collapsible=icon]:hidden">
-            <SidebarGroup className="p-0 mb-4">
-              <SidebarGroupLabel className="px-2 mb-2 text-muted-foreground/70 font-bold tracking-wider text-[10px] uppercase">Navigation</SidebarGroupLabel>
-              <SidebarMenu className="gap-1 px-1">
-                {navigationItems.map((item) => (
-                  <SidebarMenuItem key={item.id}>
-                    <SidebarMenuButton
+          {/* Expanded View Content - Only rendered when sidebar is open for performance */}
+          {!isCollapsed && (
+            <div className="flex flex-col animate-in fade-in duration-500">
+              <SidebarGroup className="p-0 mb-2">
+                <SidebarGroupLabel className="px-2 mb-1 text-muted-foreground/70 font-bold tracking-wider text-[10px] uppercase">Navigation</SidebarGroupLabel>
+                <div className="flex gap-1 px-1">
+                  {navigationItems.map((item) => (
+                    <Button
+                      key={item.id}
+                      variant="ghost"
                       onClick={() => onNavigate?.(item.id)}
-                      className="h-9 px-3 rounded-lg hover:bg-white/5 transition-all group"
+                      className="flex-1 h-8 px-2 rounded-lg hover:bg-white/5 transition-all group flex items-center justify-center gap-2"
                     >
-                      <item.icon size={16} className="text-muted-foreground group-hover:text-primary transition-colors" />
-                      <span className="text-xs font-medium">{item.title}</span>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                ))}
-              </SidebarMenu>
-            </SidebarGroup>
+                      <item.icon size={14} className="text-muted-foreground group-hover:text-primary transition-colors shrink-0" />
+                      <span className="text-[10px] font-medium truncate">{item.title}</span>
+                    </Button>
+                  ))}
+                </div>
+              </SidebarGroup>
 
-            <SidebarGroup className="p-0">
+              <SidebarGroup className="p-0 mb-1">
+                <SidebarGroupLabel className="px-2 mb-1 text-primary/70 font-bold tracking-wider text-[10px] uppercase">Visual Tools</SidebarGroupLabel>
+                <div className="bg-sidebar-accent/50 rounded-xl border border-white/5 mx-1">
+                  <ToolSection
+                    isDrawing={isDrawing}
+                    chainTimesMode={chainTimesMode}
+                    zoom={zoom}
+                    selectedSegmentIds={selectedSegmentIds}
+                    setDrawing={setDrawing}
+                    toggleChainMode={toggleChainMode}
+                    setZoom={setZoom}
+                    resetView={resetView}
+                    copySelected={copySelected}
+                    deleteSegments={deleteSegments}
+                  />
+                </div>
+              </SidebarGroup>
 
-              <SidebarGroupLabel className="px-2 mb-2 text-primary/70 font-bold tracking-wider text-[10px] uppercase">Visual Tools</SidebarGroupLabel>
-              <div className="bg-sidebar-accent/50 rounded-xl border border-white/5 mx-1">
-                <ToolSection
-                  isDrawing={isDrawing}
-                  chainTimesMode={chainTimesMode}
-                  zoom={zoom}
-                  selectedSegmentIds={selectedSegmentIds}
-                  setDrawing={setDrawing}
-                  toggleChainMode={toggleChainMode}
-                  setZoom={setZoom}
-                  resetView={resetView}
-                  copySelected={copySelected}
-                  deleteSegments={deleteSegments}
-                />
-              </div>
-            </SidebarGroup>
+              <SidebarGroup className="p-0 mb-2">
+                <SidebarGroupLabel className="px-2 mb-1 text-muted-foreground/70 font-bold tracking-wider text-[10px] uppercase">Media Assets</SidebarGroupLabel>
+                <div className="space-y-4 px-2">
+                  <ImageSection
+                    pages={visualPages}
+                    currentPageIndex={currentPageIndex}
+                    onAddImage={handleAddImage}
+                    onSelectPage={setCurrentPage}
+                    onRemovePage={removePage}
+                    fileInputRef={fileInputRef}
+                    onFileChange={handleFileChange}
+                  />
 
-            <SidebarGroup className="p-0">
-              <SidebarGroupLabel className="px-2 mb-2 text-muted-foreground/70 font-bold tracking-wider text-[10px] uppercase">Media Assets</SidebarGroupLabel>
-              <div className="space-y-4 px-2">
-                <ImageSection
-                  pages={visualPages}
-                  currentPageIndex={currentPageIndex}
-                  onAddImage={handleAddImage}
-                  onSelectPage={setCurrentPage}
-                  onRemovePage={removePage}
-                  fileInputRef={fileInputRef}
-                  onFileChange={handleFileChange}
-                />
+                  <Separator className="opacity-10" />
 
-                <Separator className="opacity-10" />
-
-                <PDFSection
-                  pages={visualPages}
-                  currentPageIndex={currentPageIndex}
-                  onAddPages={handleAddPDFPages}
-                  onSelectPage={setCurrentPage}
-                  onRemovePage={removePage}
-                />
-              </div>
-            </SidebarGroup>
-
-            <SidebarGroup className="p-0">
-              <SidebarGroupLabel className="px-2 mb-2 text-muted-foreground/70 font-bold tracking-wider text-[10px] uppercase">Timeline Regions</SidebarGroupLabel>
-              <div className="px-2">
-                <RegionSection
-                  pages={visualPages}
-                  currentPageIndex={currentPageIndex}
-                  selectedSegmentIds={selectedSegmentIds}
-                  playbackTime={playbackTime}
-                  onSegmentClick={handleSegmentClick}
-                  onPlaySegment={handlePlaySegment}
-                  onToggleVisibility={toggleSegmentVisibility}
-                  onMoveUp={moveSegmentUp}
-                  onMoveDown={moveSegmentDown}
-                  onDuplicate={(id) => { saveState(); duplicateSegment(id); }}
-                  onDelete={(id) => { saveState(); deleteSegments([id]); }}
-                />
-              </div>
-            </SidebarGroup>
-          </div>
+                  <PDFSection
+                    pages={visualPages}
+                    currentPageIndex={currentPageIndex}
+                    onAddPages={handleAddPDFPages}
+                    onSelectPage={setCurrentPage}
+                    onRemovePage={removePage}
+                  />
+                </div>
+              </SidebarGroup>
+            </div>
+          )}
         </div>
       </SidebarContent>
 
@@ -430,19 +330,10 @@ export const AppSidebar = memo<AppSidebarProps>(({
               variant="default"
               size="sm"
               className="flex-1 h-9 text-[11px] font-bold bg-primary hover:bg-primary/90 shadow-lg shadow-primary/20 gap-2"
-              onClick={isPlaying ? onTogglePlayback : onPlay}
+              onClick={onPlay}
             >
-              {isPlaying ? (
-                <>
-                  <Pause size={12} className="fill-current" />
-                  <span>PAUSE SIGNAL</span>
-                </>
-              ) : (
-                <>
-                  <div className="w-2 h-2 rounded-full bg-white animate-pulse" />
-                  <span>GO LIVE NOW</span>
-                </>
-              )}
+              <div className="w-2 h-2 rounded-full bg-white animate-pulse" />
+              <span>GO LIVE NOW</span>
             </Button>
 
             <DropdownMenu>
@@ -473,17 +364,6 @@ export const AppSidebar = memo<AppSidebarProps>(({
                   <span className="text-xs">Countdown Delay</span>
                 </DropdownMenuItem>
 
-                <DropdownMenuItem onClick={onOpenTimerCalculator} className="cursor-pointer focus:bg-white/5 py-2.5">
-                  <Calculator size={14} className="mr-3 text-muted-foreground" />
-                  <span className="text-xs">Timer Calculator</span>
-                </DropdownMenuItem>
-
-                {onOpenAudioManager && (
-                  <DropdownMenuItem onClick={onOpenAudioManager} className="cursor-pointer focus:bg-white/5 py-2.5">
-                    <Music size={14} className="mr-3 text-muted-foreground" />
-                    <span className="text-xs">Audio Manager</span>
-                  </DropdownMenuItem>
-                )}
 
                 {onOpenPlayerIndicatorSettings && (
                   <>
@@ -504,7 +384,7 @@ export const AppSidebar = memo<AppSidebarProps>(({
 
 
       </SidebarFooter>
-    </Sidebar>
+    </Sidebar >
   );
 });
 

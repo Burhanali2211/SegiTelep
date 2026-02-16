@@ -111,6 +111,46 @@ export async function writeJsonFile<T>(relativePath: string, data: T): Promise<v
   await writeTextFileToFs(relativePath, content);
 }
 
+// Atomic helper to write JSON file via Rust backend
+// Prevents corruption during crashes
+export async function atomicWriteJsonFile<T>(relativePath: string, data: T): Promise<void> {
+  if (!isTauriApp()) {
+    return writeJsonFile(relativePath, data);
+  }
+
+  const { invoke } = await import('@tauri-apps/api/core');
+  try {
+    const appDataPath = await getAppDataPath();
+    const fullPath = `${appDataPath}/${relativePath}`;
+    await invoke('atomic_save_json', { path: fullPath, data });
+  } catch (err) {
+    console.error('Atomic write failed, falling back to standard write', err);
+    await writeJsonFile(relativePath, data);
+  }
+}
+
+// Store asset globally with de-duplication (Content Addressable Storage)
+export async function storeAssetNative(bytes: Uint8Array, extension: string): Promise<string> {
+  requireTauri();
+  const { invoke } = await import('@tauri-apps/api/core');
+  // Pass bytes as array for Rust compatibility
+  return invoke('store_asset', { bytes: Array.from(bytes), extension });
+}
+
+// Get absolute path from relative AppData path (Tauri only)
+export async function getAbsolutePath(relativePath: string): Promise<string> {
+  if (!isTauriApp()) return relativePath;
+  const { invoke } = await import('@tauri-apps/api/core');
+  return invoke('get_absolute_path', { relativePath });
+}
+
+// Cleanup global assets that are not in the provided active list
+export async function cleanupGlobalAssetsNative(activeAssets: string[]): Promise<number> {
+  if (!isTauriApp()) return 0;
+  const { invoke } = await import('@tauri-apps/api/core');
+  return invoke('cleanup_global_assets', { activeAssets });
+}
+
 // Convert base64 data URL to Uint8Array
 export function dataUrlToBytes(dataUrl: string): { bytes: Uint8Array; mimeType: string } {
   const [header, base64Data] = dataUrl.split(',');

@@ -12,7 +12,7 @@ import {
 import { Image, Layers, Clock, FolderOpen, Copy, Trash2, Play, MoreHorizontal } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { VisualProject } from '@/core/storage/VisualProjectStorage';
-import { DuplicateProjectButton, DeleteProjectButton } from './features';
+import { DuplicateProjectButton, DeleteProjectButton, GoLiveButton } from './features';
 
 interface ProjectCardProps {
   project: VisualProject;
@@ -21,6 +21,7 @@ interface ProjectCardProps {
   onOpen: () => void;
   onDuplicate: (id: string) => void;
   onDelete: (id: string) => void;
+  onGoLive?: (id: string) => void;
   variant?: 'list' | 'grid';
 }
 
@@ -32,6 +33,7 @@ export const ProjectCard = memo<ProjectCardProps>(({
   onOpen,
   onDuplicate,
   onDelete,
+  onGoLive,
   variant = 'list'
 }) => {
   const pageCount = project.pages.length;
@@ -127,6 +129,12 @@ export const ProjectCard = memo<ProjectCardProps>(({
                         className="h-8 w-8 bg-white/5 hover:bg-red-500/20 hover:text-red-400 border-white/5"
                         onClick={() => onDelete(project.id)}
                       />
+                      {onGoLive && (
+                        <GoLiveButton
+                          onClick={(e) => { e.stopPropagation(); onGoLive(project.id); }}
+                          className="h-8 bg-blue-600 hover:bg-blue-500 text-white font-bold"
+                        />
+                      )}
                     </div>
                   )}
                 </div>
@@ -176,13 +184,21 @@ export const ProjectCard = memo<ProjectCardProps>(({
                         onClick={() => onDelete(project.id)}
                       />
                     </div>
-                    <Button
-                      size="sm"
-                      className="h-8 bg-blue-600 hover:bg-blue-500 text-white font-bold"
-                      onClick={(e) => { e.stopPropagation(); onOpen(); }}
-                    >
-                      Open
-                    </Button>
+                    <div className="flex items-center gap-2">
+                      {onGoLive && (
+                        <GoLiveButton
+                          onClick={(e) => { e.stopPropagation(); onGoLive(project.id); }}
+                          className="h-8 bg-emerald-600 hover:bg-emerald-500 text-white font-bold"
+                        />
+                      )}
+                      <Button
+                        size="sm"
+                        className="h-8 bg-blue-600 hover:bg-blue-500 text-white font-bold"
+                        onClick={(e) => { e.stopPropagation(); onOpen(); }}
+                      >
+                        Open
+                      </Button>
+                    </div>
                   </div>
                 )}
               </div>

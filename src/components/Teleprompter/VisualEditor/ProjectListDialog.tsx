@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -36,6 +36,7 @@ import {
   FolderOpen,
   Plus,
   FileText,
+  Play,
 } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
@@ -81,6 +82,7 @@ interface ProjectListDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSelectProject: (id: string) => void;
+  onGoLive?: (id: string) => void;
   onNewProject: () => void;
   currentProjectId: string | null;
 }
@@ -89,6 +91,7 @@ export function ProjectListDialog({
   open,
   onOpenChange,
   onSelectProject,
+  onGoLive,
   onNewProject,
   currentProjectId,
 }: ProjectListDialogProps) {
@@ -203,6 +206,9 @@ export function ProjectListDialog({
               <FolderOpen className="w-5 h-5 text-blue-400" />
               Project Library
             </DialogTitle>
+            <DialogDescription className="sr-only">
+              Manage and organize your teleprompter projects.
+            </DialogDescription>
           </DialogHeader>
 
           {/* Actions Bar */}
@@ -337,6 +343,17 @@ export function ProjectListDialog({
                             onClick={(e) => { e.stopPropagation(); onSelectProject(project.id); onOpenChange(false); }}
                           >
                             Open
+                          </Button>
+                        )}
+                        {onGoLive && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 text-[11px] font-bold text-emerald-400 hover:bg-emerald-500/10"
+                            onClick={(e) => { e.stopPropagation(); onGoLive(project.id); onOpenChange(false); }}
+                          >
+                            <Play size={10} className="mr-1 fill-current" />
+                            Go Live
                           </Button>
                         )}
                         <div className="flex-1" />

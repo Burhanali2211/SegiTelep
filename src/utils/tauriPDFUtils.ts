@@ -1,6 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
-import { readFile } from '@tauri-apps/plugin-fs';
+import { readFile, stat } from '@tauri-apps/plugin-fs';
 import { PDFProcessor, PDFInfo, validatePDFFile } from './pdfUtils';
 
 /**
@@ -12,21 +12,14 @@ export class TauriPDFProcessor extends PDFProcessor {
    */
   async loadPDFFromPath(filePath: string): Promise<PDFInfo> {
     try {
+      const fileStats = await stat(filePath);
+      const fileName = filePath.split(/[/\\]/).pop() || 'unknown.pdf';
+
       // Read the file as binary data
       const fileData = await readFile(filePath);
-      
-      // Convert to ArrayBuffer for PDF.js
-      const arrayBuffer = fileData.buffer.slice(
-        fileData.byteOffset,
-        fileData.byteOffset + fileData.byteLength
-      );
-      
-      // Create a File object for compatibility
-      const fileName = filePath.split(/[/\\]/).pop() || 'unknown.pdf';
-      const file = new File([arrayBuffer], fileName, { type: 'application/pdf' });
-      
-      // Use the parent class method
-      return this.loadPDF(file);
+
+      // Use the parent class method with raw binary data and metadata
+      return this.loadPDF(fileData, fileName, fileStats.size);
     } catch (error) {
       console.error('Error loading PDF from path:', error);
       throw new Error(`Failed to load PDF from path: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -49,7 +42,7 @@ export async function openPDFFileDialog(): Promise<string | null> {
       ],
       multiple: false
     });
-    
+
     return selected as string || null;
   } catch (error) {
     console.error('Error opening file dialog:', error);
@@ -95,11 +88,12 @@ export async function getPDFFileInfo(filePath: string): Promise<{
   path: string;
 } | null> {
   try {
+    const fileStats = await stat(filePath);
     const fileName = filePath.split(/[/\\]/).pop() || 'unknown.pdf';
-    
+
     return {
       name: fileName,
-      size: 0, // Will be determined when file is read
+      size: fileStats.size,
       path: filePath
     };
   } catch (error) {
@@ -133,13 +127,13 @@ export async function processPDFInTauri(filePath?: string): Promise<{
     // Process PDF
     const processor = new TauriPDFProcessor();
     const pdfInfo = await processor.loadPDFFromPath(filePath);
-    
+
     return { pdfInfo };
   } catch (error) {
     console.error('Error processing PDF in Tauri:', error);
-    return { 
-      pdfInfo: null, 
-      error: error instanceof Error ? error.message : 'Failed to process PDF' 
+    return {
+      pdfInfo: null,
+      error: error instanceof Error ? error.message : 'Failed to process PDF'
     };
   }
 }

@@ -1,10 +1,14 @@
-import * as pdfjsLib from 'pdfjs-dist';
-import { PDFDocumentProxy, PDFPageProxy } from 'pdfjs-dist/types/src/display/api';
+import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
+import pdfjsWorker from 'pdfjs-dist/legacy/build/pdf.worker.mjs?url';
 
 // Configure PDF.js worker
 if (typeof window !== 'undefined') {
-  pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
+  pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
 }
+
+// Re-exporting types from the types folder
+import type { PDFDocumentProxy } from 'pdfjs-dist/types/src/display/api';
+export type { PDFDocumentProxy };
 
 export interface PDFPageInfo {
   pageNumber: number;
@@ -53,13 +57,27 @@ interface PDFTextItem {
 export class PDFProcessor {
   private pdfDocument: PDFDocumentProxy | null = null;
 
-  /**
-   * Load PDF from File object
-   */
-  async loadPDF(file: File): Promise<PDFInfo> {
+  async loadPDF(file: File | Uint8Array, fileName?: string, fileSize?: number): Promise<PDFInfo> {
     try {
-      const arrayBuffer = await file.arrayBuffer();
-      const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
+      let data: Uint8Array;
+      let name = fileName || 'unknown.pdf';
+      let size = fileSize || 0;
+
+      if (file instanceof File) {
+        const arrayBuffer = await file.arrayBuffer();
+        data = new Uint8Array(arrayBuffer);
+        name = file.name;
+        size = file.size;
+      } else {
+        data = file;
+        if (!size) size = file.length;
+      }
+
+      const loadingTask = pdfjsLib.getDocument({
+        data,
+        useWorkerFetch: false, // Ensure we don't try to fetch worker as data
+        isEvalSupported: true,
+      });
       this.pdfDocument = await loadingTask.promise;
 
       const metadata = await this.pdfDocument.getMetadata();
@@ -81,8 +99,8 @@ export class PDFProcessor {
       }
 
       return {
-        fileName: file.name,
-        fileSize: file.size,
+        fileName: name,
+        fileSize: size,
         totalPages,
         pages,
         metadata: {
@@ -97,6 +115,7 @@ export class PDFProcessor {
       };
     } catch (error) {
       console.error('Error loading PDF:', error);
+      this.cleanup(); // Clean up on failure
       throw new Error(`Failed to load PDF: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
@@ -110,28 +129,33 @@ export class PDFProcessor {
     }
 
     try {
+      if (pageNumber < 1 || pageNumber > this.pdfDocument.numPages) {
+        throw new Error(`Invalid page number: ${pageNumber}`);
+      }
       const page = await this.pdfDocument.getPage(pageNumber);
       const viewport = page.getViewport({ scale: 1.0 });
       const scale = width / viewport.width;
       const scaledViewport = page.getViewport({ scale });
 
       const canvas = document.createElement('canvas');
-      const context = canvas.getContext('2d')!;
+      const context = canvas.getContext('2d', { alpha: false })!;
 
       canvas.width = scaledViewport.width;
       canvas.height = scaledViewport.height;
 
-      // Fill with white background (fixes black images on transparency)
+      // Fill with white background
       context.fillStyle = '#FFFFFF';
       context.fillRect(0, 0, canvas.width, canvas.height);
 
       await page.render({
         canvasContext: context,
         viewport: scaledViewport,
-        canvas,
+        canvas: canvas,
       }).promise;
 
-      return canvas.toDataURL('image/jpeg', 0.8);
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+      page.cleanup();
+      return dataUrl;
     } catch (error) {
       console.error(`Error generating thumbnail for page ${pageNumber}:`, error);
       throw new Error(`Failed to generate thumbnail for page ${pageNumber}`);
@@ -147,26 +171,31 @@ export class PDFProcessor {
     }
 
     try {
+      if (pageNumber < 1 || pageNumber > this.pdfDocument.numPages) {
+        throw new Error(`Invalid page number: ${pageNumber}`);
+      }
       const page = await this.pdfDocument.getPage(pageNumber);
       const viewport = page.getViewport({ scale });
 
       const canvas = document.createElement('canvas');
-      const context = canvas.getContext('2d')!;
+      const context = canvas.getContext('2d', { alpha: false })!;
 
       canvas.width = viewport.width;
       canvas.height = viewport.height;
 
-      // Fill with white background (fixes black images on transparency)
+      // Fill with white background
       context.fillStyle = '#FFFFFF';
       context.fillRect(0, 0, canvas.width, canvas.height);
 
       await page.render({
         canvasContext: context,
         viewport: viewport,
-        canvas,
+        canvas: canvas,
       }).promise;
 
-      return canvas.toDataURL('image/jpeg', 0.9);
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
+      page.cleanup();
+      return dataUrl;
     } catch (error) {
       console.error(`Error generating full image for page ${pageNumber}:`, error);
       throw new Error(`Failed to generate full image for page ${pageNumber}`);
@@ -174,20 +203,25 @@ export class PDFProcessor {
   }
 
   /**
-   * Generate thumbnails for multiple pages in parallel
+   * Generate thumbnails for multiple pages with concurrency control 
+   * to prevent blocking the main thread or crashing the browser.
    */
   async generateThumbnails(pageNumbers: number[], width: number = 200): Promise<{ [key: number]: string }> {
-    const promises = pageNumbers.map(async (pageNum) => {
-      const thumbnail = await this.generateThumbnail(pageNum, width);
-      return { pageNum, thumbnail };
-    });
-
-    const results = await Promise.all(promises);
     const thumbnails: { [key: number]: string } = {};
+    const CONCURRENCY_LIMIT = 3; // Render 3 pages at a time max
 
-    results.forEach(({ pageNum, thumbnail }) => {
-      thumbnails[pageNum] = thumbnail;
-    });
+    // Process in chunks
+    for (let i = 0; i < pageNumbers.length; i += CONCURRENCY_LIMIT) {
+      const chunk = pageNumbers.slice(i, i + CONCURRENCY_LIMIT);
+      await Promise.all(chunk.map(async (pageNum) => {
+        try {
+          const thumbnail = await this.generateThumbnail(pageNum, width);
+          thumbnails[pageNum] = thumbnail;
+        } catch (error) {
+          console.warn(`Failed to generate thumbnail for page ${pageNum}:`, error);
+        }
+      }));
+    }
 
     return thumbnails;
   }
@@ -238,11 +272,11 @@ export class PDFProcessor {
     return this.pdfDocument;
   }
 
-  /**
-   * Cleanup resources
-   */
   cleanup(): void {
-    this.pdfDocument = null;
+    if (this.pdfDocument) {
+      this.pdfDocument.destroy();
+      this.pdfDocument = null;
+    }
   }
 
   /**

@@ -44,24 +44,14 @@ import {
   SkipBack,
   SkipForward,
   Gauge,
-  Timer,
-  FlipHorizontal,
-  Minus,
-  Calculator,
-  BarChart3,
-  Music,
-  LayoutTemplate,
-  Keyboard,
   Radio,
-  Mic,
   BookOpen,
-  Video,
   HelpCircle,
   Info,
-  ExternalLink,
   Clock,
   Check,
-  Bug,
+  Music,
+  Keyboard,
 } from 'lucide-react';
 import { useTeleprompterStore } from '@/store/teleprompterStore';
 import { useVisualEditorState } from '@/components/Teleprompter/VisualEditor/useVisualEditorState';
@@ -77,16 +67,10 @@ interface MainMenuBarProps {
   onImport: () => void;
   onOpenSettings: () => void;
   onOpenShortcuts: () => void;
-  onOpenStatistics: () => void;
   onOpenCountdown: () => void;
   onOpenAbout: () => void;
   onOpenAudioManager: () => void;
   onOpenRemoteControl: () => void;
-  onOpenVoiceInput: () => void;
-  onOpenTimerCalculator: () => void;
-  onOpenTemplates: () => void;
-  onExportPDF: () => void;
-  onOpenExternalDisplay: () => void;
   onPlay: () => void;
   onGoHome: () => void;
   recentProjects?: Array<{ id: string; name: string }>;
@@ -102,16 +86,10 @@ export const MainMenuBar = memo<MainMenuBarProps>(({
   onImport,
   onOpenSettings,
   onOpenShortcuts,
-  onOpenStatistics,
   onOpenCountdown,
   onOpenAbout,
   onOpenAudioManager,
   onOpenRemoteControl,
-  onOpenVoiceInput,
-  onOpenTimerCalculator,
-  onOpenTemplates,
-  onExportPDF,
-  onOpenExternalDisplay,
   onPlay,
   onGoHome,
   recentProjects = [],
@@ -270,10 +248,6 @@ export const MainMenuBar = memo<MainMenuBarProps>(({
                 <Download size={16} className="mr-2" />
                 Export Project
                 <MenubarShortcut>⇧⌘S</MenubarShortcut>
-              </MenubarItem>
-              <MenubarItem onSelect={onExportPDF}>
-                <FileText size={16} className="mr-2" />
-                Export as PDF
               </MenubarItem>
             </MenubarSubContent>
           </MenubarSub>
@@ -438,11 +412,6 @@ export const MainMenuBar = memo<MainMenuBarProps>(({
             Fullscreen Player
             <MenubarShortcut>F</MenubarShortcut>
           </MenubarItem>
-
-          <MenubarItem onSelect={onOpenExternalDisplay}>
-            <Monitor size={16} className="mr-2" />
-            External Display
-          </MenubarItem>
         </MenubarContent>
       </MenubarMenu>
 
@@ -452,48 +421,19 @@ export const MainMenuBar = memo<MainMenuBarProps>(({
           Tools
         </MenubarTrigger>
         <MenubarContent>
-          <MenubarItem onSelect={onOpenTemplates}>
-            <LayoutTemplate size={16} className="mr-2" />
-            Templates
+          {/* Advanced Tools */}
+          <MenubarItem onSelect={onOpenSettings}>
+            <Settings size={16} className="mr-2" />
+            Project Settings
           </MenubarItem>
-
-          <MenubarItem onSelect={onOpenTimerCalculator}>
-            <Calculator size={16} className="mr-2" />
-            Timer Calculator
+          <MenubarItem onSelect={onOpenAudioManager}>
+            <Music size={16} className="mr-2" />
+            Audio Manager
           </MenubarItem>
-
-          <MenubarItem onSelect={onOpenStatistics}>
-            <BarChart3 size={16} className="mr-2" />
-            Statistics
+          <MenubarItem onSelect={onOpenRemoteControl}>
+            <Radio size={16} className="mr-2" />
+            Remote Control
           </MenubarItem>
-
-          <MenubarSeparator />
-
-          {/* Consolidated Advanced Tools */}
-          <MenubarSub>
-            <MenubarSubTrigger>
-              <Settings size={16} className="mr-2" />
-              Advanced
-            </MenubarSubTrigger>
-            <MenubarSubContent>
-              <MenubarItem onSelect={onOpenSettings}>
-                <Settings size={16} className="mr-2" />
-                Project Settings
-              </MenubarItem>
-              <MenubarItem onSelect={onOpenAudioManager}>
-                <Music size={16} className="mr-2" />
-                Audio Manager
-              </MenubarItem>
-              <MenubarItem onSelect={onOpenRemoteControl}>
-                <Radio size={16} className="mr-2" />
-                Remote Control
-              </MenubarItem>
-              <MenubarItem onSelect={onOpenVoiceInput}>
-                <Mic size={16} className="mr-2" />
-                Voice Input
-              </MenubarItem>
-            </MenubarSubContent>
-          </MenubarSub>
         </MenubarContent>
       </MenubarMenu>
 

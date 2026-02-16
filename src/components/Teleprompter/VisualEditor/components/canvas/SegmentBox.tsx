@@ -11,7 +11,7 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger,
 } from '@/components/ui/context-menu';
-import { Copy, Trash2, Eye, EyeOff, Play, Target } from 'lucide-react';
+import { Copy, Trash2, Eye, EyeOff, Play, Target, Clock } from 'lucide-react';
 
 // Magnetic snap threshold in percentage (relative to image)
 const SEGMENT_SNAP_THRESHOLD_PERCENT = 1.5;
@@ -183,10 +183,30 @@ export const SegmentBox = memo<SegmentBoxProps>(({ segment, isSelected }) => {
     dragDataRef.current = null;
   }, [segment.id, segment.region, setActiveDrag, updateSegment]);
 
-  const playbackTime = useVisualEditorState((s) => s.playbackTime);
-  const isPlaying = playbackTime >= segment.startTime && playbackTime < segment.endTime;
-  const borderColor = segment.color || (isPlaying ? 'rgb(239, 68, 68)' : isSelected ? 'rgb(250, 204, 21)' : 'rgb(34, 197, 94)');
-  const bgColor = isPlaying ? 'rgba(239, 68, 68, 0.2)' : isSelected ? 'rgba(250, 204, 21, 0.15)' : 'rgba(34, 197, 94, 0.1)';
+  // Decentralized playback state selection
+  const isAtPlayhead = useVisualEditorState(s =>
+    s.playbackTime >= segment.startTime && s.playbackTime < segment.endTime
+  );
+  const isGlobalPlaying = useVisualEditorState((s) => s.isPlaying);
+  const isActiveActive = isGlobalPlaying && isAtPlayhead;
+
+  // Design Tokens - Optimized for performance
+  const baseColor = segment.color || 'rgb(79, 70, 229)';
+  const isCustom = !!segment.color;
+
+  const borderStyle = isAtPlayhead
+    ? { borderColor: 'rgb(220, 38, 38)', boxShadow: '0 0 15px rgba(220, 38, 38, 0.3)' }
+    : isSelected
+      ? { borderColor: 'rgb(139, 92, 246)', boxShadow: '0 0 10px rgba(139, 92, 246, 0.2)' }
+      : { borderColor: baseColor, opacity: isCustom ? 1 : 0.4 };
+
+  const bgStyle = isAtPlayhead
+    ? { backgroundColor: 'rgba(220, 38, 38, 0.1)' }
+    : isSelected
+      ? { backgroundColor: 'rgba(139, 92, 246, 0.1)' }
+      : { backgroundColor: isCustom ? `${baseColor}15` : 'rgba(0, 0, 0, 0.05)' };
+
+  const accentColor = isAtPlayhead ? 'rgb(220, 38, 38)' : isSelected ? 'rgb(139, 92, 246)' : baseColor;
 
   const displayRegion = provisionalRegion ?? segment.region;
   const duplicateSegment = useVisualEditorState((s) => s.duplicateSegment);
@@ -200,8 +220,9 @@ export const SegmentBox = memo<SegmentBoxProps>(({ segment, isSelected }) => {
       <ContextMenuTrigger asChild>
         <div
           className={cn(
-            'absolute border-2 transition-colors',
-            isDragging && 'cursor-grabbing',
+            'absolute border-2 rounded-sm group/seg will-change-transform',
+            isDragging || isResizing ? 'z-50 duration-0' : 'transition-all duration-200',
+            isDragging && 'cursor-grabbing scale-[1.01]',
             !isDragging && 'cursor-grab'
           )}
           style={{
@@ -209,8 +230,8 @@ export const SegmentBox = memo<SegmentBoxProps>(({ segment, isSelected }) => {
             top: `${displayRegion.y}%`,
             width: `${displayRegion.width}%`,
             height: `${displayRegion.height}%`,
-            borderColor,
-            backgroundColor: bgColor,
+            ...borderStyle,
+            ...bgStyle,
           }}
           onClick={handleClick}
           onPointerDown={handleDragStart}
@@ -218,17 +239,33 @@ export const SegmentBox = memo<SegmentBoxProps>(({ segment, isSelected }) => {
           onPointerUp={handleDragEnd}
           onPointerCancel={handleDragEnd}
         >
-          {snappedEdges.left && <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-blue-500 animate-pulse" />}
-          {snappedEdges.right && <div className="absolute right-0 top-0 bottom-0 w-0.5 bg-blue-500 animate-pulse" />}
-          {snappedEdges.top && <div className="absolute top-0 left-0 right-0 h-0.5 bg-blue-500 animate-pulse" />}
+          {/* Snap Indicators */}
+          {snappedEdges.left && <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-sky-400 z-20" />}
+          {snappedEdges.right && <div className="absolute right-0 top-0 bottom-0 w-0.5 bg-sky-400 z-20" />}
+          {snappedEdges.top && <div className="absolute top-0 left-0 right-0 h-0.5 bg-sky-400 z-20" />}
 
-          <div className="absolute -top-1 left-2 right-2 h-3 cursor-ns-resize hover:bg-primary/30 z-10" onPointerDown={(e) => handleResizeStart('top', e)} onPointerMove={handleResizeMove} onPointerUp={handleResizeEnd} onPointerCancel={handleResizeEnd} />
-          <div className="absolute -bottom-1 left-2 right-2 h-3 cursor-ns-resize hover:bg-primary/30 z-10" onPointerDown={(e) => handleResizeStart('bottom', e)} onPointerMove={handleResizeMove} onPointerUp={handleResizeEnd} onPointerCancel={handleResizeEnd} />
-          <div className="absolute -left-1 top-2 bottom-2 w-3 cursor-ew-resize hover:bg-primary/30 z-10" onPointerDown={(e) => handleResizeStart('left', e)} onPointerMove={handleResizeMove} onPointerUp={handleResizeEnd} onPointerCancel={handleResizeEnd} />
-          <div className="absolute -right-1 top-2 bottom-2 w-3 cursor-ew-resize hover:bg-primary/30 z-10" onPointerDown={(e) => handleResizeStart('right', e)} onPointerMove={handleResizeMove} onPointerUp={handleResizeEnd} onPointerCancel={handleResizeEnd} />
+          {/* Resize Handles - Improved visibility */}
+          <div className="absolute -top-1.5 inset-x-4 h-3 cursor-ns-resize z-30 group-hover/seg:bg-indigo-500/10 rounded-full transition-colors" onPointerDown={(e) => handleResizeStart('top', e)} onPointerMove={handleResizeMove} onPointerUp={handleResizeEnd} />
+          <div className="absolute -bottom-1.5 inset-x-4 h-3 cursor-ns-resize z-30 group-hover/seg:bg-indigo-500/10 rounded-full transition-colors" onPointerDown={(e) => handleResizeStart('bottom', e)} onPointerMove={handleResizeMove} onPointerUp={handleResizeEnd} />
+          <div className="absolute -left-1.5 inset-y-4 w-3 cursor-ew-resize z-30 group-hover/seg:bg-indigo-500/10 rounded-full transition-colors" onPointerDown={(e) => handleResizeStart('left', e)} onPointerMove={handleResizeMove} onPointerUp={handleResizeEnd} />
+          <div className="absolute -right-1.5 inset-y-4 w-3 cursor-ew-resize z-30 group-hover/seg:bg-indigo-500/10 rounded-full transition-colors" onPointerDown={(e) => handleResizeStart('right', e)} onPointerMove={handleResizeMove} onPointerUp={handleResizeEnd} />
 
-          <div className="absolute top-0 left-0 px-1.5 py-0.5 text-[10px] font-medium text-black max-w-full truncate" style={{ backgroundColor: borderColor }}>
-            {typeof segment.label === 'string' ? segment.label : ''}
+          {/* Identification Badge - Turns red when playhead is over it */}
+          <div
+            className={cn(
+              "absolute -top-2.5 -left-2.5 w-6 h-6 rounded-full text-white flex items-center justify-center text-[10px] font-black border-2 border-white shadow-lg z-40 transform transition-all duration-300 group-hover/seg:scale-110",
+              isAtPlayhead && "scale-110 shadow-[0_0_10px_rgba(220,38,38,0.5)]"
+            )}
+            style={{ backgroundColor: accentColor }}
+          >
+            {segment.order + 1}
+          </div>
+
+
+          {/* Duration Badge Bottom Right */}
+          <div className="absolute bottom-1 right-1 px-1 py-0.5 rounded bg-black/40 border border-white/5 flex items-center gap-1">
+            <Clock size={8} className="text-indigo-200" />
+            <span className="text-[8px] font-mono font-bold text-indigo-50 text-[0.6rem]">{(segment.endTime - segment.startTime).toFixed(0)}s</span>
           </div>
         </div>
       </ContextMenuTrigger>
@@ -245,10 +282,16 @@ export const SegmentBox = memo<SegmentBoxProps>(({ segment, isSelected }) => {
           {segment.isHidden ? 'Show' : 'Hide'}
         </ContextMenuItem>
         <ContextMenuSeparator />
-        <ContextMenuItem onClick={() => updateSegment(segment.id, { startTime: playbackTime })}>
+        <ContextMenuItem onClick={() => {
+          const currentTime = useVisualEditorState.getState().playbackTime;
+          updateSegment(segment.id, { startTime: currentTime });
+        }}>
           <Target size={14} className="mr-2" /> Set start to playhead
         </ContextMenuItem>
-        <ContextMenuItem onClick={() => updateSegment(segment.id, { endTime: playbackTime })}>
+        <ContextMenuItem onClick={() => {
+          const currentTime = useVisualEditorState.getState().playbackTime;
+          updateSegment(segment.id, { endTime: currentTime });
+        }}>
           <Target size={14} className="mr-2" /> Set end to playhead
         </ContextMenuItem>
         <ContextMenuSeparator />
@@ -259,7 +302,7 @@ export const SegmentBox = memo<SegmentBoxProps>(({ segment, isSelected }) => {
           <Trash2 size={14} className="mr-2" /> Delete
         </ContextMenuItem>
       </ContextMenuContent>
-    </ContextMenu>
+    </ContextMenu >
   );
 });
 

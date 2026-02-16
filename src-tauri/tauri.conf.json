@@ -1,13 +1,13 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
-  "productName": "SegiTelep",
+  "productName": "SegiTelep Pro",
   "version": "1.0.0",
-  "identifier": "com.segitelep.dev",
+  "identifier": "com.segitelep.pro",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:8080",
     "beforeDevCommand": "npm run dev",
-    "beforeBuildCommand": "npm.cmd run build"
+    "beforeBuildCommand": "npm run build"
   },
   "app": {
     "windows": [
@@ -18,11 +18,13 @@
         "minWidth": 800,
         "minHeight": 600,
         "resizable": true,
-        "fullscreen": false
+        "fullscreen": false,
+        "titleBarStyle": "Overlay",
+        "transparent": true
       }
     ],
     "security": {
-      "csp": null
+      "csp": "default-src 'self'; img-src 'self' blob: data: https://*; media-src 'self' data: blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' data: blob: ws://localhost:8766 ws://localhost:8765; script-src 'self' 'unsafe-eval' 'unsafe-inline' blob: https://unpkg.com https://cdn.jsdelivr.net; worker-src 'self' blob: https://unpkg.com https://cdn.jsdelivr.net;"
     },
     "withGlobalTauri": false
   },
@@ -36,7 +38,7 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "copyright": "© 2024 Ali. All rights reserved.",
+    "copyright": "© 2026 Ali. All rights reserved.",
     "shortDescription": "Professional Segmentation Teleprompter",
     "longDescription": "SegiTelep is a professional teleprompter application with advanced segmentation features, designed for smooth content delivery and broadcast workflows."
   }

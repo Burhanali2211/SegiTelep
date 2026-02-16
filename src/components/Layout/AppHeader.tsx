@@ -38,8 +38,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { AppLogo } from './AppLogo';
-import { SidebarTrigger } from '@/components/ui/sidebar';
 import { AspectRatioSelector } from '@/components/Teleprompter/VisualEditor/components/toolbar/AspectRatioSelector';
 
 // Editable Project Name Component - Enhanced
@@ -219,16 +217,10 @@ interface AppHeaderProps {
   onImport: () => void;
   onOpenSettings: () => void;
   onOpenShortcuts: () => void;
-  onOpenStatistics: () => void;
   onOpenCountdown: () => void;
   onOpenAbout: () => void;
   onOpenAudioManager?: () => void;
   onOpenRemoteControl?: () => void;
-  onOpenVoiceInput?: () => void;
-  onOpenTimerCalculator: () => void;
-  onOpenTemplates: () => void;
-  onExportPDF: () => void;
-  onOpenExternalDisplay: () => void;
   onPlay: () => void;
   onGoHome: () => void;
   onOpenPlayerIndicatorSettings?: () => void;
@@ -256,16 +248,10 @@ export const AppHeader = memo<AppHeaderProps>(({
   onImport,
   onOpenSettings,
   onOpenShortcuts,
-  onOpenStatistics,
   onOpenCountdown,
   onOpenAbout,
   onOpenAudioManager,
   onOpenRemoteControl,
-  onOpenVoiceInput,
-  onOpenTimerCalculator,
-  onOpenTemplates,
-  onExportPDF,
-  onOpenExternalDisplay,
   onPlay,
   onGoHome,
   onOpenPlayerIndicatorSettings,
@@ -295,18 +281,12 @@ export const AppHeader = memo<AppHeaderProps>(({
 
   return (
     <header className={cn(
-      'flex flex-col border-b border-border/50 bg-background/95 backdrop-blur-xl supports-[backdrop-filter]:bg-background/80',
+      'flex flex-col border-b border-border/50 bg-background/98',
       className
     )}>
       {/* Desktop Header */}
       <div className="hidden lg:flex items-center h-14 px-4 gap-4">
-        {/* Left Section: Logo + Menu */}
         <div className="flex items-center gap-4 flex-shrink-0">
-          <SidebarTrigger className="h-8 w-8 hover:bg-accent/50 transition-colors" />
-          <AppLogo size="md" textSize="base" className="select-none" />
-
-          <div className="w-px h-6 bg-border/50" />
-
           <MainMenuBar
             onNewProject={onNewProject}
             onOpenProject={onOpenProject}
@@ -315,16 +295,10 @@ export const AppHeader = memo<AppHeaderProps>(({
             onImport={onImport}
             onOpenSettings={onOpenSettings}
             onOpenShortcuts={onOpenShortcuts}
-            onOpenStatistics={onOpenStatistics}
             onOpenCountdown={onOpenCountdown}
             onOpenAbout={onOpenAbout}
             onOpenAudioManager={onOpenAudioManager}
             onOpenRemoteControl={onOpenRemoteControl}
-            onOpenVoiceInput={onOpenVoiceInput}
-            onOpenTimerCalculator={onOpenTimerCalculator}
-            onOpenTemplates={onOpenTemplates}
-            onExportPDF={onExportPDF}
-            onOpenExternalDisplay={onOpenExternalDisplay}
             onPlay={onPlay}
             onGoHome={onGoHome}
             recentProjects={recentProjects}
@@ -407,7 +381,7 @@ export const AppHeader = memo<AppHeaderProps>(({
                 </div>
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-64 bg-popover/95 backdrop-blur-xl border-border/50 shadow-xl">
+            <DropdownMenuContent align="end" className="w-64 bg-popover/95 border-border/50 shadow-xl">
               <div className="flex items-center gap-3 p-4 bg-primary/5 border-b border-border/50">
                 <Avatar className="h-10 w-10 border-2 border-primary/20">
                   <AvatarImage src={user?.avatar} />
@@ -451,11 +425,6 @@ export const AppHeader = memo<AppHeaderProps>(({
 
       {/* Tablet Header (medium screens) */}
       <div className="hidden md:flex lg:hidden items-center h-12 px-3 gap-3">
-        <SidebarTrigger className="h-8 w-8" />
-        <AppLogo size="sm" textSize="sm" />
-
-        <div className="w-px h-5 bg-border/50" />
-
         <div className="flex-1 min-w-0 flex items-center gap-2 overflow-hidden">
           <EditableProjectName
             projectName={safeProjectName}
@@ -501,12 +470,7 @@ export const AppHeader = memo<AppHeaderProps>(({
       <div className="flex md:hidden flex-col">
         {/* Top Mobile Bar */}
         <div className="flex items-center justify-between h-12 px-3 border-b border-border/30">
-          <div className="flex items-center gap-2 flex-1 min-w-0">
-            <SidebarTrigger className="h-8 w-8 flex-shrink-0" />
-            <AppLogo size="sm" textSize="sm" className="flex-shrink-0" />
-          </div>
-
-          <div className="flex items-center gap-1 flex-shrink-0">
+          <div className="flex items-center gap-1 flex-shrink-0 ml-auto">
             {hasUnsavedChanges && (
               <div className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
             )}

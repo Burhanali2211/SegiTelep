@@ -186,15 +186,13 @@ export const PDFSection = memo<PDFSectionProps>(({
 
                       {/* Actions */}
                       <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
-                        {pdfPages.length > 1 && (
-                          <button
-                            onClick={(e) => { e.stopPropagation(); onRemovePage(actualPageIndex); }}
-                            className="w-5 h-5 rounded flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
-                            title="Remove page"
-                          >
-                            <Trash2 size={8} />
-                          </button>
-                        )}
+                        <button
+                          onClick={(e) => { e.stopPropagation(); onRemovePage(actualPageIndex); }}
+                          className="w-5 h-5 rounded flex items-center justify-center text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                          title="Remove page"
+                        >
+                          <Trash2 size={8} />
+                        </button>
                       </div>
                     </div>
                   </ContextMenuTrigger>
@@ -203,18 +201,14 @@ export const PDFSection = memo<PDFSectionProps>(({
                       <Check className="mr-2 h-4 w-4" />
                       Select page
                     </ContextMenuItem>
-                    {pdfPages.length > 1 && (
-                      <>
-                        <ContextMenuSeparator />
-                        <ContextMenuItem
-                          className="text-destructive focus:text-destructive"
-                          onClick={() => onRemovePage(actualPageIndex)}
-                        >
-                          <Trash2 className="mr-2 h-4 w-4" />
-                          Remove page
-                        </ContextMenuItem>
-                      </>
-                    )}
+                    <ContextMenuSeparator />
+                    <ContextMenuItem
+                      className="text-destructive focus:text-destructive"
+                      onClick={() => onRemovePage(actualPageIndex)}
+                    >
+                      <Trash2 className="mr-2 h-4 w-4" />
+                      Remove page
+                    </ContextMenuItem>
                   </ContextMenuContent>
                 </ContextMenu>
               );

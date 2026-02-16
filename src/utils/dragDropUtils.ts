@@ -1,4 +1,4 @@
-import { validatePDFFile } from './pdfUtils';
+import { validatePDFFile, formatFileSize } from './pdfUtils';
 
 export interface DragDropHandlers {
   onDragEnter?: (e: React.DragEvent) => void;
@@ -28,19 +28,19 @@ export class DragDropManager {
   handleDragEnter = (e: React.DragEvent): void => {
     e.preventDefault();
     e.stopPropagation();
-    
+
     this.dragCounter++;
-    
+
     if (e.dataTransfer.items && e.dataTransfer.items.length > 0) {
       this.state.isDragging = true;
       this.state.isDragOver = true;
-      
+
       // Check if dragged files are valid PDFs
       const files = Array.from(e.dataTransfer.items)
         .filter(item => item.kind === 'file')
         .map(item => item.getAsFile())
         .filter(file => file !== null) as File[];
-      
+
       if (files.length > 0) {
         const validation = validatePDFFile(files[0]);
         this.state.isValidFile = validation.valid;
@@ -58,9 +58,9 @@ export class DragDropManager {
   handleDragLeave = (e: React.DragEvent): void => {
     e.preventDefault();
     e.stopPropagation();
-    
+
     this.dragCounter--;
-    
+
     if (this.dragCounter === 0) {
       this.state.isDragging = false;
       this.state.isDragOver = false;
@@ -75,7 +75,7 @@ export class DragDropManager {
   handleDragOver = (e: React.DragEvent): void => {
     e.preventDefault();
     e.stopPropagation();
-    
+
     if (this.state.isDragging) {
       this.state.isDragOver = true;
     }
@@ -87,25 +87,25 @@ export class DragDropManager {
   handleDrop = (e: React.DragEvent): File[] => {
     e.preventDefault();
     e.stopPropagation();
-    
+
     this.dragCounter = 0;
     this.state.isDragging = false;
     this.state.isDragOver = false;
-    
+
     const files = Array.from(e.dataTransfer.files);
-    
+
     // Filter and validate PDF files
     const validPDFs = files.filter(file => {
       const validation = validatePDFFile(file);
       return validation.valid;
     });
-    
+
     if (validPDFs.length === 0 && files.length > 0) {
       this.state.errorMessage = 'Please drag valid PDF files';
     } else {
       this.state.errorMessage = undefined;
     }
-    
+
     return validPDFs;
   };
 
@@ -135,7 +135,7 @@ export class DragDropManager {
  */
 export function useDragDrop() {
   const manager = new DragDropManager();
-  
+
   return {
     handleDragEnter: manager.handleDragEnter,
     handleDragLeave: manager.handleDragLeave,
@@ -156,7 +156,7 @@ export function createDragDropHandlers(
   onDragOver?: (e: React.DragEvent) => void
 ) {
   const manager = new DragDropManager();
-  
+
   return {
     handleDragEnter: (e: React.DragEvent) => {
       manager.handleDragEnter(e);
@@ -196,7 +196,7 @@ export function isSupportedFileType(file: File): boolean {
     'image/bmp',
     'image/tiff',
   ];
-  
+
   return supportedTypes.includes(file.type);
 }
 
@@ -218,16 +218,6 @@ export function formatFileInfo(file: File): {
   type: string;
   category: 'pdf' | 'image' | 'other';
 } {
-  const formatFileSize = (bytes: number): string => {
-    if (bytes === 0) return '0 Bytes';
-    
-    const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-  };
-
   return {
     name: file.name,
     size: formatFileSize(file.size),

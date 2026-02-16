@@ -1,23 +1,21 @@
 import React, { useEffect, useCallback, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTeleprompterStore } from '@/store/teleprompterStore';
-import {
-  SettingsPanel,
-} from '@/components/Teleprompter';
 import { AppHeader, AppSidebar } from '@/components/Layout';
 import { VisualEditorLayout } from '@/components/Layout/VisualEditorLayout';
-import { ProjectListDialog } from '@/components/Teleprompter/VisualEditor/ProjectListDialog';
-import { ScriptStatisticsDialog } from '@/components/Teleprompter/ScriptStatisticsDialog';
-import { CountdownSettingsDialog } from '@/components/Teleprompter/CountdownSettingsDialog';
-import { AboutDialog } from '@/components/Teleprompter/AboutDialog';
-import { AudioManagerDialog } from '@/components/Teleprompter/AudioManager';
-import { RemoteControlDialog } from '@/components/Teleprompter/RemoteControl/RemoteControlDialog';
 import { SidebarInset } from '@/components/ui/sidebar';
-import { VoiceInputDialog } from '@/components/Teleprompter/VoiceInput';
-import { SegmentTimerCalculator } from '@/components/Teleprompter/SegmentTimerCalculator';
-import { TemplatesDialog } from '@/components/Teleprompter/TemplatesDialog';
-import { exportToPDF } from '@/utils/exportPDF';
-import { openExternalDisplay } from '@/utils/externalDisplay';
+const ProjectListDialog = React.lazy(() => import('@/components/Teleprompter/VisualEditor/ProjectListDialog').then(m => ({ default: m.ProjectListDialog })));
+const CountdownSettingsDialog = React.lazy(() => import('@/components/Teleprompter/CountdownSettingsDialog').then(m => ({ default: m.CountdownSettingsDialog })));
+const AboutDialog = React.lazy(() => import('@/components/Teleprompter/AboutDialog').then(m => ({ default: m.AboutDialog })));
+const AudioManagerDialog = React.lazy(() => import('@/components/Teleprompter/AudioManager').then(m => ({ default: m.AudioManagerDialog })));
+const RemoteControlDialog = React.lazy(() => import('@/components/Teleprompter/RemoteControl/RemoteControlDialog').then(m => ({ default: m.RemoteControlDialog })));
+const PDFPageSelector = React.lazy(() => import('@/components/Teleprompter/PDFPageSelector').then(m => ({ default: m.PDFPageSelector })));
+const PlayerIndicatorSettingsDialog = React.lazy(() => import('@/components/Teleprompter/PlayerIndicatorSettingsDialog').then(m => ({ default: m.PlayerIndicatorSettingsDialog })));
+const UserProfileDialog = React.lazy(() => import('@/components/User/UserProfileDialog').then(m => ({ default: m.UserProfileDialog })));
+const SettingsPanel = React.lazy(() => import('@/components/Teleprompter').then(m => ({ default: m.SettingsPanel })));
+import { ProjectService } from '@/core/projects/ProjectService';
+import { handleFileImport, createProjectFromPDFPages } from '@/core/projects/fileImportHandlers';
+import { type VisualProject } from '@/core/projects/models';
 import {
   TooltipProvider,
 } from '@/components/ui/tooltip';
@@ -26,8 +24,6 @@ import { useVisualProjectSession, getRecentProjects } from '@/hooks/useVisualPro
 import { useVisualEditorState } from '@/components/Teleprompter/VisualEditor/useVisualEditorState';
 import { toast } from 'sonner';
 import { HomePage } from './HomePage';
-import { PlayerIndicatorSettingsDialog } from '@/components/Teleprompter/PlayerIndicatorSettingsDialog';
-import { UserProfileDialog } from '@/components/User/UserProfileDialog';
 import { useUserStore } from '@/store/userStore';
 import { cn } from '@/lib/utils';
 
@@ -37,6 +33,7 @@ import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { useDialogController } from '@/hooks/useDialogController';
 import { useApplyVisualAudio } from '@/hooks/useApplyVisualAudio';
 import { useApplyVisualDuration } from '@/hooks/useApplyVisualDuration';
+import { useRemoteControl } from '@/hooks/useRemoteControl';
 
 const Index = () => {
   const navigate = useNavigate();
@@ -49,6 +46,9 @@ const Index = () => {
 
   // User store
   const { loadUser } = useUserStore();
+
+  // Remote Control Handlers
+  const { handleRemoteCommand } = useRemoteControl();
 
   useEffect(() => {
     loadUser();
@@ -111,6 +111,28 @@ const Index = () => {
   // Local state
   const [recentProjects, setRecentProjects] = useState<Array<{ id: string; name: string }>>([]);
 
+  // State for PDF Selector
+  const [isPDFSelectorOpen, setIsPDFSelectorOpen] = useState(false);
+  const [pendingPDF, setPendingPDF] = useState<File | string | null>(null);
+
+  const handlePDFPagesSelected = useCallback(async (selectedPages: { pageNumber: number; imageData: string }[]) => {
+    if (selectedPages.length === 0 || !pendingPDF) return;
+
+    try {
+      const project = await createProjectFromPDFPages(pendingPDF, selectedPages);
+      await loadVisualProject(project.id);
+      toast.success(`Imported ${selectedPages.length} pages from PDF`);
+
+      setAppView('visual');
+      setLayoutMode('visual-expanded');
+      setStartupMode('editor');
+      setPendingPDF(null);
+    } catch (error) {
+      console.error('Failed to create project from PDF:', error);
+      toast.error('Failed to import PDF pages');
+    }
+  }, [pendingPDF, loadVisualProject, setAppView, setLayoutMode, setStartupMode]);
+
   // Auto-switch layout mode based on app view
   useEffect(() => {
     if (appView === 'visual') {
@@ -147,6 +169,9 @@ const Index = () => {
   const fetchRecent = useCallback(async () => {
     const projects = await getRecentProjects(5);
     setRecentProjects(projects.map(p => ({ id: p.id, name: p.name })));
+
+    // Cleanup logic removed from background to prevent accidental data loss of non-recent projects.
+    // Maintenance should be performed via dedicated settings/storage management.
   }, []);
 
   useEffect(() => {
@@ -218,26 +243,11 @@ const Index = () => {
       case 'dashboard':
         handleGoHome();
         break;
-      case 'visual-editor':
-        handleOpenVisualEditor();
-        break;
-      case 'templates':
-        dialogs.open('templates');
-        break;
-      case 'timer-calculator':
-        dialogs.open('timerCalculator');
-        break;
-      case 'statistics':
-        dialogs.open('statistics');
-        break;
       case 'audio-manager':
         dialogs.open('audioManager');
         break;
       case 'remote-control':
         dialogs.open('remoteControl');
-        break;
-      case 'voice-input':
-        dialogs.open('voiceInput');
         break;
       case 'profile':
         dialogs.open('userProfile');
@@ -269,21 +279,30 @@ const Index = () => {
   const handleImport = useCallback(async () => {
     const input = document.createElement('input');
     input.type = 'file';
-    input.accept = '.visualprompt.json,.json';
+    // Support all requested types
+    input.accept = '.visualprompt.json,.json,.pdf,.docx,.txt,.md,.png,.jpg,.jpeg,.webp';
 
     input.onchange = async (e) => {
       const file = (e.target as HTMLInputElement).files?.[0];
       if (!file) return;
 
       try {
-        const imported = await importVisualProject(file);
-        await loadVisualProject(imported.id);
-        toast.success(`Imported: ${imported.name}`);
-        setAppView('visual');
-        setLayoutMode('visual-expanded');
-        setStartupMode('editor');
+        const result = await handleFileImport(file);
+
+        if (result.type === 'project') {
+          await loadVisualProject(result.project.id);
+          toast.success(`Imported: ${result.project.name}`);
+          setAppView('visual');
+          setLayoutMode('visual-expanded');
+          setStartupMode('editor');
+        } else if (result.type === 'pdf') {
+          setPendingPDF(result.file);
+          setIsPDFSelectorOpen(true);
+        } else if (result.type === 'error') {
+          toast.error(result.message);
+        }
       } catch (error) {
-        toast.error('Failed to import project. Invalid file format.');
+        toast.error('Failed to import file. An unexpected error occurred.');
       }
     };
 
@@ -298,6 +317,16 @@ const Index = () => {
     setLayoutMode('visual-expanded');
     setShowPlayer(true);
   }, [setLayoutMode, setShowPlayer]);
+
+  const handleTogglePlayback = useCallback(() => visualSetPlaying(!visualIsPlaying), [visualSetPlaying, visualIsPlaying]);
+  const handlePlayPause = useCallback((playing: boolean) => visualSetPlaying(playing), [visualSetPlaying]);
+  const handleOpenCountdown = useCallback(() => dialogs.open('countdown'), [dialogs]);
+  const handleOpenAudioManager = useCallback(() => dialogs.open('audioManager'), [dialogs]);
+  const handleOpenPlayerIndicatorSettings = useCallback(() => dialogs.open('playerIndicatorSettings'), [dialogs]);
+  const handleOpenSettings = useCallback(() => dialogs.open('settings'), [dialogs]);
+  const handleOpenShortcuts = useCallback(() => dialogs.open('shortcuts'), [dialogs]);
+  const handleOpenAbout = useCallback(() => dialogs.open('about'), [dialogs]);
+  const handleOpenRemoteControl = useCallback(() => dialogs.open('remoteControl'), [dialogs]);
 
   // Check if can play
   const totalSegments = pages.reduce((acc, p) => acc + p.segments.filter(s => !s.isHidden).length, 0);
@@ -326,11 +355,10 @@ const Index = () => {
           recentProjects={recentProjects}
           onNavigate={handleSidebarNavigate}
           onProjectSelect={handleLoadVisualProject}
-          onTogglePlayback={() => visualSetPlaying(!visualIsPlaying)}
-          onOpenCountdown={() => dialogs.open('countdown')}
-          onOpenAudioManager={() => dialogs.open('audioManager')}
-          onOpenTimerCalculator={() => dialogs.open('timerCalculator')}
-          onOpenPlayerIndicatorSettings={() => dialogs.open('playerIndicatorSettings')}
+          onTogglePlayback={handleTogglePlayback}
+          onOpenCountdown={handleOpenCountdown}
+          onOpenAudioManager={handleOpenAudioManager}
+          onOpenPlayerIndicatorSettings={handleOpenPlayerIndicatorSettings}
           onPlay={handlePlay}
         />
       )}
@@ -349,48 +377,51 @@ const Index = () => {
               onSave={handleSave}
               onExport={handleExport}
               onImport={handleImport}
-              onOpenSettings={() => dialogs.open('settings')}
-              onOpenShortcuts={() => dialogs.open('shortcuts')}
-              onOpenStatistics={() => dialogs.open('statistics')}
-              onOpenCountdown={() => dialogs.open('countdown')}
-              onOpenAbout={() => dialogs.open('about')}
-              onOpenAudioManager={() => dialogs.open('audioManager')}
-              onOpenRemoteControl={() => dialogs.open('remoteControl')}
-              onOpenVoiceInput={() => dialogs.open('voiceInput')}
-              onOpenTimerCalculator={() => dialogs.open('timerCalculator')}
-              onOpenTemplates={() => dialogs.open('templates')}
-              onExportPDF={() => exportToPDF()}
-              onOpenExternalDisplay={() => openExternalDisplay()}
+              onOpenSettings={handleOpenSettings}
+              onOpenShortcuts={handleOpenShortcuts}
+              onOpenCountdown={handleOpenCountdown}
+              onOpenAbout={handleOpenAbout}
+              onOpenAudioManager={handleOpenAudioManager}
+              onOpenRemoteControl={handleOpenRemoteControl}
               onPlay={handlePlay}
               onGoHome={handleGoHome}
-              onOpenPlayerIndicatorSettings={() => dialogs.open('playerIndicatorSettings')}
+              onOpenPlayerIndicatorSettings={handleOpenPlayerIndicatorSettings}
               recentProjects={recentProjects}
               onOpenRecentProject={handleLoadVisualProject}
               canPlay={canPlay}
               isPlaying={visualIsPlaying}
-              onPlayPause={() => visualSetPlaying(false)}
+              onPlayPause={() => handlePlayPause(false)}
               onNavigate={handleSidebarNavigate}
             />
-
           )}
 
           <VisualEditorLayout
-            onOpenAudioLibrary={() => dialogs.open('audioManager')}
+            onOpenAudioLibrary={handleOpenAudioManager}
             onGoHome={handleGoHome}
-            onOpenSettings={() => dialogs.open('settings')}
-            onOpenShortcuts={() => dialogs.open('shortcuts')}
-          />
-
-          <DialogsSection
-            dialogs={dialogs}
-            loadVisualProject={handleLoadVisualProject}
-            createNewVisualProject={handleNewProject}
-            visualProjectId={visualProjectId}
-            applyAudio={applyAudio}
-            applyDuration={applyDuration}
+            onOpenSettings={handleOpenSettings}
+            onOpenShortcuts={handleOpenShortcuts}
+            onOpenProjectList={() => dialogs.open('projectList')}
+            onOpenPDFSelector={(file) => {
+              setPendingPDF(file);
+              setIsPDFSelectorOpen(true);
+            }}
           />
         </div>
       </SidebarInset>
+
+      <DialogsSection
+        dialogs={dialogs}
+        loadVisualProject={handleLoadVisualProject}
+        createNewVisualProject={handleNewProject}
+        visualProjectId={visualProjectId}
+        applyAudio={applyAudio}
+        applyDuration={applyDuration}
+        isPDFSelectorOpen={isPDFSelectorOpen}
+        setIsPDFSelectorOpen={setIsPDFSelectorOpen}
+        handlePDFPagesSelected={handlePDFPagesSelected}
+        pendingPDF={pendingPDF}
+        setPendingPDF={setPendingPDF}
+      />
     </div>
   );
 };
@@ -403,83 +434,80 @@ const DialogsSection = ({
   visualProjectId,
   applyAudio,
   applyDuration,
+  isPDFSelectorOpen,
+  setIsPDFSelectorOpen,
+  handlePDFPagesSelected,
+  pendingPDF,
+  setPendingPDF,
 }: {
   dialogs: any;
   loadVisualProject: (id: string) => Promise<boolean>;
-  createNewVisualProject: () => Promise<void>;
+  createNewVisualProject: (name?: string) => Promise<void>;
   visualProjectId: string | null;
   applyAudio: (audio: { id: string; name: string; data: string; duration: number }) => void;
   applyDuration: (duration: number) => void;
+  isPDFSelectorOpen: boolean;
+  setIsPDFSelectorOpen: (open: boolean) => void;
+  handlePDFPagesSelected: (pages: { pageNumber: number; imageData: string }[]) => void;
+  pendingPDF: File | string | null;
+  setPendingPDF: (pdf: File | string | null) => void;
 }) => (
   <TooltipProvider>
-    <ProjectListDialog
-      open={dialogs.isOpen('projectList')}
-      onOpenChange={(open) => dialogs.toggle('projectList', open)}
-      onSelectProject={loadVisualProject}
-      onNewProject={createNewVisualProject}
-      currentProjectId={visualProjectId}
-    />
+    <React.Suspense fallback={null}>
+      <ProjectListDialog
+        open={dialogs.isOpen('projectList')}
+        onOpenChange={(open) => dialogs.toggle('projectList', open)}
+        onSelectProject={loadVisualProject}
+        onNewProject={createNewVisualProject}
+        currentProjectId={visualProjectId}
+      />
 
-    <SettingsPanel
-      open={dialogs.isOpen('settings')}
-      onOpenChange={(open) => dialogs.toggle('settings', open)}
-    />
+      <SettingsPanel
+        open={dialogs.isOpen('settings')}
+        onOpenChange={(open) => dialogs.toggle('settings', open)}
+      />
 
-    <ScriptStatisticsDialog
-      open={dialogs.isOpen('statistics')}
-      onOpenChange={(open) => dialogs.toggle('statistics', open)}
-    />
+      <CountdownSettingsDialog
+        open={dialogs.isOpen('countdown')}
+        onOpenChange={(open) => dialogs.toggle('countdown', open)}
+      />
 
-    <CountdownSettingsDialog
-      open={dialogs.isOpen('countdown')}
-      onOpenChange={(open) => dialogs.toggle('countdown', open)}
-    />
+      <AboutDialog
+        open={dialogs.isOpen('about')}
+        onOpenChange={(open) => dialogs.toggle('about', open)}
+      />
 
-    <AboutDialog
-      open={dialogs.isOpen('about')}
-      onOpenChange={(open) => dialogs.toggle('about', open)}
-    />
+      <AudioManagerDialog
+        open={dialogs.isOpen('audioManager')}
+        onOpenChange={(open) => dialogs.toggle('audioManager', open)}
+        onUseInProject={applyAudio}
+      />
 
-    <AudioManagerDialog
-      open={dialogs.isOpen('audioManager')}
-      onOpenChange={(open) => dialogs.toggle('audioManager', open)}
-      onUseInProject={applyAudio}
-    />
+      <RemoteControlDialog
+        open={dialogs.isOpen('remoteControl')}
+        onOpenChange={(open) => dialogs.toggle('remoteControl', open)}
+      />
 
-    <RemoteControlDialog
-      open={dialogs.isOpen('remoteControl')}
-      onOpenChange={(open) => dialogs.toggle('remoteControl', open)}
-    />
+      <PlayerIndicatorSettingsDialog
+        open={dialogs.isOpen('playerIndicatorSettings')}
+        onOpenChange={(open) => dialogs.toggle('playerIndicatorSettings', open)}
+      />
 
-    <VoiceInputDialog
-      open={dialogs.isOpen('voiceInput')}
-      onOpenChange={(open) => dialogs.toggle('voiceInput', open)}
-    />
+      <PDFPageSelector
+        open={isPDFSelectorOpen}
+        onOpenChange={(open) => {
+          setIsPDFSelectorOpen(open);
+          if (!open) setPendingPDF(null);
+        }}
+        onPagesSelected={handlePDFPagesSelected}
+        pdfSource={pendingPDF}
+      />
 
-    <SegmentTimerCalculator
-      open={dialogs.isOpen('timerCalculator')}
-      onOpenChange={(open) => dialogs.toggle('timerCalculator', open)}
-      onApplyDuration={applyDuration}
-    />
-
-    <TemplatesDialog
-      open={dialogs.isOpen('templates')}
-      onOpenChange={(open) => dialogs.toggle('templates', open)}
-      onSelectTemplate={(content) => {
-        // Handle template selection if needed in Visual mode
-        console.log('Template selected:', content);
-      }}
-    />
-
-    <PlayerIndicatorSettingsDialog
-      open={dialogs.isOpen('playerIndicatorSettings')}
-      onOpenChange={(open) => dialogs.toggle('playerIndicatorSettings', open)}
-    />
-
-    <UserProfileDialog
-      open={dialogs.isOpen('userProfile')}
-      onOpenChange={(open) => dialogs.toggle('userProfile', open)}
-    />
+      <UserProfileDialog
+        open={dialogs.isOpen('userProfile')}
+        onOpenChange={(open) => dialogs.toggle('userProfile', open)}
+      />
+    </React.Suspense>
   </TooltipProvider>
 );
 

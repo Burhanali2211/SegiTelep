@@ -6,13 +6,17 @@ interface VisualEditorLayoutProps {
   onGoHome: () => void;
   onOpenSettings: () => void;
   onOpenShortcuts: () => void;
+  onOpenProjectList: () => void;
+  onOpenPDFSelector: (file: File | string) => void;
 }
 
-export const VisualEditorLayout: React.FC<VisualEditorLayoutProps> = ({
+export const VisualEditorLayout: React.FC<VisualEditorLayoutProps> = React.memo(({
   onOpenAudioLibrary,
   onGoHome,
   onOpenSettings,
   onOpenShortcuts,
+  onOpenProjectList,
+  onOpenPDFSelector,
 }) => {
   return (
     <main className="flex-1 min-h-0 min-w-0 flex overflow-hidden">
@@ -22,7 +26,9 @@ export const VisualEditorLayout: React.FC<VisualEditorLayoutProps> = ({
         onGoHome={onGoHome}
         onOpenSettings={onOpenSettings}
         onOpenShortcuts={onOpenShortcuts}
+        onOpenProjectList={onOpenProjectList}
+        onOpenPDFSelector={onOpenPDFSelector}
       />
     </main>
   );
-};
+});

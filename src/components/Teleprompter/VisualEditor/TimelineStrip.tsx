@@ -1,9 +1,9 @@
 import React, { memo, useCallback, useEffect, useRef, useState } from 'react';
-import { useVisualEditorState, formatTime, parseTime, VisualSegment, ImagePage } from './useVisualEditorState';
+import { useVisualEditorState, formatTime, VisualSegment, ImagePage } from './useVisualEditorState';
+import { parseTime, formatDuration } from './utils/formatTime';
 import { AssetThumbnail } from './components/AssetThumbnail';
 import { useUndoRedo } from './useUndoRedo';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import {
   ContextMenu,
@@ -12,20 +12,19 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger,
 } from '@/components/ui/context-menu';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import {
   ChevronLeft,
   ChevronRight,
-  Target,
   Play,
   Pause,
   Copy,
+  Eye,
   EyeOff,
   Trash2,
-  Clock,
   MoreVertical,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 
 // --- Region Thumbnail Component ---
 const RegionThumbnail = memo<{ pages: ImagePage[]; segment: VisualSegment }>(({ pages, segment }) => {
@@ -51,96 +50,91 @@ const RegionThumbnail = memo<{ pages: ImagePage[]; segment: VisualSegment }>(({ 
 });
 RegionThumbnail.displayName = 'RegionThumbnail';
 
-// --- Time Control Component ---
-const TimeControl = memo<{
-  label: string;
-  time: number;
-  isActive: boolean;
-  onEdit: () => void;
+// --- Duration Adjuster Component ---
+const DurationAdjuster = memo<{
+  duration: number;
   onAdjust: (delta: number) => void;
-  onCapture: () => void;
-  isEditing: boolean;
-  editValue: string;
-  onEditChange: (val: string) => void;
-  onEditSubmit: () => void;
-}>(({
-  label,
-  time,
-  isActive, // actively playing/current
-  onEdit,
-  onAdjust,
-  onCapture,
-  isEditing,
-  editValue,
-  onEditChange,
-  onEditSubmit
-}) => {
-  return (
-    <div className="flex items-center justify-between gap-1 group/time py-0.5">
-      <span className="text-[9px] text-muted-foreground/60 w-8 font-bold uppercase tracking-tighter">{label}</span>
+  className?: string;
+}>(({ duration, onAdjust, className }) => {
+  const [isEditing, setIsEditing] = useState(false);
+  const [tempValue, setTempValue] = useState(Math.round(duration).toString());
 
-      <div className="flex-1 flex items-center justify-between bg-muted/20 rounded-lg border border-border/10 px-1 py-0.5 group-hover/time:border-primary/20 group-hover/time:bg-muted/40 transition-all">
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      const val = parseTime(tempValue);
+      if (!isNaN(val)) {
+        onAdjust(val - duration);
+      }
+      setIsEditing(false);
+    } else if (e.key === 'Escape') {
+      setIsEditing(false);
+      setTempValue(formatDuration(duration));
+    }
+  };
+
+  const handleBlur = () => {
+    const val = parseTime(tempValue);
+    if (!isNaN(val)) {
+      onAdjust(val - duration);
+    }
+    setIsEditing(false);
+  };
+
+  return (
+    <div className={cn("flex flex-col gap-1", className)}>
+      <div
+        className="flex items-center justify-between bg-muted/20 rounded-xl border border-border/10 p-1 group/dur hover:border-primary/20 transition-all select-none"
+      >
         <Button
           variant="ghost"
           size="icon"
-          className="h-5 w-4 text-muted-foreground/40 hover:text-primary hover:bg-transparent transition-colors p-0"
+          className="h-8 w-8 rounded-lg text-muted-foreground/60 hover:text-destructive hover:bg-destructive/10 transition-all"
           onClick={(e) => { e.stopPropagation(); onAdjust(-1); }}
         >
-          <ChevronLeft size={12} />
+          <ChevronLeft size={16} />
         </Button>
 
-        {isEditing ? (
-          <Input
-            value={editValue}
-            onChange={(e) => onEditChange(e.target.value)}
-            onBlur={onEditSubmit}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') onEditSubmit();
-              if (e.key === 'Escape') onEditSubmit(); // or just blur
-            }}
-            className="h-4 w-16 text-[10px] text-center p-0 bg-transparent border-none focus-visible:ring-0 font-mono font-bold text-primary"
-            onClick={(e) => e.stopPropagation()}
-            autoFocus
-          />
-        ) : (
-          <div
-            className={cn(
-              "h-4 flex items-center justify-center min-w-[54px] px-1 font-mono text-[11px] cursor-pointer hover:text-primary transition-all tabular-nums",
-              isActive ? "text-primary font-bold" : "text-foreground/80"
-            )}
-            onClick={(e) => { e.stopPropagation(); onEdit(); }}
-          >
-            {formatTime(time)}
-          </div>
-        )}
+        <div
+          className="flex flex-col items-center px-2 min-w-[70px] cursor-text"
+          onDoubleClick={(e) => {
+            e.stopPropagation();
+            setIsEditing(true);
+            setTempValue(formatDuration(duration).replace('s', ''));
+          }}
+        >
+          <span className="text-[9px] uppercase font-bold text-muted-foreground/40 tracking-widest leading-none mb-1">Duration</span>
+          {isEditing ? (
+            <input
+              autoFocus
+              className="w-12 text-center bg-background/50 border-none outline-none text-sm font-mono font-black text-primary p-0 h-4"
+              value={tempValue}
+              onChange={(e) => setTempValue(e.target.value)}
+              onKeyDown={handleKeyDown}
+              onBlur={handleBlur}
+              onClick={(e) => e.stopPropagation()}
+            />
+          ) : (
+            <div className="text-sm font-mono font-black text-primary tabular-nums">
+              {formatDuration(duration)}
+            </div>
+          )}
+        </div>
 
         <Button
           variant="ghost"
           size="icon"
-          className="h-5 w-4 text-muted-foreground/40 hover:text-primary hover:bg-transparent transition-colors p-0"
+          className="h-8 w-8 rounded-lg text-muted-foreground/60 hover:text-primary hover:bg-primary/10 transition-all"
           onClick={(e) => { e.stopPropagation(); onAdjust(1); }}
         >
-          <ChevronRight size={12} />
+          <ChevronRight size={16} />
         </Button>
       </div>
-
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-6 w-6 text-muted-foreground/40 hover:text-primary hover:bg-primary/10 rounded-full transition-all"
-            onClick={(e) => { e.stopPropagation(); onCapture(); }}
-          >
-            <Target size={12} />
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent side="top" className="text-[10px] py-1 px-2">Set to playhead</TooltipContent>
-      </Tooltip>
     </div>
   );
 });
-TimeControl.displayName = 'TimeControl';
+DurationAdjuster.displayName = 'DurationAdjuster';
+
 
 
 // --- Segment Card Component ---
@@ -148,10 +142,8 @@ const SegmentCard = memo<{
   segment: VisualSegment;
   pages: ImagePage[];
   isSelected: boolean;
-  isPlaying: boolean;
   onSelect: (e: React.MouseEvent) => void;
   onPlay: () => void;
-  playbackTime: number;
   updateSegment: (id: string, updates: Partial<VisualSegment>) => void;
   saveState: () => void;
   duplicateSegment: (id: string) => void;
@@ -164,10 +156,8 @@ const SegmentCard = memo<{
   segment,
   pages,
   isSelected,
-  isPlaying,
   onSelect,
   onPlay,
-  playbackTime,
   updateSegment,
   duplicateSegment,
   deleteSegments,
@@ -177,33 +167,48 @@ const SegmentCard = memo<{
   onDrop,
   saveState
 }) => {
-  const [editingField, setEditingField] = useState<'start' | 'end' | null>(null);
-  const [editValue, setEditValue] = useState('');
+  const duration = segment.endTime - segment.startTime;
 
-  const handleTimeEdit = (field: 'start' | 'end') => {
-    setEditingField(field);
-    setEditValue(formatTime(field === 'start' ? segment.startTime : segment.endTime));
-  };
+  const isPlaying = useVisualEditorState(s =>
+    s.isPlaying && s.playbackTime >= segment.startTime && s.playbackTime < segment.endTime
+  );
 
-  const handleTimeSubmit = () => {
-    if (!editingField) return;
-    const time = parseTime(editValue);
-    updateSegment(segment.id, {
-      [editingField === 'start' ? 'startTime' : 'endTime']: time,
-    });
-    setEditingField(null);
-  };
+  const cardRef = useRef<HTMLDivElement>(null);
 
-  const handleTimeAdjust = (field: 'start' | 'end', delta: number) => {
-    const current = field === 'start' ? segment.startTime : segment.endTime;
-    const newTime = Math.max(0, current + delta);
-    updateSegment(segment.id, { [field === 'start' ? 'startTime' : 'endTime']: newTime });
-  };
+  const handleDurationAdjust = useCallback((delta: number) => {
+    saveState();
+    const currentDuration = segment.endTime - segment.startTime;
+    const newDuration = Math.max(0.1, currentDuration + delta);
+    updateSegment(segment.id, { endTime: segment.startTime + newDuration });
+  }, [segment.id, segment.startTime, segment.endTime, updateSegment, saveState]);
+
+  useEffect(() => {
+    const el = cardRef.current;
+    if (!el) return;
+
+    const onWheel = (e: WheelEvent) => {
+      // Only capture wheel if this specific segment is selected
+      if (isSelected) {
+        // Vertical wheel (deltaY) changes duration
+        if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
+          e.preventDefault();
+          e.stopPropagation();
+          const delta = e.deltaY < 0 ? 1 : -1;
+          handleDurationAdjust(delta);
+        }
+      }
+      // Otherwise, event bubbles up to TimelineStrip for horizontal scrolling
+    };
+
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, [isSelected, handleDurationAdjust]);
 
   return (
     <ContextMenu>
       <ContextMenuTrigger asChild>
         <div
+          ref={cardRef}
           draggable
           onDragStart={onDragStart}
           onDragOver={onDragOver}
@@ -217,8 +222,10 @@ const SegmentCard = memo<{
             isSelected && !isPlaying && 'ring-2 ring-primary/20 border-primary bg-primary/5',
             // Playing State
             isPlaying && 'ring-2 ring-green-500/20 border-green-500/50 bg-green-500/5',
-            // Hover State (when not selected)
-            !isSelected && !isPlaying && 'hover:border-primary/30 hover:shadow-md'
+            // Hidden State
+            segment.isHidden && !isPlaying && !isSelected && 'opacity-60 grayscale bg-muted/20 border-border/20',
+            // Hover State (when not selected/playing/hidden)
+            !isSelected && !isPlaying && !segment.isHidden && 'hover:border-primary/30 hover:shadow-md'
           )}
         >
           {/* Header */}
@@ -234,12 +241,20 @@ const SegmentCard = memo<{
                   {segment.label || 'Untitled'}
                 </span>
 
-                {/* Status Indicator */}
-                <div className={cn(
-                  "w-1 h-1 rounded-full shrink-0 transition-all duration-500",
-                  isPlaying ? "bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)] animate-pulse" :
-                    isSelected ? "bg-primary" : "bg-muted-foreground/30"
-                )} />
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className={cn(
+                    "w-6 h-6 rounded-md transition-all",
+                    segment.isHidden ? "text-muted-foreground/40" : "text-primary/60 hover:text-primary hover:bg-primary/10"
+                  )}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    toggleSegmentVisibility(segment.id);
+                  }}
+                >
+                  {segment.isHidden ? <EyeOff size={14} /> : <Eye size={14} />}
+                </Button>
               </div>
 
               <div className="flex items-center gap-1">
@@ -266,31 +281,11 @@ const SegmentCard = memo<{
             </div>
           </div>
 
-          {/* Time Controls */}
-          <div className="flex flex-col gap-1 pt-2 border-t border-border/30">
-            <TimeControl
-              label="Start"
-              time={segment.startTime}
-              isActive={isPlaying}
-              onEdit={() => handleTimeEdit('start')}
-              onAdjust={(d) => handleTimeAdjust('start', d)}
-              onCapture={() => updateSegment(segment.id, { startTime: playbackTime })}
-              isEditing={editingField === 'start'}
-              editValue={editValue}
-              onEditChange={setEditValue}
-              onEditSubmit={handleTimeSubmit}
-            />
-            <TimeControl
-              label="End"
-              time={segment.endTime}
-              isActive={isPlaying}
-              onEdit={() => handleTimeEdit('end')}
-              onAdjust={(d) => handleTimeAdjust('end', d)}
-              onCapture={() => updateSegment(segment.id, { endTime: playbackTime })}
-              isEditing={editingField === 'end'}
-              editValue={editValue}
-              onEditChange={setEditValue}
-              onEditSubmit={handleTimeSubmit}
+          {/* Smart Timing Controls */}
+          <div className="flex flex-col gap-2 pt-2 border-t border-border/30">
+            <DurationAdjuster
+              duration={duration}
+              onAdjust={handleDurationAdjust}
             />
           </div>
 
@@ -314,17 +309,6 @@ const SegmentCard = memo<{
           <Copy className="mr-2 h-4 w-4" />
           Duplicate Segment
         </ContextMenuItem>
-        <ContextMenuItem onClick={() => toggleSegmentVisibility(segment.id)}>
-          <EyeOff className="mr-2 h-4 w-4" />
-          Hide Segment
-        </ContextMenuItem>
-        <ContextMenuSeparator />
-        <ContextMenuItem onClick={() => updateSegment(segment.id, { startTime: playbackTime })}>
-          <Target className="mr-2 h-4 w-4" /> Set Start to Current
-        </ContextMenuItem>
-        <ContextMenuItem onClick={() => updateSegment(segment.id, { endTime: playbackTime })}>
-          <Target className="mr-2 h-4 w-4" /> Set End to Current
-        </ContextMenuItem>
         <ContextMenuSeparator />
         <ContextMenuItem
           className="text-destructive focus:text-destructive focus:bg-destructive/10"
@@ -345,11 +329,9 @@ interface TimelineStripProps {
 }
 
 export const TimelineStrip = memo<TimelineStripProps>(({ className }) => {
-  const isPlayingGlobal = useVisualEditorState((s) => s.isPlaying);
   const currentPage = useVisualEditorState((s) => s.getCurrentPage());
   const pages = useVisualEditorState((s) => s.pages);
   const selectedSegmentIds = useVisualEditorState((s) => s.selectedSegmentIds);
-  const playbackTime = useVisualEditorState((s) => s.playbackTime);
 
   const updateSegment = useVisualEditorState((s) => s.updateSegment);
   const selectSegment = useVisualEditorState((s) => s.selectSegment);
@@ -359,6 +341,9 @@ export const TimelineStrip = memo<TimelineStripProps>(({ className }) => {
   const deleteSegments = useVisualEditorState((s) => s.deleteSegments);
   const toggleSegmentVisibility = useVisualEditorState((s) => s.toggleSegmentVisibility);
   const reorderSegment = useVisualEditorState((s) => s.reorderSegment);
+  const setShowPlayer = useVisualEditorState((s) => s.setShowPlayer);
+  const defaultDuration = useVisualEditorState((s) => s.defaultDuration);
+  const setDefaultDuration = useVisualEditorState((s) => s.setDefaultDuration);
   const { saveState } = useUndoRedo();
 
   const [draggedId, setDraggedId] = useState<string | null>(null);
@@ -371,6 +356,9 @@ export const TimelineStrip = memo<TimelineStripProps>(({ className }) => {
     const el = stripRef.current;
     if (!el) return;
     const handler = (e: WheelEvent) => {
+      // If a child (like a selected SegmentCard) already handled this event, ignore it
+      if (e.defaultPrevented) return;
+
       // If there's horizontal overflow, allow wheel to scroll it
       if (el.scrollWidth > el.clientWidth) {
         if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
@@ -384,14 +372,17 @@ export const TimelineStrip = memo<TimelineStripProps>(({ className }) => {
   }, []);
 
   const handlePlaySegment = useCallback((segment: VisualSegment) => {
-    const isSegmentPlaying = isPlayingGlobal && playbackTime >= segment.startTime && playbackTime < segment.endTime;
+    // Note: We need to get current play state from the store directly or computed carefully
+    const state = useVisualEditorState.getState();
+    const isSegmentPlaying = state.isPlaying && state.playbackTime >= segment.startTime && state.playbackTime < segment.endTime;
+
     if (isSegmentPlaying) {
       setPlaying(false);
     } else {
       setPlaybackTime(segment.startTime);
       setPlaying(true);
     }
-  }, [isPlayingGlobal, playbackTime, setPlaybackTime, setPlaying]);
+  }, [setPlaybackTime, setPlaying]);
 
   const handleDragStart = useCallback((e: React.DragEvent, id: string) => {
     e.dataTransfer.setData('text/plain', id);
@@ -422,14 +413,17 @@ export const TimelineStrip = memo<TimelineStripProps>(({ className }) => {
   if (segments.length === 0) {
     return (
       <div className={cn('bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-t border-border p-8 text-center text-muted-foreground text-sm', className)}>
-        No segments yet. Create one by dragging on the canvas.
+        {!currentPage
+          ? "Add an image or PDF from the sidebar to start creating regions."
+          : "No segments yet. Create one by dragging on the canvas."
+        }
       </div>
     );
   }
 
   return (
     <div
-      className={cn('bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-t border-border w-full min-w-0 relative shadow-[0_-4px_20px_-10px_rgba(0,0,0,0.1)] overflow-hidden shrink-0', className)}
+      className={cn('bg-background border-t border-border w-full min-w-0 relative shadow-[0_-4px_20px_-10px_rgba(0,0,0,0.1)] overflow-hidden shrink-0', className)}
       style={{ maxWidth: '100%' }}
     >
       <div className="absolute inset-y-0 left-0 w-8 bg-gradient-to-r from-background to-transparent z-10 pointer-events-none" />
@@ -445,7 +439,6 @@ export const TimelineStrip = memo<TimelineStripProps>(({ className }) => {
         <div className="flex items-center p-2 gap-2 w-max min-w-full">
           {segments.map((segment) => {
             const isSelected = selectedSegmentIds.has(segment.id);
-            const isPlaying = isPlayingGlobal && playbackTime >= segment.startTime && playbackTime < segment.endTime;
             const isDragged = draggedId === segment.id;
 
             return (
@@ -454,7 +447,6 @@ export const TimelineStrip = memo<TimelineStripProps>(({ className }) => {
                 segment={segment}
                 pages={pages}
                 isSelected={isSelected}
-                isPlaying={isPlaying}
                 onSelect={(e) => {
                   if (e.ctrlKey || e.metaKey) {
                     selectSegment(segment.id, 'toggle');
@@ -465,7 +457,6 @@ export const TimelineStrip = memo<TimelineStripProps>(({ className }) => {
                   }
                 }}
                 onPlay={() => handlePlaySegment(segment)}
-                playbackTime={playbackTime}
                 updateSegment={updateSegment}
                 saveState={saveState}
                 duplicateSegment={duplicateSegment}

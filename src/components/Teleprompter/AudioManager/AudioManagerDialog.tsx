@@ -81,7 +81,7 @@ export const AudioManagerDialog = memo<AudioManagerDialogProps>(({
             {isAssignMode ? 'Assign Audio to Segment' : 'Audio Library'}
           </DialogTitle>
           <DialogDescription>
-            {isAssignMode 
+            {isAssignMode
               ? 'Select an audio file to assign to this segment'
               : 'Upload and manage your audio files for teleprompter segments'}
           </DialogDescription>
@@ -90,7 +90,7 @@ export const AudioManagerDialog = memo<AudioManagerDialogProps>(({
         <div className="flex-1 overflow-hidden flex flex-col gap-4">
           {/* Upload section */}
           <AudioUploader
-            onUpload={addAudioFile}
+            onUpload={async (file) => { await addAudioFile(file); }}
             isLoading={isLoading}
           />
 
@@ -113,21 +113,6 @@ export const AudioManagerDialog = memo<AudioManagerDialogProps>(({
             onToggleMute={toggleMute}
           />
 
-          {/* Auto-advance option for segment assignment */}
-          {isAssignMode && (
-            <div className="flex items-center justify-between pt-4 border-t border-border">
-              <div>
-                <Label className="text-sm font-medium">Auto-advance when audio ends</Label>
-                <p className="text-xs text-muted-foreground">
-                  Automatically go to next segment when audio finishes
-                </p>
-              </div>
-              <Switch
-                checked={autoAdvance}
-                onCheckedChange={setAutoAdvance}
-              />
-            </div>
-          )}
         </div>
 
         <DialogFooter>

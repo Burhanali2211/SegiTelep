@@ -11,7 +11,9 @@ export interface Asset {
     name: string;
 }
 
+const MAX_URL_CACHE = 50;
 const objectUrlMap = new Map<string, string>();
+const cacheQueue: string[] = []; // Tracking IDs for FIFO eviction
 
 interface AssetDB extends DBSchema {
     assets: {
@@ -49,13 +51,27 @@ export const AssetManager = {
 
         if (typeof data === 'string') {
             try {
-                // Convert base64 Data URL or blob URL to Blob
-                const response = await fetch(data);
-                if (!response.ok) throw new Error(`Fetch failed with status ${response.status}`);
-                blob = await response.blob();
-                type = blob.type;
+                if (data.startsWith('data:')) {
+                    // Optimized path for data URLs: avoid fetch
+                    const [header, base64] = data.split(',');
+                    const mimeMatch = header.match(/:(.*?);/);
+                    type = mimeMatch ? mimeMatch[1] : 'application/octet-stream';
+
+                    const binary = atob(base64);
+                    const bytes = new Uint8Array(binary.length);
+                    for (let i = 0; i < binary.length; i++) {
+                        bytes[i] = binary.charCodeAt(i);
+                    }
+                    blob = new Blob([bytes], { type });
+                } else {
+                    // Fallback for blob URLs or other strings
+                    const response = await fetch(data);
+                    if (!response.ok) throw new Error(`Fetch failed with status ${response.status}`);
+                    blob = await response.blob();
+                    type = blob.type;
+                }
             } catch (err) {
-                console.error('AssetManager: Failed to fetch data string', err);
+                console.error('AssetManager: Failed to process data string', err);
                 throw new Error(`Failed to process asset data: ${err instanceof Error ? err.message : String(err)}`);
             }
         } else {
@@ -74,6 +90,10 @@ export const AssetManager = {
      */
     async getAssetUrl(id: string): Promise<string | null> {
         if (objectUrlMap.has(id)) {
+            // Move to end of queue (as it was recently used)
+            const idx = cacheQueue.indexOf(id);
+            if (idx > -1) cacheQueue.splice(idx, 1);
+            cacheQueue.push(id);
             return objectUrlMap.get(id)!;
         }
 
@@ -82,8 +102,19 @@ export const AssetManager = {
 
         if (!asset) return null;
 
+        // Manage cache size before adding new
+        if (cacheQueue.length >= MAX_URL_CACHE) {
+            const oldestId = cacheQueue.shift();
+            if (oldestId) {
+                const url = objectUrlMap.get(oldestId);
+                if (url) URL.revokeObjectURL(url);
+                objectUrlMap.delete(oldestId);
+            }
+        }
+
         const url = URL.createObjectURL(asset.data);
         objectUrlMap.set(id, url);
+        cacheQueue.push(id);
         return url;
     },
 

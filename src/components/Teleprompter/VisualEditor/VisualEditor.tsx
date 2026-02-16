@@ -12,6 +12,11 @@ import { AudioWaveform } from './AudioWaveform';
 import { SelectionToolbar } from './SelectionToolbar';
 import { SegmentPropertiesBar } from './components/toolbar/SegmentPropertiesBar';
 import { ProjectListDialog } from './ProjectListDialog';
+import { Skeleton } from '@/components/ui/skeleton';
+import { handleFileImport, createProjectFromPDFPages } from '@/core/projects/fileImportHandlers';
+import { PDFPageSelector } from '@/components/Teleprompter/PDFPageSelector';
+import { ProjectService } from '@/core/projects/ProjectService';
+import { v4 as uuidv4 } from 'uuid';
 import { WelcomeDashboard } from './WelcomeDashboard/WelcomeDashboard';
 import { FullscreenPlayer } from './FullscreenPlayer';
 import { KeyboardShortcutsOverlay } from './KeyboardShortcutsOverlay';
@@ -21,7 +26,7 @@ import { cn } from '@/lib/utils';
 import { exportVisualProject, importVisualProject } from '@/core/storage/VisualProjectStorage';
 import { toast } from 'sonner';
 import { Loader2 } from 'lucide-react';
-import { Skeleton } from '@/components/ui/skeleton';
+import { AudioManagerDialog } from '@/components/Teleprompter/AudioManager/AudioManagerDialog';
 
 interface VisualEditorProps {
   className?: string;
@@ -30,13 +35,21 @@ interface VisualEditorProps {
   onGoHome?: () => void;
   onOpenSettings?: () => void;
   onOpenShortcuts?: () => void;
+  onOpenProjectList?: () => void;
+  onOpenPDFSelector?: (file: File | string) => void;
 }
 
-export const VisualEditor = memo<VisualEditorProps>(({ className, onOpenAudioLibrary, onGoHome, onOpenSettings, onOpenShortcuts }) => {
+export const VisualEditor = memo<VisualEditorProps>(({
+  className,
+  onOpenAudioLibrary,
+  onGoHome,
+  onOpenSettings,
+  onOpenShortcuts,
+  onOpenProjectList,
+  onOpenPDFSelector
+}) => {
   const showPlayer = useVisualEditorState((s) => s.showPlayer);
   const setShowPlayer = useVisualEditorState((s) => s.setShowPlayer);
-  const [showProjectList, setShowProjectList] = useState(false);
-  const [showShortcuts, setShowShortcuts] = useState(false);
 
 
   // Session management
@@ -69,7 +82,8 @@ export const VisualEditor = memo<VisualEditorProps>(({ className, onOpenAudioLib
   const pages = useVisualEditorState((s) => s.pages);
   const currentPage = useVisualEditorState((s) => s.getCurrentPage());
   const audioFile = useVisualEditorState((s) => s.audioFile);
-
+  const setAudioFile = useVisualEditorState((s) => s.setAudioFile);
+  const setPlaybackTime = useVisualEditorState((s) => s.setPlaybackTime);
   const setZoom = useVisualEditorState((s) => s.setZoom);
   const showAllSegments = useVisualEditorState((s) => s.showAllSegments);
   const deleteSegments = useVisualEditorState((s) => s.deleteSegments);
@@ -107,9 +121,9 @@ export const VisualEditor = memo<VisualEditorProps>(({ className, onOpenAudioLib
   }, [projectId, projectName, pages, audioFile]);
 
   useKeyboardShortcuts({
-    setShowShortcuts,
+    setShowShortcuts: () => { }, // Placeholder as we centralize
     createNewProject,
-    setShowProjectList,
+    setShowProjectList: () => { }, // Placeholder as we centralize
     handleExport,
     saveProject,
     setDrawing,
@@ -130,26 +144,86 @@ export const VisualEditor = memo<VisualEditorProps>(({ className, onOpenAudioLib
     setCurrentPage,
   });
 
-  const handleImport = useCallback(async () => {
+  // Remote Control Event Bridge
+  useEffect(() => {
+    const handleRemotePlay = () => {
+      console.log('🎮 editor event: remote-play');
+      setPlaying(true);
+    };
+    const handleRemotePause = () => setPlaying(false);
+    const handleRemoteStop = () => {
+      setPlaying(false);
+      setPlaybackTime(0);
+    };
+    const handleRemoteNext = () => {
+      // Find current active segment and go to next
+      const state = useVisualEditorState.getState();
+      const all = state.pages.flatMap(p => p.segments).sort((a, b) => a.startTime - b.startTime);
+      const currentIndex = all.findIndex(seg => state.playbackTime >= seg.startTime && state.playbackTime < seg.endTime);
+      if (currentIndex >= 0 && currentIndex < all.length - 1) {
+        setPlaybackTime(all[currentIndex + 1].startTime);
+      }
+    };
+    const handleRemotePrev = () => {
+      const state = useVisualEditorState.getState();
+      const all = state.pages.flatMap(p => p.segments).sort((a, b) => a.startTime - b.startTime);
+      const currentIndex = all.findIndex(seg => state.playbackTime >= seg.startTime && state.playbackTime < seg.endTime);
+      if (currentIndex > 0) {
+        setPlaybackTime(all[currentIndex - 1].startTime);
+      } else if (state.playbackTime > 0) {
+        setPlaybackTime(0);
+      }
+    };
+
+    window.addEventListener('remote-play', handleRemotePlay);
+    window.addEventListener('remote-pause', handleRemotePause);
+    window.addEventListener('remote-stop', handleRemoteStop);
+    window.addEventListener('remote-skip-next', handleRemoteNext);
+    window.addEventListener('remote-skip-prev', handleRemotePrev);
+
+    return () => {
+      window.removeEventListener('remote-play', handleRemotePlay);
+      window.removeEventListener('remote-pause', handleRemotePause);
+      window.removeEventListener('remote-stop', handleRemoteStop);
+      window.removeEventListener('remote-skip-next', handleRemoteNext);
+      window.removeEventListener('remote-skip-prev', handleRemotePrev);
+    };
+  }, [setPlaying, setPlaybackTime]);
+
+  const handleImport = useCallback(async (file?: File) => {
+    if (file) {
+      processFile(file);
+      return;
+    }
+
     const input = document.createElement('input');
     input.type = 'file';
-    input.accept = '.visualprompt.json,.json';
+    input.accept = '.visualprompt.json,.json,.pdf,.docx,.txt,.md,.png,.jpg,.jpeg,.webp';
 
     input.onchange = async (e) => {
       const file = (e.target as HTMLInputElement).files?.[0];
-      if (!file) return;
-
-      try {
-        const imported = await importVisualProject(file);
-        await loadProject(imported.id);
-        toast.success(`Imported: ${imported.name}`);
-      } catch (error) {
-        toast.error('Failed to import project. Invalid file format.');
-      }
+      if (file) processFile(file);
     };
 
     input.click();
   }, [loadProject]);
+
+  const processFile = async (file: File) => {
+    try {
+      const result = await handleFileImport(file);
+      if (result.type === 'project') {
+        await loadProject(result.project.id);
+        toast.success(`Imported: ${result.project.name}`);
+      } else if (result.type === 'pdf' && onOpenPDFSelector) {
+        onOpenPDFSelector(result.file);
+      } else if (result.type === 'error') {
+        toast.error(result.message);
+      }
+    } catch (error) {
+      toast.error('Failed to import file');
+    }
+  };
+
 
   // Check if has segments to play
   const totalSegments = pages.reduce((acc, p) => acc + p.segments.filter(s => !s.isHidden).length, 0);
@@ -159,6 +233,21 @@ export const VisualEditor = memo<VisualEditorProps>(({ className, onOpenAudioLib
   const singleSelectedSegment = selectedSegmentIds.size === 1 && currentPage
     ? currentPage.segments.find(s => selectedSegmentIds.has(s.id))
     : null;
+
+  const handleGoLive = useCallback(async (id: string) => {
+    const success = await loadProject(id);
+    if (success) {
+      const state = useVisualEditorState.getState();
+      const hasSegments = state.pages.some(p => p.segments.some(s => !s.isHidden));
+      if (hasSegments) {
+        setStartupMode('editor');
+        setShowPlayer(true);
+      } else {
+        toast.error('Project has no segments to play');
+        setStartupMode('editor'); // Still open it so they can add segments
+      }
+    }
+  }, [loadProject, setStartupMode, setShowPlayer]);
 
   // Loading state
   if (isLoading) {
@@ -179,23 +268,15 @@ export const VisualEditor = memo<VisualEditorProps>(({ className, onOpenAudioLib
   if (startupMode === 'welcome') {
     return (
       <>
-        <ProjectListDialog
-          open={showProjectList}
-          onOpenChange={setShowProjectList}
-          onSelectProject={loadProjectAndEdit}
-          onNewProject={() => {
-            createNewProject();
-            setShowProjectList(false);
-          }}
-          currentProjectId={projectId}
-        />
 
         <WelcomeDashboard
           onNewProject={createNewProject}
           onOpenProject={loadProjectAndEdit}
-          onOpenProjectList={() => setShowProjectList(true)}
-          onOpenShortcuts={() => setShowShortcuts(true)}
+          onGoLive={handleGoLive}
+          onOpenProjectList={onOpenProjectList || (() => { })}
+          onOpenShortcuts={onOpenShortcuts}
           onImport={handleImport}
+          onFileDrop={handleImport}
           autoResumeEnabled={autoResumeEnabled}
           onAutoResumeChange={setAutoResumeEnabled}
           className={className}
@@ -210,18 +291,6 @@ export const VisualEditor = memo<VisualEditorProps>(({ className, onOpenAudioLib
         <FullscreenPlayer onClose={() => setShowPlayer(false)} />
       )}
 
-      <ProjectListDialog
-        open={showProjectList}
-        onOpenChange={setShowProjectList}
-        onSelectProject={loadProject}
-        onNewProject={() => createNewProject()}
-        currentProjectId={projectId}
-      />
-
-      <KeyboardShortcutsOverlay
-        open={showShortcuts}
-        onOpenChange={setShowShortcuts}
-      />
 
       <div className={cn('flex h-full w-full bg-background overflow-hidden overflow-x-hidden relative min-w-0', className)}>
         <div className="flex-1 flex flex-col min-w-0 w-full overflow-hidden overflow-x-hidden m-0 relative">

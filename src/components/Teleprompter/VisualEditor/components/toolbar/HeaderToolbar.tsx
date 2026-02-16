@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Eye, Save, FolderOpen, Play, Pause, Loader2, Cloud, CloudOff, Plus, Download, Upload, Home, FileText, Image, Settings, HelpCircle } from 'lucide-react';
+import { Eye, Save, FolderOpen, Play, Pause, Loader2, CheckCircle2, AlertCircle, Plus, Download, Upload, Home, FileText, Image, Settings, HelpCircle } from 'lucide-react';
 import { AspectRatioSelector } from './AspectRatioSelector';
 
 import {
@@ -31,7 +31,7 @@ const SaveStatusIndicator = ({ status, lastSaved }: { status: SaveStatus; lastSa
       <Tooltip>
         <TooltipTrigger asChild>
           <span className="text-[10px] text-muted-foreground flex items-center gap-1 cursor-default">
-            <Cloud size={10} className="text-primary" /> Saved
+            <CheckCircle2 size={10} className="text-primary" /> Saved
           </span>
         </TooltipTrigger>
         <TooltipContent>Last saved: {new Date(lastSaved).toLocaleString()}</TooltipContent>
@@ -41,7 +41,7 @@ const SaveStatusIndicator = ({ status, lastSaved }: { status: SaveStatus; lastSa
   if (status === 'error') {
     return (
       <span className="text-[10px] text-destructive flex items-center gap-1">
-        <CloudOff size={10} /> Save failed
+        <AlertCircle size={10} /> Save failed
       </span>
     );
   }

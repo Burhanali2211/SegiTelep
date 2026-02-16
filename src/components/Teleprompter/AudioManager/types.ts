@@ -34,6 +34,8 @@ export const SUPPORTED_AUDIO_TYPES = [
   'audio/x-m4a',
   'audio/mp4',
   'audio/aac',
+  'audio/flac',
+  'audio/webm',
 ];
 
 export const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB

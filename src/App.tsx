@@ -8,8 +8,18 @@ import { toast } from "sonner";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import { SidebarProvider } from "@/components/ui/sidebar";
-import Index from "./pages/Index";
-import NotFound from "./pages/NotFound";
+const Index = React.lazy(() => import("./pages/Index"));
+const ExternalPlayer = React.lazy(() => import("./components/Teleprompter/ExternalPlayer").then(m => ({ default: m.ExternalPlayer })));
+const NotFound = React.lazy(() => import("./pages/NotFound"));
+
+const LoadingFallback = () => (
+  <div className="flex items-center justify-center min-h-screen bg-background">
+    <div className="flex flex-col items-center gap-4">
+      <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin" />
+      <p className="text-muted-foreground animate-pulse font-medium tracking-wide">SegiTelep Pro is initializing...</p>
+    </div>
+  </div>
+);
 
 const queryClient = new QueryClient();
 
@@ -45,10 +55,13 @@ const AppContent = () => {
   return (
     <>
       <HashRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-        <Routes>
-          <Route path="/" element={<Index />} />
-          <Route path="*" element={<NotFound />} />
-        </Routes>
+        <React.Suspense fallback={<LoadingFallback />}>
+          <Routes>
+            <Route path="/" element={<Index />} />
+            <Route path="/player" element={<ExternalPlayer />} />
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </React.Suspense>
       </HashRouter>
     </>
   );

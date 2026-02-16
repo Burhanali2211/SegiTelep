@@ -137,7 +137,7 @@ export class WebProjectAdapter implements IProjectAdapter {
                     console.error('Failed to save audio file asset', e);
                 }
             } else if (project.audioFile.id) {
-                // Already has ID, just ensure data is the ID for storage
+                // Always store the ID for persistence, avoiding transient Blob URLs
                 audioRef = { ...project.audioFile, data: project.audioFile.id };
             }
         }
@@ -177,9 +177,16 @@ export class WebProjectAdapter implements IProjectAdapter {
         }));
 
         let audioFile = project.audioFile;
-        if (audioFile && !audioFile.data.startsWith('data:')) {
-            const url = await AssetManager.getAssetUrl(audioFile.data); // assume data is ID
-            if (url) audioFile = { ...audioFile, data: url };
+        if (audioFile && audioFile.data && !audioFile.data.startsWith('data:') && !audioFile.data.startsWith('blob:')) {
+            // Treat data as assetId if it's not a direct URL
+            const url = await AssetManager.getAssetUrl(audioFile.data);
+            if (url) {
+                audioFile = { ...audioFile, data: url };
+            } else {
+                // Try if ID is stored in audioFile.id
+                const urlFromId = await AssetManager.getAssetUrl(audioFile.id);
+                if (urlFromId) audioFile = { ...audioFile, data: urlFromId };
+            }
         }
 
         return { ...project, pages: hydratedPages, audioFile };
@@ -350,5 +357,10 @@ export class WebProjectAdapter implements IProjectAdapter {
                 })),
             })),
         };
+    }
+
+    async cleanupUnusedAssets(): Promise<void> {
+        // Web-specific cleanup is handled via Index.tsx maintenance calling AssetManager directly
+        // because it needs active project IDs which it already has access to there.
     }
 }

@@ -8,6 +8,7 @@ import {
   renameAudioFile as renameAudioInStorage,
   isDesktopAudioStorage
 } from '@/core/storage/AudioStorage';
+import { AudioResolver } from '@/core/storage/AudioResolver';
 import { toast } from 'sonner';
 
 // Audio playback error recovery
@@ -59,11 +60,14 @@ export function useAudioManager() {
     };
   }, [cleanupAudio]);
 
-  // Add audio file
+  // Add audio file with memory-efficient binary handling
   const addAudioFile = useCallback(async (file: File): Promise<AudioFile | null> => {
-    // Validate file type
-    if (!SUPPORTED_AUDIO_TYPES.includes(file.type)) {
-      toast.error(`Unsupported audio format: ${file.type}`);
+    // Lenient type check to support "all types of audio"
+    const isAudio = file.type.startsWith('audio/') ||
+      /\.(mp3|wav|ogg|m4a|aac|flac|webm|mp4|wma|aiff)$/i.test(file.name);
+
+    if (!isAudio) {
+      toast.error(`Unsupported file type: ${file.name}`);
       return null;
     }
 
@@ -75,62 +79,59 @@ export function useAudioManager() {
 
     setState(prev => ({ ...prev, isLoading: true }));
 
+    // Probing duration using a temporary Blob URL (memory efficient)
+    const probeUrl = URL.createObjectURL(file);
+    const audio = new Audio(probeUrl);
+
     return new Promise((resolve) => {
-      const reader = new FileReader();
+      // Timeout factor for extremely large files
+      const timeout = setTimeout(() => {
+        if (state.isLoading) {
+          // If metadata is slow, proceed with 0 duration rather than hanging
+          saveWithDuration(0);
+        }
+      }, 15000);
 
-      reader.onload = (event) => {
-        const data = event.target?.result as string;
+      async function saveWithDuration(duration: number) {
+        clearTimeout(timeout);
+        URL.revokeObjectURL(probeUrl);
 
-        // Get audio duration
-        const audio = new Audio(data);
-        audio.onloadedmetadata = async () => {
-          const newFile: AudioFile = {
-            id: `audio_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-            name: file.name.replace(/\.[^/.]+$/, ''),
-            data,
-            duration: audio.duration,
-            size: file.size,
-            type: file.type,
-            createdAt: Date.now(),
-          };
-
-          try {
-            await saveAudioFile(newFile);
-            setState(prev => ({
-              ...prev,
-              audioFiles: [...prev.audioFiles, newFile],
-              isLoading: false,
-            }));
-            toast.success(`Added: ${newFile.name}`);
-            resolve(newFile);
-          } catch (e) {
-            console.error('Failed to save audio file:', e);
-            const msg = e instanceof Error ? e.message : 'Unknown error';
-            const isQuota = /quota|storage|full|limit/i.test(msg) || (e instanceof Error && e.name === 'QuotaExceededError');
-            toast.error(isQuota
-              ? 'Storage limit reached. Delete some audio files or use the desktop app.'
-              : `Failed to save: ${msg}`);
-            setState(prev => ({ ...prev, isLoading: false }));
-            resolve(null);
-          }
+        const newFileId = `audio_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        const newFile: AudioFile = {
+          id: newFileId,
+          name: file.name.replace(/\.[^/.]+$/, ''),
+          data: '',
+          duration: isFinite(duration) ? duration : 0,
+          size: file.size,
+          type: file.type || 'audio/mpeg',
+          createdAt: Date.now(),
         };
 
-        audio.onerror = () => {
-          toast.error('Failed to load audio file');
+        try {
+          await saveAudioFile(newFile, file);
+          const usableUrl = await AudioResolver.resolve(newFileId, newFileId);
+          const updatedFile = { ...newFile, data: usableUrl || '' };
+
+          setState(prev => ({
+            ...prev,
+            audioFiles: [...prev.audioFiles, updatedFile],
+            isLoading: false,
+          }));
+
+          toast.success(`Audio added: ${newFile.name}`);
+          resolve(updatedFile);
+        } catch (e) {
+          console.error('Storage error:', e);
+          toast.error('Failed to save audio file');
           setState(prev => ({ ...prev, isLoading: false }));
           resolve(null);
-        };
-      };
+        }
+      }
 
-      reader.onerror = () => {
-        toast.error('Failed to read audio file');
-        setState(prev => ({ ...prev, isLoading: false }));
-        resolve(null);
-      };
-
-      reader.readAsDataURL(file);
+      audio.onloadedmetadata = () => saveWithDuration(audio.duration);
+      audio.onerror = () => saveWithDuration(0); // Proceed even if metadata fails
     });
-  }, []);
+  }, [state.isLoading]);
 
   // Delete audio file
   const deleteAudioFile = useCallback(async (id: string) => {
@@ -222,13 +223,28 @@ export function useAudioManager() {
         });
       };
 
-      // Set volume and source
+      // Set volume
       audio.volume = state.volume / 100;
-      audio.src = audioFile.data;
-      audio.load();
 
-      audioRef.current = audio;
-      setState(prev => ({ ...prev, playingId: audioFile.id }));
+      const startPlayback = async () => {
+        const audioUrl = await AudioResolver.resolve(audioFile.id, audioFile.id);
+        if (!audioUrl && audioFile.data) {
+          // Fallback to data if resolve fails
+          audio.src = audioFile.data;
+        } else if (audioUrl) {
+          audio.src = audioUrl;
+        } else {
+          toast.error('Could not resolve audio source');
+          setState(prev => ({ ...prev, playingId: null }));
+          return;
+        }
+
+        audio.load();
+        audioRef.current = audio;
+        setState(prev => ({ ...prev, playingId: audioFile.id }));
+      };
+
+      startPlayback();
     }
   }, [state.playingId, state.volume, cleanupAudio]);
 

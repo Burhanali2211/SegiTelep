@@ -4,10 +4,11 @@
 
 import { openDB, DBSchema, IDBPDatabase } from 'idb';
 import {
-  isTauriApp, 
-  ensureDirectory, 
-  readJsonFile, 
+  isTauriApp,
+  ensureDirectory,
+  readJsonFile,
   writeJsonFile,
+  atomicWriteJsonFile,
   readFileBytes,
   writeFileBytes,
   deleteFile,
@@ -52,18 +53,35 @@ async function loadMetadataNative(): Promise<AudioFileMetadata[]> {
 
 async function saveMetadataNative(metadata: AudioFileMetadata[]): Promise<void> {
   await ensureAudioDir();
-  await writeJsonFile(METADATA_PATH, metadata);
+  await atomicWriteJsonFile(METADATA_PATH, metadata);
 }
 
-async function saveAudioFileNative(audioFile: AudioFile): Promise<void> {
+async function saveAudioFileNative(audioFile: AudioFile, binaryData?: Blob | ArrayBuffer | Uint8Array): Promise<void> {
   await ensureAudioDir();
-  
-  // Save audio binary to file (relative path)
-  const { bytes, mimeType } = dataUrlToBytes(audioFile.data);
+
+  let bytes: Uint8Array;
+  let mimeType = audioFile.type;
+
+  if (binaryData) {
+    if (binaryData instanceof Blob) {
+      bytes = new Uint8Array(await binaryData.arrayBuffer());
+    } else if (binaryData instanceof ArrayBuffer) {
+      bytes = new Uint8Array(binaryData);
+    } else {
+      bytes = binaryData;
+    }
+  } else if (audioFile.data.startsWith('data:')) {
+    const converted = dataUrlToBytes(audioFile.data);
+    bytes = converted.bytes;
+    mimeType = converted.mimeType;
+  } else {
+    throw new Error('No binary data provided for audio storage');
+  }
+
   const ext = getExtensionFromMimeType(mimeType);
   const filePath = `${AUDIO_DIR}/${audioFile.id}.${ext}`;
   await writeFileBytes(filePath, bytes);
-  
+
   // Update metadata
   const metadata = await loadMetadataNative();
   const newMetadata: AudioFileMetadata = {
@@ -75,14 +93,14 @@ async function saveAudioFileNative(audioFile: AudioFile): Promise<void> {
     createdAt: audioFile.createdAt,
     filePath,
   };
-  
+
   const existingIndex = metadata.findIndex(m => m.id === audioFile.id);
   if (existingIndex >= 0) {
     metadata[existingIndex] = newMetadata;
   } else {
     metadata.push(newMetadata);
   }
-  
+
   await saveMetadataNative(metadata);
 }
 
@@ -90,26 +108,28 @@ async function loadAudioFileNative(id: string): Promise<AudioFile | undefined> {
   const metadata = await loadMetadataNative();
   const meta = metadata.find(m => m.id === id);
   if (!meta) return undefined;
-  
+
   try {
-    // Handle legacy absolute paths - extract relative part
-    let filePath = meta.filePath;
-    const match = filePath.match(/(?:audio-library\/|projects\/).+$/);
-    if (match) filePath = match[0];
-    const bytes = await readFileBytes(filePath);
-    const dataUrl = bytesToDataUrl(bytes, meta.type);
-    
+    // 1. Convert relative path to absolute protocol URL for high-performance streaming
+    // Instead of reading bytes and converting to dataUrl (slow, memory-heavy),
+    // we use convertFileSrc to get a direct URL to the file on disk.
+
+    // Check if we have an absolute path utility
+    const { getAbsolutePath, convertPathToSrc } = await import('./NativeStorage');
+    const absPath = await getAbsolutePath(meta.filePath);
+    const audioUrl = convertPathToSrc(absPath);
+
     return {
       id: meta.id,
       name: meta.name,
-      data: dataUrl,
+      data: audioUrl, // Direct high-speed asset URL
       duration: meta.duration,
       size: meta.size,
       type: meta.type,
       createdAt: meta.createdAt,
     };
   } catch (error) {
-    console.error('Failed to load audio file:', error);
+    console.error('Failed to load audio file URL:', error);
     return undefined;
   }
 }
@@ -117,14 +137,14 @@ async function loadAudioFileNative(id: string): Promise<AudioFile | undefined> {
 async function deleteAudioFileNative(id: string): Promise<void> {
   const metadata = await loadMetadataNative();
   const meta = metadata.find(m => m.id === id);
-  
+
   if (meta) {
     try {
       await deleteFile(meta.filePath);
     } catch (error) {
       console.error('Failed to delete audio file:', error);
     }
-    
+
     const newMetadata = metadata.filter(m => m.id !== id);
     await saveMetadataNative(newMetadata);
   }
@@ -132,29 +152,40 @@ async function deleteAudioFileNative(id: string): Promise<void> {
 
 async function getAllAudioFilesNative(): Promise<AudioFile[]> {
   const metadata = await loadMetadataNative();
-  
-  // Load all files with their binary data
-  const files: AudioFile[] = [];
-  for (const meta of metadata) {
+  const { getAbsolutePath, convertPathToSrc } = await import('./NativeStorage');
+
+  // Load metadata only, generate live asset URLs dynamically
+  // This is extremely fast and doesn't consume memory for binaries
+  const files: AudioFile[] = await Promise.all(metadata.map(async (meta) => {
     try {
-      const bytes = await readFileBytes(meta.filePath);
-      const dataUrl = bytesToDataUrl(bytes, meta.type);
-      
-      files.push({
+      const absPath = await getAbsolutePath(meta.filePath);
+      const audioUrl = convertPathToSrc(absPath);
+
+      return {
         id: meta.id,
         name: meta.name,
-        data: dataUrl,
+        data: audioUrl,
         duration: meta.duration,
         size: meta.size,
         type: meta.type,
         createdAt: meta.createdAt,
-      });
+      };
     } catch (error) {
-      console.error('Failed to load audio file:', meta.id, error);
+      console.error('Failed to map audio file URL:', meta.id, error);
+      // Return partial metadata even if path conversion fails
+      return {
+        id: meta.id,
+        name: meta.name,
+        data: '',
+        duration: meta.duration,
+        size: meta.size,
+        type: meta.type,
+        createdAt: meta.createdAt,
+      };
     }
-  }
-  
-  return files;
+  }));
+
+  return files.sort((a, b) => b.createdAt - a.createdAt);
 }
 
 // ============= IndexedDB Storage (Web Fallback) =============
@@ -163,7 +194,15 @@ async function getAllAudioFilesNative(): Promise<AudioFile[]> {
 interface AudioDB extends DBSchema {
   audioFiles: {
     key: string;
-    value: AudioFile;
+    value: {
+      id: string;
+      name: string;
+      duration: number;
+      size: number;
+      type: string;
+      createdAt: number;
+      blob: Blob; // Store binary data as Blob
+    };
     indexes: { 'by-created': number };
   };
 }
@@ -202,7 +241,25 @@ async function migrateFromLocalStorageOnce(db: IDBPDatabase<AudioDB>): Promise<v
     const tx = db.transaction('audioFiles', 'readwrite');
     for (const file of files) {
       if (file?.id && file?.data) {
-        await tx.store.put(file);
+        let blob: Blob;
+        if (file.data.startsWith('data:')) {
+          const { bytes, mimeType } = dataUrlToBytes(file.data);
+          // Use buffer slice to ensure compatibility
+          blob = new Blob([bytes.buffer as any], { type: mimeType });
+        } else {
+          // If already a blob URL (unlikely in localStorage), skip or handle
+          continue;
+        }
+
+        await tx.store.put({
+          id: file.id,
+          name: file.name,
+          duration: file.duration,
+          size: file.size,
+          type: file.type,
+          createdAt: file.createdAt,
+          blob,
+        });
       }
     }
     await tx.done;
@@ -223,11 +280,38 @@ function isQuotaError(e: unknown): boolean {
   return false;
 }
 
-async function saveAudioFileWeb(audioFile: AudioFile): Promise<void> {
+async function saveAudioFileWeb(audioFile: AudioFile, binaryData?: Blob | ArrayBuffer | Uint8Array): Promise<void> {
   try {
     const db = await getAudioDB();
     await migrateFromLocalStorageOnce(db);
-    await db.put('audioFiles', audioFile);
+
+    let blob: Blob;
+    if (binaryData) {
+      if (binaryData instanceof Blob) {
+        blob = binaryData;
+      } else {
+        // Force cast to any for BlobPart compatibility with different ArrayBuffer versions
+        blob = new Blob([binaryData as any], { type: audioFile.type });
+      }
+    } else if (audioFile.data.startsWith('data:')) {
+      const { bytes, mimeType } = dataUrlToBytes(audioFile.data);
+      blob = new Blob([bytes.buffer as any], { type: mimeType });
+    } else if (audioFile.data.startsWith('blob:')) {
+      const res = await fetch(audioFile.data);
+      blob = await res.blob();
+    } else {
+      throw new Error('Invalid audio data format for web storage');
+    }
+
+    await db.put('audioFiles', {
+      id: audioFile.id,
+      name: audioFile.name,
+      duration: audioFile.duration,
+      size: audioFile.size,
+      type: audioFile.type,
+      createdAt: audioFile.createdAt,
+      blob,
+    });
   } catch (e) {
     if (isQuotaError(e)) {
       throw new Error('Storage limit reached. Delete some audio files or use the desktop app for unlimited storage.');
@@ -239,7 +323,18 @@ async function saveAudioFileWeb(audioFile: AudioFile): Promise<void> {
 async function loadAudioFileWeb(id: string): Promise<AudioFile | undefined> {
   const db = await getAudioDB();
   await migrateFromLocalStorageOnce(db);
-  return db.get('audioFiles', id);
+  const entry = await db.get('audioFiles', id);
+  if (!entry) return undefined;
+
+  return {
+    id: entry.id,
+    name: entry.name,
+    duration: entry.duration,
+    size: entry.size,
+    type: entry.type,
+    createdAt: entry.createdAt,
+    data: URL.createObjectURL(entry.blob),
+  };
 }
 
 async function deleteAudioFileWeb(id: string): Promise<void> {
@@ -250,8 +345,19 @@ async function deleteAudioFileWeb(id: string): Promise<void> {
 async function getAllAudioFilesWeb(): Promise<AudioFile[]> {
   const db = await getAudioDB();
   await migrateFromLocalStorageOnce(db);
-  const files = await db.getAll('audioFiles');
-  return files.sort((a, b) => a.createdAt - b.createdAt);
+  const entries = await db.getAll('audioFiles');
+
+  return entries
+    .sort((a, b) => a.createdAt - b.createdAt)
+    .map(entry => ({
+      id: entry.id,
+      name: entry.name,
+      duration: entry.duration,
+      size: entry.size,
+      type: entry.type,
+      createdAt: entry.createdAt,
+      data: URL.createObjectURL(entry.blob),
+    }));
 }
 
 async function renameAudioFileWeb(id: string, newName: string): Promise<void> {
@@ -265,11 +371,11 @@ async function renameAudioFileWeb(id: string, newName: string): Promise<void> {
 
 // ============= Public API (Automatic Platform Detection) =============
 
-export async function saveAudioFile(audioFile: AudioFile): Promise<void> {
+export async function saveAudioFile(audioFile: AudioFile, binaryData?: Blob | ArrayBuffer | Uint8Array): Promise<void> {
   if (isTauriApp()) {
-    await saveAudioFileNative(audioFile);
+    await saveAudioFileNative(audioFile, binaryData);
   } else {
-    await saveAudioFileWeb(audioFile);
+    await saveAudioFileWeb(audioFile, binaryData);
   }
 }
 

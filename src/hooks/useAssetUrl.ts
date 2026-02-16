@@ -27,9 +27,11 @@ export function useAssetUrl(assetId?: string, data?: string) {
                     if (data.startsWith('data:') || data.startsWith('blob:')) {
                         if (isMounted) setUrl(data);
                     } else if (isTauriApp()) {
-                        // Assume filesystem path in Tauri
-                        const src = convertPathToSrc(data);
-                        if (isMounted) setUrl(src);
+                        // Start with absolute path resolution for CAS assets
+                        const { getAbsolutePath } = await import('@/core/storage/NativeStorage');
+                        const fullPath = await getAbsolutePath(data);
+                        currentUrl = convertPathToSrc(fullPath);
+                        if (isMounted) setUrl(currentUrl);
                     } else {
                         // Fallback/Legacy
                         if (isMounted) setUrl(data);

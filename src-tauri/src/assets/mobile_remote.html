@@ -1,0 +1,552 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+        content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>SegiTelep Pro | Remote Control</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap"
+        rel="stylesheet">
+    <style>
+        :root {
+            --bg: #09090b;
+            --card: rgba(24, 24, 27, 0.6);
+            --border: rgba(39, 39, 42, 0.8);
+            --accent: #3b82f6;
+            --accent-hover: #60a5fa;
+            --text: #fafafa;
+            --text-muted: #a1a1aa;
+            --live: #ef4444;
+            --connected: #22c55e;
+            --safe-top: env(safe-area-inset-top);
+            --safe-bottom: env(safe-area-inset-bottom);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+            -webkit-user-select: none;
+            user-select: none;
+        }
+
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            background-color: var(--bg);
+            background-image:
+                radial-gradient(circle at 50% -20%, rgba(59, 130, 246, 0.15), transparent),
+                radial-gradient(circle at 0% 100%, rgba(239, 68, 68, 0.05), transparent);
+            color: var(--text);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            position: fixed;
+            width: 100%;
+        }
+
+        /* Glassmorphism utility */
+        .glass {
+            background: var(--card);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid var(--border);
+        }
+
+        /* Header Area */
+        .header {
+            padding: calc(20px + var(--safe-top)) 20px 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .status-container {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .status-indicator {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #71717a;
+            position: relative;
+        }
+
+        .status-indicator.on {
+            background: var(--connected);
+            box-shadow: 0 0 12px var(--connected);
+        }
+
+        .status-indicator.on::after {
+            content: '';
+            position: absolute;
+            inset: -4px;
+            border-radius: 50%;
+            border: 1px solid var(--connected);
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% {
+                transform: scale(1);
+                opacity: 0.8;
+            }
+
+            100% {
+                transform: scale(2.5);
+                opacity: 0;
+            }
+        }
+
+        .badge-live {
+            background: rgba(239, 68, 68, 0.1);
+            color: var(--live);
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            display: none;
+            align-items: center;
+            gap: 4px;
+            border: 1px solid rgba(239, 68, 68, 0.2);
+        }
+
+        .badge-live.active {
+            display: flex;
+            animation: flash 1s infinite;
+        }
+
+        @keyframes flash {
+
+            0%,
+            100% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: 0.6;
+            }
+        }
+
+        /* Project Display */
+        .project-card {
+            margin: 0 20px 20px;
+            padding: 24px;
+            border-radius: 24px;
+        }
+
+        .project-meta {
+            margin-bottom: 20px;
+        }
+
+        .project-name {
+            font-size: 20px;
+            font-weight: 700;
+            margin-bottom: 4px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .project-subtitle {
+            font-size: 13px;
+            color: var(--text-muted);
+            font-weight: 500;
+        }
+
+        .playback-stats {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+        }
+
+        .stat-box {
+            background: rgba(0, 0, 0, 0.2);
+            padding: 12px;
+            border-radius: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .stat-label {
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-muted);
+            font-weight: 700;
+        }
+
+        .stat-value {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 16px;
+            font-weight: 600;
+        }
+
+        /* Controls Section */
+        .controls-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            padding: 20px;
+            gap: 24px;
+        }
+
+        .main-controls {
+            display: grid;
+            grid-template-columns: 80px 1fr 80px;
+            align-items: center;
+            gap: 20px;
+        }
+
+        .btn-circle {
+            width: 64px;
+            height: 64px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            color: var(--text);
+            cursor: pointer;
+        }
+
+        .btn-play-pause {
+            width: 96px;
+            height: 96px;
+            background: var(--accent);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 0 30px rgba(59, 130, 246, 0.4);
+            transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            margin: 0 auto;
+        }
+
+        .btn-play-pause.playing {
+            background: var(--safe-top, #fafafa);
+            color: var(--bg);
+            box-shadow: 0 0 30px rgba(255, 255, 255, 0.2);
+        }
+
+        .btn-play-pause:active {
+            transform: scale(0.9);
+        }
+
+        .btn-util {
+            background: var(--card);
+            border: 1px solid var(--border);
+            width: 100%;
+            height: 56px;
+            border-radius: 18px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            font-weight: 600;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+
+        .btn-util:active {
+            transform: scale(0.96);
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        /* Speed Control */
+        .speed-slider-container {
+            padding: 30px 20px;
+            border-radius: 32px 32px 0 0;
+            margin-top: auto;
+            border-bottom: none;
+        }
+
+        .slider-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .speed-readout {
+            font-family: 'JetBrains Mono', monospace;
+            background: var(--accent);
+            padding: 4px 12px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 700;
+        }
+
+        input[type=range] {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 100%;
+            background: transparent;
+            margin-bottom: 24px;
+        }
+
+        input[type=range]:focus {
+            outline: none;
+        }
+
+        input[type=range]::-webkit-slider-runnable-track {
+            width: 100%;
+            height: 8px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 4px;
+        }
+
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            height: 28px;
+            width: 28px;
+            border-radius: 50%;
+            background: var(--text);
+            cursor: pointer;
+            margin-top: -10px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+        }
+
+        /* Action Grid */
+        .action-btns {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+            margin-bottom: calc(20px + var(--safe-bottom));
+        }
+
+        .btn-live {
+            background: rgba(239, 68, 68, 0.15);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            color: var(--live);
+        }
+
+        .btn-live.active {
+            background: var(--live);
+            color: white;
+            box-shadow: 0 0 20px rgba(239, 68, 68, 0.4);
+        }
+
+        /* Icons */
+        svg {
+            width: 24px;
+            height: 24px;
+            fill: none;
+            stroke: currentColor;
+            stroke-width: 2.5;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+
+        .hero-svg {
+            width: 44px;
+            height: 44px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="header">
+        <div class="status-container">
+            <div id="statusDot" class="status-indicator"></div>
+            <span id="statusText"
+                style="font-size: 12px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em;">Searching...</span>
+        </div>
+        <div id="liveBadge" class="badge-live">
+            <svg viewBox="0 0 24 24" style="width: 12px; height: 12px;">
+                <circle cx="12" cy="12" r="10"></circle>
+                <circle cx="12" cy="12" r="3" fill="currentColor"></circle>
+            </svg>
+            Live Mode
+        </div>
+    </div>
+
+    <div class="project-card glass">
+        <div class="project-meta">
+            <div id="projectName" class="project-name">Ready to Sync</div>
+            <div class="project-subtitle">SegiTelep Segmentation Remote</div>
+        </div>
+        <div class="playback-stats">
+            <div class="stat-box">
+                <span class="stat-label">Segment</span>
+                <span id="segmentProgress" class="stat-value">--/--</span>
+            </div>
+            <div class="stat-box">
+                <span class="stat-label">Sync Quality</span>
+                <span id="syncQuality" class="stat-value">Stable</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="controls-container">
+        <div class="main-controls">
+            <div class="btn-circle glass" onclick="sendCommand('prev_segment')">
+                <svg viewBox="0 0 24 24">
+                    <path d="m11 17-5-5 5-5"></path>
+                    <path d="m18 17-5-5 5-5"></path>
+                </svg>
+            </div>
+
+            <div id="playBtn" class="btn-play-pause" onclick="togglePlay()">
+                <svg id="playIcon" viewBox="0 0 24 24" class="hero-svg" style="fill: currentColor;">
+                    <path d="m7 3 14 9-14 9z"></path>
+                </svg>
+                <svg id="pauseIcon" viewBox="0 0 24 24" class="hero-svg" style="display: none;">
+                    <rect width="4" height="16" x="6" y="4"></rect>
+                    <rect width="4" height="16" x="14" y="4"></rect>
+                </svg>
+            </div>
+
+            <div class="btn-circle glass" onclick="sendCommand('next_segment')">
+                <svg viewBox="0 0 24 24">
+                    <path d="m13 17 5-5-5-5"></path>
+                    <path d="m6 17 5-5-5-5"></path>
+                </svg>
+            </div>
+        </div>
+
+        <div class="action-btns" style="padding-top: 20px;">
+            <div class="btn-util" onclick="sendCommand('stop')">
+                <svg viewBox="0 0 24 24" style="width: 18px; height: 18px;">
+                    <rect width="18" height="18" x="3" y="3" rx="2"></rect>
+                </svg>
+                Stop
+            </div>
+            <div class="btn-util" onclick="sendCommand('reset_position')">
+                <svg viewBox="0 0 24 24" style="width: 18px; height: 18px;">
+                    <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path>
+                    <path d="M3 3v5h5"></path>
+                </svg>
+                Reset
+            </div>
+        </div>
+    </div>
+
+    <div class="speed-slider-container glass">
+
+        <div class="action-btns">
+            <div id="liveToggle" class="btn-util btn-live" onclick="toggleLive()">
+                <svg viewBox="0 0 24 24" style="width: 18px; height: 18px;">
+                    <path
+                        d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z">
+                    </path>
+                    <circle cx="12" cy="12" r="4"></circle>
+                </svg>
+                Go Live
+            </div>
+            <div class="btn-util" onclick="sendCommand('toggle_mirror')">
+                <svg viewBox="0 0 24 24" style="width: 18px; height: 18px;">
+                    <path
+                        d="M7 21a4 4 0 0 1-4-4V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v12a4 4 0 0 1-4 4Zm0 0h10a4 4 0 0 0 4-4V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v12a4 4 0 0 0 4 4Z">
+                    </path>
+                </svg>
+                Mirror
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let ws = null;
+        let reconnectTimer = null;
+        let currentStatus = { is_playing: false, is_live: false, current_speed: 1.0 };
+
+        function connect() {
+            const wsPort = parseInt(window.location.port) + 1;
+            const wsUrl = `ws://${window.location.hostname}:${wsPort}`;
+
+            try {
+                ws = new WebSocket(wsUrl);
+
+                ws.onopen = () => {
+                    document.getElementById('statusDot').classList.add('on');
+                    document.getElementById('statusText').innerText = 'Synced';
+                    document.getElementById('syncQuality').innerText = 'Excelent';
+                };
+
+                ws.onmessage = (event) => {
+                    try {
+                        const status = JSON.parse(event.data);
+                        handleStatusUpdate(status);
+                    } catch (e) { }
+                };
+
+                ws.onclose = () => {
+                    document.getElementById('statusDot').classList.remove('on');
+                    document.getElementById('statusText').innerText = 'Reconnecting';
+                    document.getElementById('syncQuality').innerText = 'Lost';
+                    setTimeout(connect, 3000);
+                };
+            } catch (e) {
+                setTimeout(connect, 3000);
+            }
+        }
+
+        function handleStatusUpdate(status) {
+            currentStatus = status;
+
+            document.getElementById('projectName').innerText = status.project_name || 'Project Name';
+            document.getElementById('segmentProgress').innerText = `${(status.current_segment || 0) + 1}/${status.total_segments || 1}`;
+
+            // Update Play/Pause UI
+            const playIcon = document.getElementById('playIcon');
+            const pauseIcon = document.getElementById('pauseIcon');
+            const playBtn = document.getElementById('playBtn');
+
+            if (status.is_playing) {
+                playIcon.style.display = 'none';
+                pauseIcon.style.display = 'block';
+                playBtn.classList.add('playing');
+            } else {
+                playIcon.style.display = 'block';
+                pauseIcon.style.display = 'none';
+                playBtn.classList.remove('playing');
+            }
+
+            // Update Live UI
+            const liveToggle = document.getElementById('liveToggle');
+            const liveBadge = document.getElementById('liveBadge');
+            if (status.is_live) {
+                liveToggle.classList.add('active');
+                liveToggle.innerHTML = '<svg viewBox="0 0 24 24" style="width: 18px; height: 18px;"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg> Exit Live';
+                liveBadge.classList.add('active');
+            } else {
+                liveToggle.classList.remove('active');
+                liveToggle.innerHTML = '<svg viewBox="0 0 24 24" style="width: 18px; height: 18px;"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><circle cx="12" cy="12" r="4"></circle></svg> Go Live';
+                liveBadge.classList.remove('active');
+            }
+        }
+
+        function sendCommand(type, value = null) {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type, value, timestamp: Date.now() }));
+                if (navigator.vibrate) navigator.vibrate(20);
+            }
+        }
+
+        function togglePlay() {
+            sendCommand(currentStatus.is_playing ? 'pause' : 'play');
+        }
+
+        function toggleLive() {
+            sendCommand(currentStatus.is_live ? 'exit_live' : 'go_live');
+        }
+
+
+        window.onload = connect;
+    </script>
+</body>
+
+</html>

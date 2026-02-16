@@ -4,15 +4,19 @@ import {
     ensureDirectory,
     readJsonFile,
     writeJsonFile,
+    atomicWriteJsonFile,
     listFiles,
     fileExists,
     removeDirectoryRecursive,
     writeFileBytes,
     readFileBytes,
+    storeAssetNative,
+    cleanupGlobalAssetsNative,
     bytesToDataUrl,
     dataUrlToBytes,
     getExtensionFromMimeType,
 } from '@/core/storage/NativeStorage';
+import SQLite from '@tauri-apps/plugin-sql';
 import { v4 as uuidv4 } from 'uuid';
 import { join } from '@tauri-apps/api/path'; // Note: In newer Tauri, path joining might be different or require specific handling
 // For now, we use simple string concatenation as used in NativeStorage.ts to align with existing patterns
@@ -23,11 +27,39 @@ const PROJECTS_DIR = 'projects';
 
 export class NativeProjectAdapter implements IProjectAdapter {
 
+    private db: SQLite | null = null;
+
     private async getProjectDir(projectId: string): Promise<string> {
         const projectDir = `${PROJECTS_DIR}/${projectId}`;
         await ensureDirectory(projectDir);
-        await ensureDirectory(`${projectDir}/assets`); // Unified asset directory
         return projectDir;
+    }
+
+    private async getDB(): Promise<SQLite> {
+        if (this.db) return this.db;
+        this.db = await SQLite.load('sqlite:teleprompter.db');
+
+        // Initialize index table
+        await this.db.execute(`
+            CREATE TABLE IF NOT EXISTS projects (
+                id TEXT PRIMARY KEY,
+                name TEXT,
+                createdAt INTEGER,
+                modifiedAt INTEGER,
+                pageCount INTEGER
+            )
+        `);
+
+        return this.db;
+    }
+
+    private async updateIndex(project: VisualProject): Promise<void> {
+        const db = await this.getDB();
+        await db.execute(
+            `INSERT OR REPLACE INTO projects (id, name, createdAt, modifiedAt, pageCount) 
+             VALUES (?, ?, ?, ?, ?)`,
+            [project.id, project.name, project.createdAt, project.modifiedAt, project.pages.length]
+        );
     }
 
     async createProject(name: string): Promise<VisualProject> {
@@ -46,54 +78,36 @@ export class NativeProjectAdapter implements IProjectAdapter {
 
     async saveProject(project: VisualProject): Promise<void> {
         const projectDir = await this.getProjectDir(project.id);
-        const assetsDir = `${projectDir}/assets`;
 
-        // Process Pages & Assets
+        // Process Pages & Assets (with de-duplication)
         const pagesWithRefs = await Promise.all(project.pages.map(async (page, index) => {
             // 1. Handle regular image data
-            if (page.data && page.data.startsWith('data:')) {
-                const { bytes, mimeType } = dataUrlToBytes(page.data);
-                const ext = getExtensionFromMimeType(mimeType);
-                const assetId = page.assetId || uuidv4();
-                const assetPath = `${assetsDir}/${assetId}.${ext}`;
+            if (page.data && (page.data.startsWith('data:') || page.data.startsWith('blob:'))) {
+                let bytes: Uint8Array;
+                let mimeType: string;
 
-                await writeFileBytes(assetPath, bytes);
+                if (page.data.startsWith('data:')) {
+                    const result = dataUrlToBytes(page.data);
+                    bytes = result.bytes;
+                    mimeType = result.mimeType;
+                } else {
+                    const res = await fetch(page.data);
+                    const blob = await res.blob();
+                    const arrayBuffer = await blob.arrayBuffer();
+                    bytes = new Uint8Array(arrayBuffer);
+                    mimeType = blob.type;
+                }
+
+                const ext = getExtensionFromMimeType(mimeType);
+                // Call Rust to hash and store in global_assets
+                const assetPath = await storeAssetNative(bytes, ext);
 
                 return {
                     ...page,
-                    assetId,
-                    data: assetPath, // Store relative path
+                    assetId: page.assetId || uuidv4(),
+                    data: assetPath, // This will be "global_assets/HASH.ext"
                     _mimeType: mimeType,
                 };
-            }
-
-            // 2. Handle Blob URLs (convert to bytes)
-            if (page.data && page.data.startsWith('blob:')) {
-                try {
-                    const res = await fetch(page.data);
-                    const blob = await res.blob();
-                    const dataUrl = await new Promise<string>((resolve, reject) => {
-                        const r = new FileReader();
-                        r.onload = () => resolve(r.result as string);
-                        r.onerror = reject;
-                        r.readAsDataURL(blob);
-                    });
-                    const { bytes, mimeType } = dataUrlToBytes(dataUrl);
-                    const ext = getExtensionFromMimeType(mimeType);
-                    const assetId = page.assetId || uuidv4();
-                    const assetPath = `${assetsDir}/${assetId}.${ext}`;
-
-                    await writeFileBytes(assetPath, bytes);
-                    return {
-                        ...page,
-                        assetId,
-                        data: assetPath,
-                        _mimeType: mimeType,
-                    };
-                } catch (e) {
-                    console.error('Failed to save blob asset', e);
-                    return page;
-                }
             }
 
             // 3. Handle Existing File Paths (already saved)
@@ -101,35 +115,49 @@ export class NativeProjectAdapter implements IProjectAdapter {
             return page;
         }));
 
-        // Process Audio
+        // Process Audio (with de-duplication)
         let audioRef = null;
         if (project.audioFile) {
-            if (project.audioFile.data.startsWith('data:')) {
-                const { bytes, mimeType } = dataUrlToBytes(project.audioFile.data);
+            if (project.audioFile.data.startsWith('data:') || project.audioFile.data.startsWith('blob:')) {
+                let bytes: Uint8Array;
+                let mimeType: string;
+
+                if (project.audioFile.data.startsWith('data:')) {
+                    const result = dataUrlToBytes(project.audioFile.data);
+                    bytes = result.bytes;
+                    mimeType = result.mimeType;
+                } else {
+                    const res = await fetch(project.audioFile.data);
+                    const blob = await res.blob();
+                    const arrayBuffer = await blob.arrayBuffer();
+                    bytes = new Uint8Array(arrayBuffer);
+                    mimeType = blob.type;
+                }
+
                 const ext = getExtensionFromMimeType(mimeType);
-                const audioId = project.audioFile.id || uuidv4();
-                const audioPath = `${assetsDir}/${audioId}.${ext}`;
-                await writeFileBytes(audioPath, bytes);
+                const assetPath = await storeAssetNative(bytes, ext);
 
                 audioRef = {
                     ...project.audioFile,
-                    id: audioId,
-                    data: audioPath,
+                    data: assetPath, // "global_assets/HASH.ext"
                     mimeType
                 };
             } else {
+                // Already a path (likely de-duplicated)
                 audioRef = project.audioFile;
             }
         }
 
-        const metadata = {
+        const projectJsonPath = `${projectDir}/project.json`;
+        await atomicWriteJsonFile(projectJsonPath, {
             ...project,
             pages: pagesWithRefs,
             audioFile: audioRef,
-            modifiedAt: Date.now(),
-        };
+            modifiedAt: Date.now()
+        });
 
-        await writeJsonFile(`${projectDir}/project.json`, metadata);
+        // Update SQLite index for fast listing
+        await this.updateIndex(project);
     }
 
     async loadProject(id: string): Promise<VisualProject | null> {
@@ -151,10 +179,11 @@ export class NativeProjectAdapter implements IProjectAdapter {
                 return page;
             }));
 
-            // Hydrate Audio
+            // Audio file data is also assumed to be a path or a data URL
             let audioFile = metadata.audioFile;
-            if (audioFile && audioFile.data && !audioFile.data.startsWith('data:')) {
-                // It's a path, leave it for hook to resolve
+            if (audioFile && audioFile.data && !audioFile.data.startsWith('data:') && !audioFile.data.startsWith('blob:')) {
+                const { convertPathToSrc } = await import('@/core/storage/NativeStorage');
+                audioFile = { ...audioFile, data: convertPathToSrc(audioFile.data) };
             }
 
             return {
@@ -170,28 +199,43 @@ export class NativeProjectAdapter implements IProjectAdapter {
 
     async getAllProjects(): Promise<VisualProject[]> {
         try {
-            await ensureDirectory(PROJECTS_DIR);
-            const entries = await listFiles(PROJECTS_DIR);
-            const projects: VisualProject[] = [];
+            const db = await this.getDB();
+            const results = await db.select<any[]>('SELECT * FROM projects ORDER BY modifiedAt DESC');
 
-            for (const dirName of entries) {
-                try {
-                    const metadata = await readJsonFile<any>(`${PROJECTS_DIR}/${dirName}/project.json`);
-                    // Create a lightweight version for the list
-                    projects.push({
-                        id: metadata.id || dirName,
-                        name: metadata.name || 'Untitled',
-                        createdAt: metadata.createdAt || Date.now(),
-                        modifiedAt: metadata.modifiedAt || Date.now(),
-                        pages: metadata.pages || [], // We might want to limit this for perf
-                        audioFile: metadata.audioFile,
-                    });
-                } catch {
-                    // Skip
+            if (results.length === 0) {
+                // Initial fetch if DB is empty - migrate existing files to index
+                await ensureDirectory(PROJECTS_DIR);
+                const entries = await listFiles(PROJECTS_DIR);
+                const projects: VisualProject[] = [];
+
+                for (const dirName of entries) {
+                    try {
+                        const metadata = await readJsonFile<any>(`${PROJECTS_DIR}/${dirName}/project.json`);
+                        const p = {
+                            id: metadata.id || dirName,
+                            name: metadata.name || 'Untitled',
+                            createdAt: metadata.createdAt || Date.now(),
+                            modifiedAt: metadata.modifiedAt || Date.now(),
+                            pages: metadata.pages || [],
+                            audioFile: metadata.audioFile,
+                        };
+                        await this.updateIndex(p);
+                        projects.push(p);
+                    } catch { /* skip */ }
                 }
+                return projects.sort((a, b) => b.modifiedAt - a.modifiedAt);
             }
-            return projects.sort((a, b) => b.modifiedAt - a.modifiedAt);
-        } catch {
+
+            return results.map(row => ({
+                id: row.id,
+                name: row.name,
+                createdAt: row.createdAt,
+                modifiedAt: row.modifiedAt,
+                pages: new Array(row.pageCount || 0).fill({}), // Lightweight placeholder
+                audioFile: null,
+            }));
+        } catch (error) {
+            console.error('Failed to get projects from index', error);
             return [];
         }
     }
@@ -199,6 +243,14 @@ export class NativeProjectAdapter implements IProjectAdapter {
     async deleteProject(id: string): Promise<void> {
         const projectDir = `${PROJECTS_DIR}/${id}`;
         await removeDirectoryRecursive(projectDir);
+
+        // Remove from index
+        try {
+            const db = await this.getDB();
+            await db.execute('DELETE FROM projects WHERE id = ?', [id]);
+        } catch (e) {
+            console.error('Failed to remove from index', e);
+        }
     }
 
     async duplicateProject(id: string): Promise<VisualProject | undefined> {
@@ -212,72 +264,53 @@ export class NativeProjectAdapter implements IProjectAdapter {
             name: `${original.name} (Copy)`,
             createdAt: Date.now(),
             modifiedAt: Date.now(),
-            // We will perform a deep save which will copy assets
-        };
-
-        // CRITICAL: We need to actually copy the assets, not just reference them.
-        // The easiest robust way in this adapter without `cp` command availability 
-        // is to read the original assets and write them to the new location.
-        // Or, since we have the paths in `original`, `saveProject` will encounter paths.
-
-        // Modification to saveProject needed:
-        // If we pass `newProject` to `saveProject`, it has pages with `data` pointing to `projects/OLD_ID/assets/file.png`.
-        // We need `saveProject` (or a helper) to detect this across-project reference and COPY the file.
-
-        // Let's manually handle the copy here for clarity and safety.
-        const newProjectDir = await this.getProjectDir(newId); // creates dir
-        const newAssetsDir = `${newProjectDir}/assets`;
-
-        const newPages = await Promise.all(original.pages.map(async (page) => {
-            const newData = await this.copyAssetTo(page.data, newAssetsDir);
-            return {
-                ...page,
-                id: uuidv4(), // new page ID
-                data: newData,
-                assetId: uuidv4(), // new asset ID
-                segments: page.segments.map(s => ({ ...s, id: uuidv4() }))
-            };
-        }));
-
-        let newAudio = null;
-        if (original.audioFile) {
-            const newAudioData = await this.copyAssetTo(original.audioFile.data, newAssetsDir);
-            newAudio = {
-                ...original.audioFile,
+            pages: original.pages.map(p => ({
+                ...p,
                 id: uuidv4(),
-                data: newAudioData
-            };
-        }
-
-        const savedProject = {
-            ...newProject,
-            pages: newPages,
-            audioFile: newAudio
+                segments: p.segments.map(s => ({ ...s, id: uuidv4() }))
+            }))
         };
 
-        await writeJsonFile(`${newProjectDir}/project.json`, savedProject);
-        return savedProject;
+        // Saving will naturally link to the same de-duplicated assets
+        await this.saveProject(newProject);
+        return newProject;
     }
 
-    // Helper to copy an asset file to a new directory and return the new relative path
-    private async copyAssetTo(currentPath: string | undefined, targetDir: string): Promise<string | undefined> {
-        if (!currentPath) return currentPath;
-        if (currentPath.startsWith('data:') || currentPath.startsWith('blob:')) return currentPath; // saveProject will handle these later if needed, but here we expect paths usually
-
+    /**
+     * Scans all projects and the audio library to find all active assets
+     * and triggers a cleanup of orphans in the global asset store.
+     */
+    async cleanupUnusedAssets(): Promise<void> {
         try {
-            // Resolve full path or relative path
-            // Use read/write bytes to copy
-            const bytes = await readFileBytes(currentPath);
+            const projects = await this.getAllProjects();
+            const activeAssets = new Set<string>();
 
-            const ext = currentPath.split('.').pop() || 'bin';
-            const newFileName = `${uuidv4()}.${ext}`;
-            const newPath = `${targetDir}/${newFileName}`;
+            // 1. Collect assets from all projects
+            for (const p of projects) {
+                // We need to load the full project to see assets
+                const fullProject = await this.loadProject(p.id);
+                if (fullProject) {
+                    for (const page of fullProject.pages) {
+                        if (page.data && page.data.startsWith('global_assets/')) {
+                            activeAssets.add(page.data);
+                        }
+                    }
+                    if (fullProject.audioFile && fullProject.audioFile.data.startsWith('global_assets/')) {
+                        activeAssets.add(fullProject.audioFile.data);
+                    }
+                }
+            }
 
-            await writeFileBytes(newPath, bytes);
-            return newPath;
-        } catch (e) {
-            console.warn(`Failed to copy asset ${currentPath}`, e);
-            return currentPath; // Fallback? Or fail?
+            // 2. Collect assets from Audio Library (if applicable)
+            // Note: Currently AudioStorage has its own maintenance, but we should unify
+            // For now, let's just focus on CAS assets.
+
+            const deletedCount = await cleanupGlobalAssetsNative(Array.from(activeAssets));
+            if (deletedCount > 0) {
+                console.log(`[Storage GC] Deleted ${deletedCount} orphaned assets`);
+            }
+        } catch (error) {
+            console.error('Asset cleanup failed', error);
         }
     }
 

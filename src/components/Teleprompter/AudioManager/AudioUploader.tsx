@@ -1,6 +1,7 @@
 import React, { memo, useCallback, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Upload, Loader2 } from 'lucide-react';
+import { isTauriApp } from '@/core/storage/NativeStorage';
 
 interface AudioUploaderProps {
   onUpload: (file: File) => Promise<void>;
@@ -14,6 +15,7 @@ export const AudioUploader = memo<AudioUploaderProps>(({
   className
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const isDesktop = isTauriApp();
 
   const handleFileSelect = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -58,7 +60,7 @@ export const AudioUploader = memo<AudioUploaderProps>(({
       />
 
       <span className="text-xs text-muted-foreground ml-3">
-        MP3, WAV, OGG, M4A (max 50MB)
+        MP3, WAV, OGG, M4A, FLAC, WEBM {isDesktop ? '(No limit)' : '(max 50MB)'}
       </span>
     </div>
   );

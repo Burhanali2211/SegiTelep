@@ -19,6 +19,7 @@ class ProjectServiceImpl implements IProjectAdapter {
     duplicateProject(id: string) { return this.adapter.duplicateProject(id); }
     exportProject(project: any) { return this.adapter.exportProject(project); }
     importProject(file: File) { return this.adapter.importProject(file); }
+    cleanupUnusedAssets() { return this.adapter.cleanupUnusedAssets?.(); }
 }
 
 export const ProjectService = new ProjectServiceImpl();

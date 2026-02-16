@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -7,17 +7,20 @@ import { Separator } from '@/components/ui/separator';
 import {
   Smartphone,
   QrCode,
-  Wifi,
   WifiOff,
   Copy,
   RefreshCw,
   CheckCircle,
   XCircle,
-  Settings,
-  ExternalLink
+  ExternalLink,
+  Zap,
+  Settings
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { RemoteServerState } from '@/types/remote.types';
+import { invoke } from '@tauri-apps/api/core';
+import { useTeleprompterStore } from '@/store/teleprompterStore';
+import { listen } from '@tauri-apps/api/event';
 
 interface RemoteControlDialogProps {
   open: boolean;
@@ -32,14 +35,20 @@ export const RemoteControlDialog: React.FC<RemoteControlDialogProps> = ({
   const [qrCodeSvg, setQrCodeSvg] = useState<string>('');
   const [isStarting, setIsStarting] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<'idle' | 'starting' | 'connected' | 'error'>('idle');
-  const [connectedDevices, setConnectedDevices] = useState<string[]>([]);
 
-  // Check if running in Tauri (not just browser dev mode)
-  const isTauri = typeof window !== 'undefined' && window.__TAURI__ && window.__TAURI__.invoke;
+  const remoteEnabled = useTeleprompterStore((s) => s.settings.remoteEnabled);
+  const setRemoteEnabled = useTeleprompterStore((s) => s.setRemoteEnabled);
+
+  // Robust check for Tauri v2 environment
+  const isTauri = typeof window !== 'undefined' && (
+    (window as any).__TAURI_INTERNALS__ !== undefined ||
+    (window as any).__TAURI__ !== undefined ||
+    navigator.userAgent.includes('Tauri')
+  );
 
   const startRemoteServer = useCallback(async () => {
     if (!isTauri) {
-      toast.error('Remote control requires the Tauri desktop app');
+      toast.error('Local Remote requires the Tauri desktop app');
       setConnectionStatus('error');
       return;
     }
@@ -48,19 +57,20 @@ export const RemoteControlDialog: React.FC<RemoteControlDialogProps> = ({
     setConnectionStatus('starting');
 
     try {
-      const state = await window.__TAURI__.invoke('start_remote_server');
+      const state = await invoke<RemoteServerState>('start_remote_server');
       setServerState(state);
       setConnectionStatus('connected');
 
       // Generate QR code
-      const qrSvg = await window.__TAURI__.invoke('generate_remote_qr', {
+      const qrSvg = await invoke<string>('generate_remote_qr', {
         connectionUrl: state.connection_url
       });
       setQrCodeSvg(qrSvg);
 
-      toast.success('Remote control server started successfully!');
-      console.log('Remote server started:', state);
+      // Automatically enable the global setting if user manually starts from dialog
+      setRemoteEnabled(true);
 
+      toast.success('Remote control server started successfully!');
     } catch (error) {
       console.error('Failed to start remote server:', error);
       setConnectionStatus('error');
@@ -68,315 +78,130 @@ export const RemoteControlDialog: React.FC<RemoteControlDialogProps> = ({
     } finally {
       setIsStarting(false);
     }
-  }, [isTauri]);
+  }, [isTauri, setRemoteEnabled]);
 
   const copyToClipboard = useCallback(async () => {
     if (!serverState) return;
-
     try {
       await navigator.clipboard.writeText(serverState.connection_url);
-      toast.success('Connection URL copied to clipboard!');
+      toast.success('Connection URL copied!');
     } catch (error) {
-      console.error('Failed to copy to clipboard:', error);
-      toast.error('Failed to copy to clipboard');
+      toast.error('Failed to copy');
     }
   }, [serverState]);
-
-  const openMobileInterface = useCallback(() => {
-    if (!serverState) return;
-
-    window.open(serverState.connection_url, '_blank');
-  }, [serverState]);
-
-  // Listen for remote control events
-  useEffect(() => {
-    if (!open || !isTauri) return;
-
-    const handleRemoteCommand = (event: { event: string; payload: unknown }) => {
-      console.log('Remote command received:', event.event);
-
-      // Handle different remote commands
-      switch (event.event) {
-        case 'remote-play':
-          // Trigger play action
-          break;
-        case 'remote-pause':
-          // Trigger pause action
-          break;
-        case 'remote-stop':
-          // Trigger stop action
-          break;
-        case 'remote-next-segment':
-          // Trigger next segment
-          break;
-        case 'remote-prev-segment':
-          // Trigger previous segment
-          break;
-        case 'remote-set-speed':
-          // Update speed
-          break;
-        case 'remote-toggle-mirror':
-          // Toggle mirror mode
-          break;
-        case 'remote-reset-position':
-          // Reset position
-          break;
-      }
-    };
-
-    const unlistenPromise = window.__TAURI__.listen('remote-command', handleRemoteCommand);
-
-    return () => {
-      unlistenPromise.then(fn => fn()).catch(console.error);
-    };
-  }, [open, isTauri]);
 
   const getConnectionStatusIcon = () => {
     switch (connectionStatus) {
-      case 'connected':
-        return <CheckCircle className="w-5 h-5 text-green-500" />;
-      case 'error':
-        return <XCircle className="w-5 h-5 text-red-500" />;
-      case 'starting':
-        return <RefreshCw className="w-5 h-5 text-blue-400 animate-spin" />;
-      default:
-        return <WifiOff className="w-5 h-5 text-zinc-500" />;
-    }
-  };
-
-  const getConnectionStatusText = () => {
-    switch (connectionStatus) {
-      case 'connected':
-        return 'Server Running';
-      case 'error':
-        return 'Server Error';
-      case 'starting':
-        return 'Starting Server...';
-      default:
-        return 'Server Stopped';
-    }
-  };
-
-  const getConnectionStatusColor = () => {
-    switch (connectionStatus) {
-      case 'connected':
-        return 'bg-green-500';
-      case 'error':
-        return 'bg-red-500';
-      case 'starting':
-        return 'bg-blue-500';
-      default:
-        return 'bg-zinc-500';
+      case 'connected': return <CheckCircle className="w-5 h-5 text-green-500" />;
+      case 'error': return <XCircle className="w-5 h-5 text-red-500" />;
+      case 'starting': return <RefreshCw className="w-5 h-5 text-blue-400 animate-spin" />;
+      default: return <WifiOff className="w-5 h-5 text-zinc-500" />;
     }
   };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-hidden">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Smartphone className="w-5 h-5" />
-            Mobile Remote Control
-          </DialogTitle>
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-hidden flex flex-col gap-0 p-0 rounded-[2rem] border-white/5 bg-slate-950/90 backdrop-blur-3xl shadow-[0_0_100px_rgba(0,0,0,0.5)]">
+        <DialogHeader className="p-8 border-b border-white/5 bg-white/[0.02]">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 rounded-2xl bg-blue-500/10 flex items-center justify-center text-blue-400 border border-blue-500/20 shadow-inner">
+              <Smartphone size={24} className="drop-shadow-[0_0_8px_rgba(59,130,246,0.5)]" />
+            </div>
+            <div>
+              <DialogTitle className="text-2xl font-black tracking-tight text-white">Device Pairing</DialogTitle>
+              <DialogDescription className="text-slate-400 font-medium">Connect your mobile as a tactile controller</DialogDescription>
+            </div>
+          </div>
         </DialogHeader>
 
-        <div className="space-y-6">
-          {/* Tauri Check Warning */}
-          {!isTauri && (
-            <Card className="border-blue-500/20 bg-blue-500/5 backdrop-blur-sm">
-              <CardContent className="pt-6">
-                <div className="flex items-center gap-3">
-                  <WifiOff className="w-5 h-5 text-blue-400" />
-                  <div>
-                    <h3 className="font-medium text-blue-100">Tauri App Required</h3>
-                    <p className="text-sm text-blue-200/70">
-                      Mobile remote control requires the desktop Tauri app. This feature is not available in browser mode.
-                    </p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Connection Status */}
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  {getConnectionStatusIcon()}
-                  <div>
-                    <h3 className="font-medium">{getConnectionStatusText()}</h3>
-                    <p className="text-sm text-muted-foreground">
-                      {serverState ? `Port: ${serverState.port}` : 'Not started'}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  {connectionStatus === 'idle' && (
-                    <Button
-                      onClick={startRemoteServer}
-                      disabled={isStarting}
-                      className="min-w-[120px]"
-                    >
-                      {isStarting ? (
-                        <>
-                          <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-                          Starting...
-                        </>
-                      ) : (
-                        <>
-                          <Wifi className="w-4 h-4 mr-2" />
-                          Start Server
-                        </>
-                      )}
-                    </Button>
-                  )}
-
-                  {serverState && (
-                    <>
-                      <Button variant="outline" size="sm" onClick={copyToClipboard}>
-                        <Copy className="w-4 h-4 mr-2" />
-                        Copy URL
-                      </Button>
-                      <Button variant="outline" size="sm" onClick={openMobileInterface}>
-                        <ExternalLink className="w-4 h-4 mr-2" />
-                        Open
-                      </Button>
-                    </>
-                  )}
-                </div>
+        <div className="flex-1 overflow-y-auto p-6 space-y-6">
+          {!remoteEnabled ? (
+            <div className="bg-slate-900/50 border border-amber-500/20 p-10 text-center space-y-6 rounded-[2rem] relative overflow-hidden">
+              <div className="absolute top-0 left-1/2 -translate-x-1/2 w-40 h-40 bg-amber-500/10 blur-[80px] rounded-full" />
+              <div className="w-20 h-20 bg-amber-500/10 border border-amber-500/20 rounded-3xl flex items-center justify-center text-amber-500 mx-auto relative z-10">
+                <Smartphone size={40} strokeWidth={1} />
               </div>
-            </CardContent>
-          </Card>
+              <div className="space-y-2 relative z-10">
+                <h3 className="text-2xl font-black tracking-tight text-white">Remote Services Offline</h3>
+                <p className="text-sm text-slate-400 max-w-sm mx-auto leading-relaxed">
+                  For maximum performance and local privacy, remote background services are currently powered down.
+                </p>
+              </div>
+              <Button
+                onClick={() => setRemoteEnabled(true)}
+                className="bg-amber-500 hover:bg-amber-400 text-black font-black uppercase tracking-[0.15em] px-10 rounded-full h-14 shadow-[0_10px_30px_rgba(245,158,11,0.3)] transition-all hover:scale-105 active:scale-95 relative z-10"
+              >
+                Activate Services
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between px-2">
+                <div className="flex items-center gap-2">
+                  <Zap className="w-4 h-4 text-amber-400 fill-amber-400/20" />
+                  <h3 className="font-black text-xs uppercase tracking-[0.2em] text-slate-400">Tactile Link Status</h3>
+                </div>
+                {connectionStatus === 'connected' && (
+                  <Badge className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-black uppercase tracking-widest px-3 py-1">
+                    <CheckCircle className="w-3 h-3 mr-1.5" /> Live
+                  </Badge>
+                )}
+              </div>
 
-          {serverState && (
-            <>
-              {/* QR Code */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <QrCode className="w-5 h-5" />
-                    Connect Mobile Device
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="flex flex-col items-center space-y-4">
-                    <div className="bg-white p-4 rounded-lg" dangerouslySetInnerHTML={{ __html: qrCodeSvg }} />
-
-                    <div className="text-center space-y-2">
-                      <p className="text-sm font-medium">Scan QR code with your phone</p>
-                      <p className="text-xs text-muted-foreground">
-                        Or visit: <code className="bg-muted px-2 py-1 rounded">{serverState.connection_url}</code>
-                      </p>
-                    </div>
+              {!serverState ? (
+                <Button
+                  onClick={startRemoteServer}
+                  disabled={isStarting || !isTauri}
+                  className="w-full h-20 rounded-[2rem] bg-white/[0.03] hover:bg-white/[0.08] text-white border border-white/10 font-black uppercase tracking-[0.2em] gap-4 shadow-2xl transition-all active:scale-[0.98] group"
+                >
+                  <div className="w-10 h-10 rounded-full bg-blue-500/20 flex items-center justify-center text-blue-400 group-hover:scale-110 transition-transform">
+                    {isStarting ? <RefreshCw className="animate-spin" /> : <QrCode size={20} />}
                   </div>
-                </CardContent>
-              </Card>
-
-              {/* Features */}
-              <Card>
-                <CardHeader>
-                  <CardTitle>Remote Control Features</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    <div className="text-center p-3 bg-muted rounded-lg">
-                      <div className="text-2xl mb-2">▶️</div>
-                      <div className="text-sm font-medium">Play/Pause</div>
-                    </div>
-                    <div className="text-center p-3 bg-muted rounded-lg">
-                      <div className="text-2xl mb-2">⏹️</div>
-                      <div className="text-sm font-medium">Stop</div>
-                    </div>
-                    <div className="text-center p-3 bg-muted rounded-lg">
-                      <div className="text-2xl mb-2">⚡</div>
-                      <div className="text-sm font-medium">Speed</div>
-                    </div>
-                    <div className="text-center p-3 bg-muted rounded-lg">
-                      <div className="text-2xl mb-2">📄</div>
-                      <div className="text-sm font-medium">Navigate</div>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Instructions */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Settings className="w-5 h-5" />
-                    How to Use
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <div className="flex items-start space-x-3">
-                    <div className="w-6 h-6 bg-primary text-primary-foreground rounded-full flex items-center justify-center text-sm font-medium mt-0.5">
-                      1
-                    </div>
-                    <div>
-                      <p className="font-medium">Start the remote server</p>
-                      <p className="text-sm text-muted-foreground">
-                        Click "Start Server" to begin the remote control service
-                      </p>
-                    </div>
+                  Establish Local Connection
+                </Button>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
+                  <div className="p-6 bg-white rounded-[2rem] shadow-[0_20px_50px_rgba(0,0,0,0.5)] border-4 border-white/5 flex justify-center items-center aspect-square relative group">
+                    <div className="absolute inset-0 bg-blue-500/5 blur-2xl group-hover:bg-blue-500/10 transition-colors" />
+                    {qrCodeSvg ? (
+                      <div className="w-full h-full relative z-10" dangerouslySetInnerHTML={{ __html: qrCodeSvg }} />
+                    ) : (
+                      <RefreshCw className="animate-spin text-slate-400" />
+                    )}
                   </div>
 
-                  <div className="flex items-start space-x-3">
-                    <div className="w-6 h-6 bg-primary text-primary-foreground rounded-full flex items-center justify-center text-sm font-medium mt-0.5">
-                      2
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.3em] px-1">Network Identity</p>
+                      <div className="flex items-center gap-3 p-4 bg-white/[0.03] border border-white/5 rounded-2xl group transition-all hover:bg-white/[0.05]">
+                        <span className="text-xs font-mono font-bold text-blue-400/80 truncate flex-1">{serverState.connection_url}</span>
+                        <Button variant="ghost" size="icon" onClick={copyToClipboard} className="h-10 w-10 rounded-full hover:bg-blue-500/20 hover:text-blue-400">
+                          <Copy size={16} />
+                        </Button>
+                      </div>
                     </div>
-                    <div>
-                      <p className="font-medium">Connect your phone</p>
-                      <p className="text-sm text-muted-foreground">
-                        Scan the QR code or visit the URL on your mobile device
-                      </p>
-                    </div>
-                  </div>
 
-                  <div className="flex items-start space-x-3">
-                    <div className="w-6 h-6 bg-primary text-primary-foreground rounded-full flex items-center justify-center text-sm font-medium mt-0.5">
-                      3
-                    </div>
-                    <div>
-                      <p className="font-medium">Control remotely</p>
-                      <p className="text-sm text-muted-foreground">
-                        Use your phone to control playback, speed, and navigation
-                      </p>
+                    <div className="grid grid-cols-1 gap-3">
+                      <Button variant="outline" className="rounded-2xl h-14 text-[11px] font-black uppercase tracking-[0.2em] border-white/10 hover:bg-white/5 text-slate-300 gap-3" onClick={() => window.open(serverState.connection_url, '_blank')}>
+                        <ExternalLink size={16} /> Open Desktop Console
+                      </Button>
+                      <Button variant="ghost" className="rounded-2xl h-14 text-[11px] font-black uppercase tracking-[0.2em] text-red-500/70 hover:text-red-400 hover:bg-red-500/10 gap-3" onClick={() => setServerState(null)}>
+                        <WifiOff size={16} /> Disconnect Link
+                      </Button>
                     </div>
                   </div>
-                </CardContent>
-              </Card>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
 
-              {/* Technical Info */}
-              <Card>
-                <CardHeader>
-                  <CardTitle>Technical Information</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-2">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Server Type:</span>
-                    <span>HTTP + WebSocket</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">HTTP Port:</span>
-                    <span>{serverState.port}</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">WebSocket Port:</span>
-                    <span>{serverState.port + 1}</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Network:</span>
-                    <span>Local WiFi/LAN</span>
-                  </div>
-                  <Separator />
-                  <div className="text-xs text-muted-foreground">
-                    <p><strong>Note:</strong> Both devices must be on the same network for remote control to work.</p>
-                  </div>
-                </CardContent>
-              </Card>
-            </>
+        <div className="p-8 bg-white/[0.02] border-t border-white/5 flex items-center justify-between">
+          <Button variant="ghost" onClick={() => onOpenChange(false)} className="rounded-full text-[11px] font-black uppercase tracking-[0.2em] px-8 text-slate-400 hover:text-white">Close Window</Button>
+          {remoteEnabled && (
+            <div className="flex items-center gap-2 text-[10px] font-black text-emerald-400 uppercase tracking-[0.25em] bg-emerald-500/5 px-4 py-2 rounded-full border border-emerald-500/10">
+              <CheckCircle size={14} /> Secure Local Sync
+            </div>
           )}
         </div>
       </DialogContent>

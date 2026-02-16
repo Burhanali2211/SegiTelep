@@ -1,5 +1,6 @@
 import React, { memo, useCallback, useRef, useEffect, useState } from 'react';
 import { useVisualEditorState, formatTime } from './useVisualEditorState';
+import { PlaybackTimeDisplay } from './components/PlaybackTimeDisplay';
 import { stopAllExcept, registerStopCallback } from '@/utils/audioPlaybackCoordinator';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -13,17 +14,52 @@ import {
   X,
   Volume2,
   VolumeX,
-  Library,
 } from 'lucide-react';
+import { saveAudioFile } from '@/core/storage/AudioStorage';
+import { AudioResolver } from '@/core/storage/AudioResolver';
+import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
-const WAVEFORM_HEIGHT = 32;
+const WAVEFORM_HEIGHT = 42;
+const MAX_WAVEFORM_SAMPLES = 200;
+
+// Global cache for waveform data to prevent redundant decodes
+const waveformCache = new Map<string, number[]>();
+
+// Persistent cache in LocalStorage
+const PERSISTENT_WAVEFORM_PREFIX = 'v-editor-wf-';
+
+function getCachedWaveform(id: string): number[] | null {
+  if (waveformCache.has(id)) return waveformCache.get(id)!;
+
+  try {
+    const stored = localStorage.getItem(PERSISTENT_WAVEFORM_PREFIX + id);
+    if (stored) {
+      const data = JSON.parse(stored);
+      waveformCache.set(id, data);
+      return data;
+    }
+  } catch (e) {
+    console.warn('Failed to read waveform cache:', e);
+  }
+  return null;
+}
+
+function setCachedWaveform(id: string, data: number[]): void {
+  waveformCache.set(id, data);
+  try {
+    // Only store first 10 assets to avoid filling localstorage
+    localStorage.setItem(PERSISTENT_WAVEFORM_PREFIX + id, JSON.stringify(data));
+  } catch (e) {
+    console.warn('Failed to write waveform cache:', e);
+  }
+}
 
 /** Resolve CSS variable for canvas - canvas does not support var() in fillStyle */
 function getCanvasColor(varName: string, alpha?: number): string {
   try {
     const value = getComputedStyle(document.documentElement).getPropertyValue(varName).trim();
-    if (!value) return alpha !== undefined ? `hsla(0,0%,50%,${alpha})` : 'hsl(0,0%,50%)';
+    if (!value) return alpha !== undefined ? `hsla(0, 0%, 50%, ${alpha})` : 'hsl(0,0%,50%)';
     // Handle space-separated HSL values common in shadcn/tailwind
     const cleanValue = value.replace(/\s+/g, ',');
     return alpha !== undefined ? `hsla(${cleanValue}, ${alpha})` : `hsl(${cleanValue})`;
@@ -64,11 +100,79 @@ export const AudioWaveform = memo<AudioWaveformProps>(({ className, onOpenAudioL
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Create and setup audio element
+  // Generate waveform data - optimized with caching
   useEffect(() => {
-    if (!audioFile?.data) {
+    if (!audioFile?.id || !audioFile.data) {
       setWaveformData([]);
       setIsAudioReady(false);
+      return;
+    }
+
+    // Check cache first
+    const cached = getCachedWaveform(audioFile.id);
+    if (cached) {
+      setWaveformData(cached);
+      setIsAudioReady(true);
+      return;
+    }
+
+    let cancelled = false;
+    const controller = new AbortController();
+
+    const decodeAndExtractWaveform = async () => {
+      let audioContext: AudioContext | null = null;
+      try {
+        const res = await fetch(audioFile.data, { signal: controller.signal });
+        const arrayBuffer = await res.arrayBuffer();
+        if (cancelled) return;
+
+        audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+        const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+        if (cancelled) return;
+
+        const rawData = audioBuffer.getChannelData(0);
+        const samples = MAX_WAVEFORM_SAMPLES;
+        const blockSize = Math.floor(rawData.length / samples);
+        const filteredData: number[] = [];
+
+        for (let i = 0; i < samples; i++) {
+          let sum = 0;
+          const start = i * blockSize;
+          for (let j = 0; j < blockSize; j += 4) { // Sample every 4th for speed
+            sum += Math.abs(rawData[start + j]);
+          }
+          filteredData.push(sum / (blockSize / 4));
+        }
+
+        const maxVal = Math.max(...filteredData) || 0.001;
+        const normalized = filteredData.map(v => Math.pow(v / maxVal, 0.8)); // Add slight compression for visibility
+
+        if (!cancelled) {
+          setWaveformData(normalized);
+          setCachedWaveform(audioFile.id, normalized);
+          setIsAudioReady(true);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          console.error('Waveform extraction failed:', err);
+          setWaveformData([]);
+        }
+      } finally {
+        if (audioContext) audioContext.close();
+      }
+    };
+
+    decodeAndExtractWaveform();
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [audioFile?.id, audioFile?.data]);
+
+  // Audio element setup
+  useEffect(() => {
+    if (!audioFile?.data) {
       if (audioRef.current) {
         audioRef.current.pause();
         audioRef.current = null;
@@ -78,69 +182,12 @@ export const AudioWaveform = memo<AudioWaveformProps>(({ className, onOpenAudioL
 
     const audio = new Audio(audioFile.data);
     audio.preload = 'auto';
-
-    audio.onloadedmetadata = () => {
-      setIsAudioReady(true);
-    };
-
+    audio.onloadedmetadata = () => setIsAudioReady(true);
     audio.onended = () => {
       setPlaying(false);
       setPlaybackTime(0);
     };
-
-    audio.onerror = (e) => {
-      console.error('Audio error:', e);
-      setIsAudioReady(false);
-    };
-
     audioRef.current = audio;
-
-    // Generate waveform data - decode from data URL
-    const decodeAndExtractWaveform = async () => {
-      const audioContext = new AudioContext();
-      try {
-        if (audioContext.state === 'suspended') {
-          await audioContext.resume();
-        }
-        let arrayBuffer: ArrayBuffer;
-        if (audioFile.data.startsWith('data:')) {
-          const base64 = audioFile.data.split(',')[1];
-          if (!base64) throw new Error('Invalid data URL');
-          const binaryString = atob(base64);
-          const bytes = new Uint8Array(binaryString.length);
-          for (let i = 0; i < binaryString.length; i++) {
-            bytes[i] = binaryString.charCodeAt(i);
-          }
-          arrayBuffer = bytes.buffer;
-        } else {
-          const res = await fetch(audioFile.data);
-          arrayBuffer = await res.arrayBuffer();
-        }
-        const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
-        const rawData = audioBuffer.getChannelData(0);
-        const samples = 150;
-        const blockSize = Math.floor(rawData.length / samples);
-        const filteredData: number[] = [];
-
-        for (let i = 0; i < samples; i++) {
-          let sum = 0;
-          for (let j = 0; j < blockSize; j++) {
-            sum += Math.abs(rawData[i * blockSize + j]);
-          }
-          filteredData.push(sum / blockSize);
-        }
-
-        const maxVal = Math.max(...filteredData) || 1;
-        const normalized = filteredData.map(v => v / maxVal);
-        setWaveformData(normalized);
-      } catch (err) {
-        console.error('Waveform extraction failed:', err);
-        setWaveformData([]);
-      } finally {
-        await audioContext.close();
-      }
-    };
-    decodeAndExtractWaveform();
 
     return () => {
       audio.pause();
@@ -171,109 +218,132 @@ export const AudioWaveform = memo<AudioWaveformProps>(({ className, onOpenAudioL
     return () => observer.disconnect();
   }, [audioFile]);
 
-  // Draw waveform visualization
+  // Draw waveform visualization (optimized)
   useEffect(() => {
     const canvas = canvasRef.current;
-    const ctx = canvas?.getContext('2d');
-    if (!canvas || !ctx) return;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d', { alpha: true });
+    if (!ctx) return;
 
     const w = canvasWidth || containerRef.current?.offsetWidth || 0;
     if (w <= 0) return;
 
     const height = WAVEFORM_HEIGHT;
-    const dpr = window.devicePixelRatio || 1;
-    canvas.width = w * dpr;
-    canvas.height = height * dpr;
-    canvas.style.width = `${w}px`;
-    canvas.style.height = `${height}px`;
-    ctx.scale(dpr, dpr);
-
-    const primary = getCanvasColor('--primary');
-    const mutedFg40 = getCanvasColor('--muted-foreground', 0.4);
-    const destructive = '#ef4444'; // Pro red for playhead
-
     const duration = audioFile?.duration || 1;
-    const progress = Math.min(playbackTime / duration, 1);
+    const dpr = window.devicePixelRatio || 1;
 
-    // 1. Clear Canvas
-    ctx.clearRect(0, 0, w, height);
-
-    // 2. Draw Highlights for Segments
-    const segments = currentPage?.segments || [];
-    segments.forEach(segment => {
-      if (segment.isHidden) return;
-      const startX = (segment.startTime / duration) * w;
-      const endX = (segment.endTime / duration) * w;
-
-      const grad = ctx.createLinearGradient(0, 0, 0, height);
-      grad.addColorStop(0, getCanvasColor('--primary', 0.03));
-      grad.addColorStop(0.5, getCanvasColor('--primary', 0.12));
-      grad.addColorStop(1, getCanvasColor('--primary', 0.03));
-
-      ctx.fillStyle = grad;
-      ctx.fillRect(startX, 0, Math.max(1.5, endX - startX), height);
-
-      ctx.fillStyle = getCanvasColor('--primary', 0.25);
-      ctx.fillRect(startX, 0, 1, height);
-      ctx.fillRect(endX - 1, 0, 1, height);
-    });
-
-    // 3. Draw Mirror Waveform
-    if (waveformData.length > 0) {
-      const barWidth = w / waveformData.length;
-      const barGap = 1.5;
-
-      waveformData.forEach((val, i) => {
-        const x = i * barWidth;
-        const barHeight = Math.max(3, val * (height * 0.75));
-        const yTop = (height - barHeight) / 2;
-        const barProgress = i / waveformData.length;
-        const isPlayed = barProgress < progress;
-
-        ctx.fillStyle = isPlayed ? primary : mutedFg40;
-
-        const rectWidth = Math.max(1, barWidth - barGap);
-        const radius = rectWidth / 2;
-
-        ctx.beginPath();
-        if (ctx.roundRect) {
-          ctx.roundRect(x, yTop, rectWidth, barHeight, radius);
-        } else {
-          ctx.rect(x, yTop, rectWidth, barHeight);
-        }
-        ctx.fill();
-      });
-    } else {
-      ctx.fillStyle = getCanvasColor('--muted-foreground', 0.2);
-      ctx.fillRect(0, height / 2 - 1, w, 2);
-      ctx.fillStyle = primary;
-      ctx.fillRect(0, height / 2 - 1, w * progress, 2);
-    }
-
-    // 4. Draw Playhead
-    const playheadX = progress * w;
-    ctx.shadowBlur = 4;
-    ctx.shadowColor = 'rgba(239, 68, 68, 0.4)';
-    ctx.fillStyle = destructive;
-    ctx.fillRect(playheadX - 1, 0, 2, height);
-    ctx.shadowBlur = 0;
-
-    // Playhead Cap
-    ctx.beginPath();
-    ctx.moveTo(playheadX - 4, 0);
-    ctx.lineTo(playheadX + 4, 0);
-    ctx.lineTo(playheadX, 5);
-    ctx.fill();
-
-    // 5. Time Marks
-    const interval = 10;
-    if (duration > interval) {
-      ctx.fillStyle = getCanvasColor('--muted-foreground', 0.15);
-      for (let t = interval; t < duration; t += interval) {
-        const tx = (t / duration) * w;
-        ctx.fillRect(tx, height - 4, 1, 4);
+    // Redraw function called on demand
+    const draw = (currentTime: number) => {
+      if (canvas.width !== w * dpr) {
+        canvas.width = w * dpr;
+        canvas.height = height * dpr;
+        canvas.style.width = `${w}px`;
+        canvas.style.height = `${height}px`;
       }
-    }
+
+      ctx.save();
+      ctx.scale(dpr, dpr);
+      ctx.clearRect(0, 0, w, height);
+
+      const primary = getCanvasColor('--primary');
+      const primaryLow = getCanvasColor('--primary', 0.15);
+      const mutedFg30 = getCanvasColor('--muted-foreground', 0.25);
+      const destructive = '#ef4444';
+      const progress = Math.min(currentTime / duration, 1);
+
+      // 1. Draw Segments with premium styling
+      const selectedIds = useVisualEditorState.getState().selectedSegmentIds;
+      const segments = currentPage?.segments || [];
+
+      segments.forEach(segment => {
+        if (segment.isHidden) return;
+        const isSelected = selectedIds.has(segment.id);
+        const startX = (segment.startTime / duration) * w;
+        const endX = (segment.endTime / duration) * w;
+        const segWidth = Math.max(2, endX - startX);
+
+        // Segment Background
+        ctx.fillStyle = isSelected ? getCanvasColor('--primary', 0.08) : getCanvasColor('--primary', 0.03);
+        ctx.fillRect(startX, 0, segWidth, height);
+
+        // Top/Bottom Accent Bars
+        ctx.fillStyle = isSelected ? primary : getCanvasColor('--primary', 0.4);
+        ctx.fillRect(startX, 0, segWidth, 2);
+        ctx.fillRect(startX, height - 2, segWidth, 2);
+
+        // Side Borders
+        ctx.fillStyle = isSelected ? primary : getCanvasColor('--primary', 0.2);
+        ctx.fillRect(startX, 0, 1.5, height);
+        ctx.fillRect(endX - 1.5, 0, 1.5, height);
+      });
+
+      // 2. Draw Waveform with rounded bars
+      if (waveformData.length > 0) {
+        const barWidth = w / waveformData.length;
+        const barGap = 2;
+        const actualBarWidth = Math.max(1.5, barWidth - barGap);
+
+        waveformData.forEach((val, i) => {
+          const x = i * barWidth;
+          const barHeight = Math.max(2, val * (height * 0.7));
+          const yTop = (height - barHeight) / 2;
+          const barProgress = i / waveformData.length;
+          const isPlayed = barProgress < progress;
+
+          // Check if this bar is inside a segment
+          const barTime = (barProgress) * duration;
+          const isInSegment = segments.some(s => !s.isHidden && barTime >= s.startTime && barTime <= s.endTime);
+
+          ctx.fillStyle = isPlayed ? primary : (isInSegment ? primaryLow : mutedFg30);
+
+          if (ctx.roundRect) {
+            ctx.beginPath();
+            ctx.roundRect(x, yTop, actualBarWidth, barHeight, actualBarWidth / 2);
+            ctx.fill();
+          } else {
+            ctx.fillRect(x, yTop, actualBarWidth, barHeight);
+          }
+        });
+      } else {
+        // Fallback line
+        ctx.fillStyle = getCanvasColor('--muted-foreground', 0.1);
+        ctx.fillRect(0, height / 2 - 1, w, 2);
+        ctx.fillStyle = primary;
+        ctx.fillRect(0, height / 2 - 1, w * progress, 2);
+      }
+
+      // 3. Draw Playhead (Indicator)
+      const playheadX = progress * w;
+
+      // Glow effect for playhead
+      const glow = ctx.createRadialGradient(playheadX, height / 2, 0, playheadX, height / 2, 10);
+      glow.addColorStop(0, 'rgba(239, 68, 68, 0.2)');
+      glow.addColorStop(1, 'rgba(239, 68, 68, 0)');
+      ctx.fillStyle = glow;
+      ctx.fillRect(playheadX - 10, 0, 20, height);
+
+      // Line
+      ctx.fillStyle = destructive;
+      ctx.fillRect(playheadX - 1, 0, 2, height);
+
+      // Precise Cap
+      ctx.beginPath();
+      ctx.moveTo(playheadX - 4, 0);
+      ctx.lineTo(playheadX + 4, 0);
+      ctx.lineTo(playheadX, 5);
+      ctx.fill();
+
+      ctx.restore();
+    };
+
+    // Listen for high-frequency ticks
+    const handleTick = (e: CustomEvent<{ time: number }>) => {
+      draw(e.detail.time);
+    };
+
+    draw(playbackTime);
+    window.addEventListener('playback-tick' as any, handleTick);
+    return () => window.removeEventListener('playback-tick' as any, handleTick);
   }, [waveformData, canvasWidth, playbackTime, audioFile?.duration, currentPage?.segments]);
 
   // Register stop callback so others can stop us when they start
@@ -309,9 +379,24 @@ export const AudioWaveform = memo<AudioWaveformProps>(({ className, onOpenAudioL
       });
 
       // Animation loop for time updates
+      let lastStoreUpdate = 0;
       const updateTime = () => {
-        if (audioRef.current && !audioRef.current.paused && !isSeekingRef.current) {
-          setPlaybackTime(audioRef.current.currentTime);
+        const audio = audioRef.current;
+        if (audio && !audio.paused && !isSeekingRef.current) {
+          const now = performance.now();
+          const currentTime = audio.currentTime;
+
+          // Emit high-frequency tick for UI components - sanitize data for cross-context safety
+          const tickEvent = new CustomEvent('playback-tick', {
+            detail: JSON.parse(JSON.stringify({ time: currentTime }))
+          });
+          window.dispatchEvent(tickEvent);
+
+          // Throttle Zustand store updates (10fps for data binding)
+          if (now - lastStoreUpdate > 100) {
+            setPlaybackTime(currentTime);
+            lastStoreUpdate = now;
+          }
         }
         if (isPlaying) {
           animationRef.current = requestAnimationFrame(updateTime);
@@ -375,28 +460,50 @@ export const AudioWaveform = memo<AudioWaveformProps>(({ className, onOpenAudioL
     fileInputRef.current?.click();
   }, []);
 
-  const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const data = event.target?.result as string;
-      if (data) {
-        const audio = new Audio(data);
-        audio.onloadedmetadata = () => {
-          setAudioFile({
-            id: crypto.randomUUID(),
-            name: file.name,
-            data,
-            duration: audio.duration,
-          });
-          setPlaybackTime(0);
-        };
-      }
-    };
-    reader.readAsDataURL(file);
-    e.target.value = '';
+    try {
+      const probeUrl = URL.createObjectURL(file);
+      const audio = new Audio(probeUrl);
+
+      await new Promise((resolve, reject) => {
+        audio.onloadedmetadata = resolve;
+        audio.onerror = reject;
+        setTimeout(resolve, 5000); // Progress even if probe fails
+      });
+
+      const audioId = `audio_${Date.now()}`;
+      const audioFileMetadata = {
+        id: audioId,
+        name: file.name,
+        data: '', // Will be resolved
+        duration: isFinite(audio.duration) ? audio.duration : 0,
+        size: file.size,
+        type: file.type || 'audio/mpeg',
+        createdAt: Date.now()
+      };
+
+      // Save using the optimized binary pipeline
+      await saveAudioFile(audioFileMetadata, file);
+
+      // Resolve the usable local URL
+      const finalUrl = await AudioResolver.resolve(audioId, audioId);
+
+      setAudioFile({
+        ...audioFileMetadata,
+        data: finalUrl || ''
+      });
+      setPlaybackTime(0);
+      URL.revokeObjectURL(probeUrl);
+      toast.success(`Audio loaded: ${file.name}`);
+    } catch (err) {
+      console.error('Failed to load audio:', err);
+      toast.error('Could not process audio file');
+    } finally {
+      e.target.value = '';
+    }
   }, [setAudioFile, setPlaybackTime]);
 
   const handleRemoveAudio = useCallback(() => {
@@ -465,17 +572,6 @@ export const AudioWaveform = memo<AudioWaveformProps>(({ className, onOpenAudioL
             <Upload size={12} className="mr-1.5" />
             Load Audio
           </Button>
-          {onOpenAudioLibrary && (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={onOpenAudioLibrary}>
-                  <Library size={12} className="mr-1.5" />
-                  From Library
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Load from Audio Library</TooltipContent>
-            </Tooltip>
-          )}
         </div>
       ) : (
         <>
@@ -515,9 +611,9 @@ export const AudioWaveform = memo<AudioWaveformProps>(({ className, onOpenAudioL
 
           {/* Time display */}
           <div className="flex items-center bg-muted/20 px-2.5 py-1 rounded-full border border-border/10 shrink-0 text-[11px]">
-            <span className="font-mono font-bold tabular-nums text-primary">
-              {formatTime(playbackTime)}
-            </span>
+            <div className="font-mono font-bold tabular-nums text-primary">
+              <PlaybackTimeDisplay initialTime={playbackTime} />
+            </div>
             <span className="font-mono text-muted-foreground/40 mx-1">
               /
             </span>

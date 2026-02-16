@@ -23,22 +23,26 @@ import {
 interface WelcomeDashboardProps {
   onNewProject: () => void;
   onOpenProject: (projectId: string) => void;
+  onGoLive?: (projectId: string) => void;
   onOpenProjectList: () => void;
   onOpenShortcuts?: () => void;
   onImport?: () => void;
   autoResumeEnabled: boolean;
   onAutoResumeChange: (enabled: boolean) => void;
+  onFileDrop?: (file: File) => void;
   className?: string;
 }
 
 export const WelcomeDashboard = memo<WelcomeDashboardProps>(({
   onNewProject,
   onOpenProject,
+  onGoLive,
   onOpenProjectList,
   onOpenShortcuts,
   onImport,
   autoResumeEnabled,
   onAutoResumeChange,
+  onFileDrop,
   className,
 }) => {
   const [projects, setProjects] = useState<VisualProject[]>([]);
@@ -47,6 +51,7 @@ export const WelcomeDashboard = memo<WelcomeDashboardProps>(({
   const [searchQuery, setSearchQuery] = useState('');
   const [sortOption, setSortOption] = useState<SortOption>('recent');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  const [isDraggingFile, setIsDraggingFile] = useState(false);
 
   // Content from constants (fix: no longer hardcoded / from backend)
   const { title, tagline, sections, keyboardHints } = WELCOME_CONTENT;
@@ -137,6 +142,25 @@ export const WelcomeDashboard = memo<WelcomeDashboardProps>(({
     onOpenProject(projectId);
   }, [onOpenProject]);
 
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDraggingFile(true);
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDraggingFile(false);
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDraggingFile(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file && onFileDrop) {
+      onFileDrop(file);
+    }
+  }, [onFileDrop]);
+
   // Filter and Sort projects
   const filteredProjects = projects
     .filter((p) => {
@@ -156,7 +180,23 @@ export const WelcomeDashboard = memo<WelcomeDashboardProps>(({
     });
 
   return (
-    <div className={cn('flex flex-col items-center justify-center min-h-screen bg-gradient-to-br from-slate-950 via-blue-950/20 to-emerald-950/20 p-6 relative overflow-hidden', className)}>
+    <div
+      className={cn('flex flex-col items-center justify-center min-h-screen bg-gradient-to-br from-slate-950 via-blue-950/20 to-emerald-950/20 p-6 relative overflow-hidden', className)}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
+      {/* Drag Overlay */}
+      {isDraggingFile && (
+        <div className="absolute inset-0 z-[100] bg-blue-500/10 backdrop-blur-md border-4 border-dashed border-blue-400/50 flex flex-col items-center justify-center pointer-events-none animate-in fade-in duration-200">
+          <div className="bg-blue-600/90 p-8 rounded-full shadow-2xl mb-4">
+            <Plus size={48} className="text-white animate-pulse" />
+          </div>
+          <h3 className="text-2xl font-bold text-white">Drop to Import</h3>
+          <p className="text-blue-200/70">Images, PDFs, JSON, or Text files</p>
+        </div>
+      )}
+
       {/* Background decoration */}
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-from)_0%,_transparent_100%)] from-blue-500/5 via-transparent to-transparent opacity-50" />
       <div className="absolute inset-0 bg-grid-pattern opacity-[0.03] pointer-events-none" />
@@ -211,7 +251,7 @@ export const WelcomeDashboard = memo<WelcomeDashboardProps>(({
               />
               <SortProjectsDropdown value={sortOption} onSort={setSortOption} />
 
-              <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as any)} className="hidden sm:block">
+              <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as 'grid' | 'list')} className="hidden sm:block">
                 <TabsList className="bg-white/5 border border-white/10 h-9 p-0.5">
                   <TabsTrigger value="grid" className="h-8 px-2.5 data-[state=active]:bg-blue-500/20 data-[state=active]:text-blue-400">
                     <Grid size={14} />
@@ -267,6 +307,7 @@ export const WelcomeDashboard = memo<WelcomeDashboardProps>(({
                       isSelected={selectedProjectId === project.id}
                       onSelect={() => handleProjectSelect(project.id)}
                       onOpen={() => handleProjectOpen(project.id)}
+                      onGoLive={onGoLive}
                       onDuplicate={handleDuplicateProject}
                       onDelete={handleDeleteProject}
                     />
@@ -288,15 +329,6 @@ export const WelcomeDashboard = memo<WelcomeDashboardProps>(({
             <Plus size={20} className="mr-3 relative z-10" />
             <span className="relative z-10">{sections.newProject}</span>
             <span className="ml-3 text-[10px] font-bold bg-black/20 px-2 py-1 rounded-md relative z-10 border border-white/10 uppercase">N</span>
-          </Button>
-          <Button
-            variant="outline"
-            size="lg"
-            className="flex-1 h-14 text-base font-bold bg-emerald-600/10 border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/20 hover:border-emerald-500/40 transition-all"
-            onClick={onOpenProjectList}
-          >
-            <FolderOpen size={20} className="mr-3" />
-            {sections.openExisting}
           </Button>
         </div>
 

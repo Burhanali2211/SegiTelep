@@ -4,6 +4,7 @@ import { Region } from '@/types/teleprompter.types';
 import type { VisualSegment, ImagePage, SaveStatus } from './types/visualEditor.types';
 import { AssetManager } from '@/core/storage/AssetManager';
 import { formatTime, parseTime } from './utils/formatTime';
+import { invoke } from '@tauri-apps/api/core';
 
 export type { VisualSegment, ImagePage, SaveStatus };
 
@@ -45,6 +46,9 @@ interface VisualEditorState {
 
   // Chain mode
   chainTimesMode: boolean;
+
+  // Default duration for new segments
+  defaultDuration: number;
 
   // Audio
   audioFile: { id: string; name: string; data: string; duration: number } | null;
@@ -113,6 +117,7 @@ interface VisualEditorState {
   shiftSelectedTimes: (delta: number) => void;
   spaceEvenlySelected: (startTime: number, endTime: number) => void;
   setDurationForSelected: (duration: number) => void;
+  setDefaultDuration: (duration: number) => void;
   alignSelectedToGrid: (gridSeconds: number) => void;
 
   // Actions - Audio
@@ -126,6 +131,7 @@ interface VisualEditorState {
   setAspectRatioConstraint: (ratio: string | null) => void;
   setCustomAspectRatio: (ratio: { width: number; height: number }) => void;
   applyAspectRatioToSelected: (ratio: string | null) => void;
+  setSelectedSegmentsColor: (color: string | null) => void;
 
   // Helpers
   getCurrentPage: () => ImagePage | undefined;
@@ -144,6 +150,7 @@ interface VisualEditorState {
     audioFile: { id: string; name: string; data: string; duration: number } | null;
     lastSaved: number;
   }) => Promise<void>;
+  setPages: (pages: ImagePage[]) => void;
 }
 
 const initialState = {
@@ -166,11 +173,28 @@ const initialState = {
   playbackTime: 0,
   isPlaying: false,
   playbackSpeed: 1,
-  chainTimesMode: false,
+  chainTimesMode: true,
   audioFile: null as { id: string; name: string; data: string; duration: number } | null,
   showPlayer: false,
   aspectRatioConstraint: '16:9' as string | null,
   customAspectRatio: { width: 1280, height: 720 },
+  defaultDuration: 10,
+};
+
+// Helper to recalculate all timings based on page and segment order
+const conformTimeline = (pages: ImagePage[], defaultDuration: number): ImagePage[] => {
+  let currentTime = 0;
+  return pages.map(page => {
+    const segments = [...page.segments].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+    const processedSegments = segments.map(s => {
+      const duration = s.endTime - s.startTime > 0 ? s.endTime - s.startTime : defaultDuration;
+      const startTime = currentTime;
+      const endTime = currentTime + duration;
+      currentTime = endTime;
+      return { ...s, startTime, endTime };
+    });
+    return { ...page, segments: processedSegments };
+  });
 };
 
 export const useVisualEditorState = create<VisualEditorState>((set, get) => ({
@@ -190,9 +214,6 @@ export const useVisualEditorState = create<VisualEditorState>((set, get) => ({
   loadProjectData: async (data) => {
     const rawPages = Array.isArray(data.pages) ? data.pages : [];
     const safePages: ImagePage[] = [];
-
-    // Revoke old URLs before loading new ones
-    AssetManager.revokeAll();
 
     for (const p of rawPages) {
       if (!p || typeof p !== 'object') continue;
@@ -224,7 +245,7 @@ export const useVisualEditorState = create<VisualEditorState>((set, get) => ({
           region,
           label: typeof src.label === 'string' ? src.label : `Segment ${idx + 1}`,
           startTime: typeof src.startTime === 'number' ? src.startTime : 0,
-          endTime: typeof src.endTime === 'number' ? src.endTime : 5,
+          endTime: typeof src.endTime === 'number' ? src.endTime : 10,
           isHidden: !!src.isHidden,
           order: typeof src.order === 'number' ? src.order : idx,
         };
@@ -246,8 +267,13 @@ export const useVisualEditorState = create<VisualEditorState>((set, get) => ({
       projectId: data.projectId || null,
       projectName: typeof data.projectName === 'string' ? data.projectName : 'Untitled Project',
       pages: safePages,
-      audioFile: data.audioFile && typeof data.audioFile === 'object' && data.audioFile.data
-        ? data.audioFile
+      audioFile: data.audioFile && typeof data.audioFile === 'object'
+        ? {
+          id: data.audioFile.id,
+          name: data.audioFile.name,
+          data: data.audioFile.data, // Should already be hydrated by adapter
+          duration: data.audioFile.duration
+        }
         : null,
       lastSaved: typeof data.lastSaved === 'number' ? data.lastSaved : null,
       isDirty: false,
@@ -260,6 +286,7 @@ export const useVisualEditorState = create<VisualEditorState>((set, get) => ({
       startupMode: 'editor',
     });
   },
+  setPages: (pages) => set({ pages, isDirty: true }),
 
   // Pages
   addPage: async (data, isPDF) => {
@@ -290,6 +317,11 @@ export const useVisualEditorState = create<VisualEditorState>((set, get) => ({
 
   removePage: (index) => {
     set((state) => {
+      const pageToRemove = state.pages[index];
+      if (pageToRemove?.data?.startsWith('blob:')) {
+        URL.revokeObjectURL(pageToRemove.data);
+      }
+
       const newPages = state.pages.filter((_, i) => i !== index);
       return {
         pages: newPages,
@@ -334,22 +366,33 @@ export const useVisualEditorState = create<VisualEditorState>((set, get) => ({
       region,
       label: `Segment ${totalGlobalSegments + 1}`,
       startTime: lastEndTime,
-      endTime: lastEndTime + 5, // Default 5 second duration
+      endTime: lastEndTime + get().defaultDuration,
       isHidden: false,
       order: page.segments.length,
     };
 
-    set((state) => ({
-      pages: state.pages.map((p, i) =>
+    set((state) => {
+      const { chainTimesMode, defaultDuration } = state;
+      let newPages = state.pages.map((p, i) =>
         i === pageIndex
           ? { ...p, segments: [...p.segments, newSegment] }
           : p
-      ),
-      selectedSegmentIds: new Set([newSegment.id]),
-      lastSelectedId: newSegment.id,
-      isDirty: true,
-    }));
+      );
+
+      if (chainTimesMode) {
+        newPages = conformTimeline(newPages, defaultDuration);
+      }
+
+      return {
+        pages: newPages,
+        selectedSegmentIds: new Set([newSegment.id]),
+        lastSelectedId: newSegment.id,
+        isDirty: true,
+      };
+    });
   },
+
+  setDefaultDuration: (duration) => set({ defaultDuration: duration }),
 
   updateSegment: (id, updates) => {
     const { chainTimesMode } = get();
@@ -370,32 +413,33 @@ export const useVisualEditorState = create<VisualEditorState>((set, get) => ({
       const delta = isStartShift ? (updates.startTime! - oldStart) : (updates.endTime !== undefined ? (updates.endTime - oldEnd) : 0);
       const threshold = isStartShift ? oldStart : oldEnd;
 
-      const newPages = state.pages.map((page) => ({
-        ...page,
-        segments: page.segments.map((s) => {
+      const newPages = state.pages.map((page) => {
+        const segments = page.segments.map((s) => {
           if (s.id === id) {
             const nextStart = updates.startTime ?? s.startTime;
             let nextEnd = updates.endTime ?? s.endTime;
-            // Shifting start preserves duration in chain mode
+
             if (chainTimesMode && isStartShift && updates.endTime === undefined) {
-              nextEnd = s.endTime + delta;
+              nextEnd = s.endTime + (updates.startTime! - s.startTime);
             }
             if (nextEnd < nextStart) nextEnd = nextStart + 0.1;
             return { ...s, ...updates, startTime: nextStart, endTime: nextEnd };
           }
-
-          if (chainTimesMode && delta !== 0 && s.startTime >= threshold - 0.001) {
-            return {
-              ...s,
-              startTime: Math.max(0, s.startTime + delta),
-              endTime: Math.max(0.1, s.endTime + delta),
-            };
-          }
           return s;
-        }),
-      }));
+        });
 
-      return { pages: newPages, isDirty: true };
+        // Resolve overlaps if chain mode is ON
+        if (chainTimesMode) {
+          // If we shift this segment, subsequent ones in the same chain should follow
+          // For simplicity, we can use the global conform logic or a targeted one
+          // We'll use conform to ensure the whole timeline stays clean
+        }
+
+        return { ...page, segments };
+      });
+
+      const conformedPages = chainTimesMode ? conformTimeline(newPages, state.defaultDuration) : newPages;
+      return { pages: conformedPages, isDirty: true };
     });
   },
 
@@ -483,7 +527,8 @@ export const useVisualEditorState = create<VisualEditorState>((set, get) => ({
         };
       });
 
-      return { pages: newPages, isDirty: true, selectedSegmentIds: new Set([newId]) };
+      const finalPages = state.chainTimesMode ? conformTimeline(newPages, state.defaultDuration) : newPages;
+      return { pages: finalPages, isDirty: true, selectedSegmentIds: new Set([newId]) };
     });
   },
 
@@ -500,7 +545,8 @@ export const useVisualEditorState = create<VisualEditorState>((set, get) => ({
           segments: segments.map((s, i) => ({ ...s, order: i })),
         };
       });
-      return { pages: newPages, isDirty: true };
+      const finalPages = state.chainTimesMode ? conformTimeline(newPages, state.defaultDuration) : newPages;
+      return { pages: finalPages, isDirty: true };
     });
   },
 
@@ -517,7 +563,8 @@ export const useVisualEditorState = create<VisualEditorState>((set, get) => ({
           segments: segments.map((s, i) => ({ ...s, order: i })),
         };
       });
-      return { pages: newPages, isDirty: true };
+      const finalPages = state.chainTimesMode ? conformTimeline(newPages, state.defaultDuration) : newPages;
+      return { pages: finalPages, isDirty: true };
     });
   },
 
@@ -538,7 +585,8 @@ export const useVisualEditorState = create<VisualEditorState>((set, get) => ({
           segments: segments.map((s, i) => ({ ...s, order: i })),
         };
       });
-      return { pages: newPages, isDirty: true };
+      const finalPages = state.chainTimesMode ? conformTimeline(newPages, state.defaultDuration) : newPages;
+      return { pages: finalPages, isDirty: true };
     });
   },
 
@@ -625,14 +673,20 @@ export const useVisualEditorState = create<VisualEditorState>((set, get) => ({
       },
     }));
 
-    set((state) => ({
-      pages: state.pages.map((p, i) =>
+    set((state) => {
+      const newPages = state.pages.map((p, i) =>
         i === currentPageIndex
           ? { ...p, segments: [...p.segments, ...newSegments] }
           : p
-      ),
-      selectedSegmentIds: new Set(newSegments.map(s => s.id)),
-    }));
+      );
+
+      const finalPages = state.chainTimesMode ? conformTimeline(newPages, state.defaultDuration) : newPages;
+
+      return {
+        pages: finalPages,
+        selectedSegmentIds: new Set(newSegments.map(s => s.id)),
+      };
+    });
   },
 
   // View
@@ -672,7 +726,14 @@ export const useVisualEditorState = create<VisualEditorState>((set, get) => ({
 
   // Chain mode
   toggleChainMode: () => {
-    set((state) => ({ chainTimesMode: !state.chainTimesMode }));
+    set((state) => {
+      const newMode = !state.chainTimesMode;
+      let newPages = state.pages;
+      if (newMode) {
+        newPages = conformTimeline(state.pages, state.defaultDuration);
+      }
+      return { chainTimesMode: newMode, pages: newPages, isDirty: newMode };
+    });
   },
 
   // Visibility
@@ -797,10 +858,39 @@ export const useVisualEditorState = create<VisualEditorState>((set, get) => ({
 
   // Audio
   setAudioFile: (file) => {
-    set({ audioFile: file, isDirty: true });
+    // If we're setting a new file, mark as dirty. 
+    // If we're just updating the data (hydration), don't mark as dirty if ID is same.
+    set((state) => {
+      const isSameId = state.audioFile?.id === file?.id;
+      const isNewFile = !isSameId && (file !== null || state.audioFile !== null);
+
+      return {
+        audioFile: file,
+        isDirty: state.isDirty || isNewFile
+      };
+    });
   },
 
-  setShowPlayer: (show) => set({ showPlayer: show }),
+  setShowPlayer: (show) => {
+    set({ showPlayer: show });
+
+    // 1. Handle OS-level fullscreen for Desktop App
+    if (typeof window !== 'undefined' && (window as any).__TAURI__) {
+      invoke('set_window_fullscreen', { fullscreen: show }).catch(console.error);
+    }
+
+    // 2. Fallback: Browser-level fullscreen
+    if (show) {
+      const el = document.documentElement;
+      if (el.requestFullscreen) {
+        el.requestFullscreen().catch((err: unknown) => {
+          console.warn('Failed to enter browser fullscreen:', err);
+        });
+      }
+    } else if (document.fullscreenElement) {
+      document.exitFullscreen().catch(() => { });
+    }
+  },
 
   // Aspect ratio
   setAspectRatioConstraint: (ratio) => {
@@ -871,6 +961,20 @@ export const useVisualEditorState = create<VisualEditorState>((set, get) => ({
     }));
   },
 
+  setSelectedSegmentsColor: (color) => {
+    const { selectedSegmentIds } = get();
+    set((state) => ({
+      pages: state.pages.map((page) => ({
+        ...page,
+        segments: page.segments.map((s) => {
+          if (!selectedSegmentIds.has(s.id)) return s;
+          return { ...s, color };
+        }),
+      })),
+      isDirty: true,
+    }));
+  },
+
   // Helpers
   getCurrentPage: () => {
     const { pages, currentPageIndex } = get();
@@ -902,6 +1006,7 @@ export const useVisualEditorState = create<VisualEditorState>((set, get) => ({
 
   // Reset
   reset: () => {
+    AssetManager.revokeAll();
     set({
       ...initialState,
       selectedSegmentIds: new Set<string>(),

@@ -17,4 +17,5 @@ export interface IProjectAdapter {
     duplicateProject(id: string): Promise<VisualProject | undefined>;
     exportProject(project: VisualProject): Promise<void>;
     importProject(file: File): Promise<VisualProject>;
+    cleanupUnusedAssets?(): Promise<void>;
 }

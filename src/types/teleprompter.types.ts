@@ -23,6 +23,7 @@ export interface Segment {
   type: 'text' | 'image' | 'image-region' | 'pdf-page';
   name: string;
   order: number;
+  pageNumber?: number;
 
   // Content
   content: string; // Text content or asset reference (base64 data URL)
@@ -96,12 +97,12 @@ export interface EditorState {
   previewCollapsed: boolean;
 }
 
-// Audio file stored in localStorage
+// Audio file stored in storage/project state
 export interface AudioFile {
-  id: string;
-  name: string;
-  data: string;
-  duration: number;
+  id: string;      // Persistent asset ID or relative path
+  name: string;    // Human readable name
+  data: string;    // Transient Blob URL or Data URL (for UI/playback)
+  duration: number; // Duration in seconds
 }
 
 // Default values
