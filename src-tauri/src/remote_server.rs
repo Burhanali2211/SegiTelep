@@ -13,9 +13,10 @@ use tokio::sync::RwLock;
 use axum::{
     routing::{get, post},
     Router,
-    extract::State,
-    response::{Html, Json},
+    extract::{State, Multipart, DefaultBodyLimit},
+    response::Json,
 };
+use tower_http::cors::{Any, CorsLayer};
 
 // ============================================================================
 // DATA STRUCTURES
@@ -84,7 +85,7 @@ impl RemoteServer {
             is_live: false,
         };
 
-        let (broadcast_tx, _) = tokio::sync::broadcast::channel(32);
+        let (broadcast_tx, _) = tokio::sync::broadcast::channel(128);
 
         let state = Arc::new(RwLock::new(ServerState {
             status: initial_status,
@@ -328,11 +329,19 @@ impl MobileInterfaceServer {
     pub async fn start(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let state_clone = self.state.clone();
 
+        let cors = CorsLayer::new()
+            .allow_origin(Any)
+            .allow_methods(Any)
+            .allow_headers(Any);
+
         let app = Router::new()
             .route("/", get(serve_mobile_interface))
             .route("/remote", get(serve_mobile_interface))
             .route("/status", get(serve_status))
             .route("/command", post(handle_command))
+            .route("/upload", post(handle_file_upload))
+            .layer(cors)
+            .layer(DefaultBodyLimit::max(1024 * 1024 * 1024)) // 1GB Limit
             .with_state(state_clone);
 
         let addr: SocketAddr = format!("0.0.0.0:{}", self.port)
@@ -353,9 +362,15 @@ impl MobileInterfaceServer {
 // AXUM HANDLER FUNCTIONS (Must be standalone, outside impl block)
 // ============================================================================
 
-async fn serve_mobile_interface() -> Html<String> {
-    // ✅ FIXED PATH - Remove ../ since we're already in src/
-    Html(include_str!("assets/mobile_remote.html").to_string())
+async fn serve_mobile_interface() -> impl axum::response::IntoResponse {
+    let html = include_str!("assets/mobile_remote.html").to_string();
+    (
+        [
+            (axum::http::header::CONTENT_TYPE, "text/html"),
+            (axum::http::header::CACHE_CONTROL, "no-cache, no-store, must-revalidate"),
+        ],
+        html,
+    )
 }
 
 async fn serve_status(
@@ -386,6 +401,85 @@ async fn handle_command(
         "command": command.command_type,
         "timestamp": chrono::Utc::now().timestamp_millis()
     }))
+}
+
+async fn handle_file_upload(
+    State(state): State<SharedState>,
+    mut multipart: Multipart,
+) -> Json<serde_json::Value> {
+    log::info!("📂 Received file upload request via HTTP");
+    
+    let mut file_path = String::new();
+    let mut file_name = String::new();
+
+    while let Ok(Some(mut field)) = multipart.next_field().await {
+        let name = field.name().unwrap_or("file").to_string();
+        let filename = field.file_name().unwrap_or("received_file").to_string();
+        
+        if name == "file" {
+            file_name = filename.clone();
+            
+            // Determine save path: Downloads folder or Temp
+            let download_dir = dirs::download_dir().unwrap_or_else(|| std::env::temp_dir());
+            // Sanitize filename for safety
+            let safe_filename = filename.chars()
+                .filter(|c| c.is_alphanumeric() || "._- ".contains(*c))
+                .collect::<String>();
+            let final_filename = if safe_filename.is_empty() { "received_file".to_string() } else { safe_filename };
+            
+            let target_path = download_dir.join(&final_filename);
+            
+            use tokio::io::AsyncWriteExt;
+            
+            let mut file = match tokio::fs::File::create(&target_path).await {
+                Ok(f) => f,
+                Err(e) => {
+                    log::error!("❌ Failed to create file: {}", e);
+                    return Json(serde_json::json!({ "success": false, "error": e.to_string() }));
+                }
+            };
+
+            let mut success = true;
+            let mut error_msg = String::new();
+
+            while let Ok(Some(chunk)) = field.chunk().await {
+                if let Err(e) = file.write_all(&chunk).await {
+                    log::error!("❌ Failed to write chunk: {}", e);
+                    success = false;
+                    error_msg = e.to_string();
+                    break;
+                }
+            }
+
+            if !success {
+                return Json(serde_json::json!({ "success": false, "error": error_msg }));
+            }
+
+            file_path = target_path.to_string_lossy().to_string();
+            log::info!("✅ File saved to: {}", file_path);
+        }
+    }
+
+    if !file_path.is_empty() {
+        // Emit event to Tauri frontend
+        let state_guard = state.read().await;
+        let _ = state_guard.app_handle.emit("remote-file-received", serde_json::json!({
+            "name": file_name,
+            "path": file_path,
+            "timestamp": chrono::Utc::now().timestamp_millis()
+        }));
+        
+        Json(serde_json::json!({
+            "success": true,
+            "message": "File received and saved",
+            "path": file_path
+        }))
+    } else {
+        Json(serde_json::json!({
+            "success": false,
+            "message": "No file data received"
+        }))
+    }
 }
 
 // ✅ NEW HELPER FOR UPDATING STATUS FROM TAURI

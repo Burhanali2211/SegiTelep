@@ -1,6 +1,7 @@
 import { IProjectAdapter } from './types';
 import { VisualProject } from './models';
 import { AssetManager } from '@/core/storage/AssetManager';
+import { AudioResolver } from '@/core/storage/AudioResolver';
 import { v4 as uuidv4 } from 'uuid';
 import { openDB, DBSchema, IDBPDatabase } from 'idb';
 
@@ -177,15 +178,11 @@ export class WebProjectAdapter implements IProjectAdapter {
         }));
 
         let audioFile = project.audioFile;
-        if (audioFile && audioFile.data && !audioFile.data.startsWith('data:') && !audioFile.data.startsWith('blob:')) {
-            // Treat data as assetId if it's not a direct URL
-            const url = await AssetManager.getAssetUrl(audioFile.data);
-            if (url) {
-                audioFile = { ...audioFile, data: url };
-            } else {
-                // Try if ID is stored in audioFile.id
-                const urlFromId = await AssetManager.getAssetUrl(audioFile.id);
-                if (urlFromId) audioFile = { ...audioFile, data: urlFromId };
+        if (audioFile && audioFile.data) {
+            // Priority: Resolve through universal AudioResolver (checks IDB, Global Library, etc)
+            const resolvedUrl = await AudioResolver.resolve(audioFile.data, audioFile.id);
+            if (resolvedUrl) {
+                audioFile = { ...audioFile, data: resolvedUrl };
             }
         }
 
@@ -282,7 +279,8 @@ export class WebProjectAdapter implements IProjectAdapter {
 
             if (audioBlob) {
                 const newAssetId = await AssetManager.saveAsset(audioBlob, `copy-audio`);
-                newAudio = { ...original.audioFile, id: newAssetId, data: newAssetId };
+                const newUrl = await AssetManager.getAssetUrl(newAssetId);
+                newAudio = { ...original.audioFile, id: newAssetId, data: newUrl || newAssetId };
             }
         }
 

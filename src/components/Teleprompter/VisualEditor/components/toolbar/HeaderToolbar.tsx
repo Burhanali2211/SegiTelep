@@ -3,7 +3,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Eye, Save, FolderOpen, Play, Pause, Loader2, CheckCircle2, AlertCircle, Plus, Download, Upload, Home, FileText, Image, Settings, HelpCircle } from 'lucide-react';
+import { Eye, Save, FolderOpen, Play, Pause, CheckCircle2, AlertCircle, Plus, Download, Upload, Home, FileText, Image, Settings, HelpCircle } from 'lucide-react';
+import { Loading } from '@/components/ui/loading';
 import { AspectRatioSelector } from './AspectRatioSelector';
 
 import {
@@ -22,7 +23,7 @@ const SaveStatusIndicator = ({ status, lastSaved }: { status: SaveStatus; lastSa
   if (status === 'saving') {
     return (
       <span className="text-[10px] text-muted-foreground flex items-center gap-1">
-        <Loader2 size={10} className="animate-spin" /> Saving...
+        <Loading size="xs" /> Saving...
       </span>
     );
   }
@@ -222,7 +223,7 @@ export const HeaderToolbar = memo<HeaderToolbarProps>(({
     <Tooltip>
       <TooltipTrigger asChild>
         <Button variant="ghost" size="sm" className="h-7 px-2 shrink-0" onClick={onSave} disabled={saveStatus === 'saving' || pagesLength === 0}>
-          {saveStatus === 'saving' ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+          {saveStatus === 'saving' ? <Loading size="sm" /> : <Save size={14} />}
         </Button>
       </TooltipTrigger>
       <TooltipContent>Save (⌘S)</TooltipContent>

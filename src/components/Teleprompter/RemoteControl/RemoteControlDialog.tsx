@@ -16,6 +16,7 @@ import {
   Zap,
   Settings
 } from 'lucide-react';
+import { Loading } from '@/components/ui/loading';
 import { toast } from 'sonner';
 import { RemoteServerState } from '@/types/remote.types';
 import { invoke } from '@tauri-apps/api/core';
@@ -94,7 +95,7 @@ export const RemoteControlDialog: React.FC<RemoteControlDialogProps> = ({
     switch (connectionStatus) {
       case 'connected': return <CheckCircle className="w-5 h-5 text-green-500" />;
       case 'error': return <XCircle className="w-5 h-5 text-red-500" />;
-      case 'starting': return <RefreshCw className="w-5 h-5 text-blue-400 animate-spin" />;
+      case 'starting': return <Loading size="sm" />;
       default: return <WifiOff className="w-5 h-5 text-zinc-500" />;
     }
   };
@@ -155,7 +156,7 @@ export const RemoteControlDialog: React.FC<RemoteControlDialogProps> = ({
                   className="w-full h-20 rounded-[2rem] bg-white/[0.03] hover:bg-white/[0.08] text-white border border-white/10 font-black uppercase tracking-[0.2em] gap-4 shadow-2xl transition-all active:scale-[0.98] group"
                 >
                   <div className="w-10 h-10 rounded-full bg-blue-500/20 flex items-center justify-center text-blue-400 group-hover:scale-110 transition-transform">
-                    {isStarting ? <RefreshCw className="animate-spin" /> : <QrCode size={20} />}
+                    {isStarting ? <Loading size="sm" /> : <QrCode size={20} />}
                   </div>
                   Establish Local Connection
                 </Button>
@@ -166,7 +167,7 @@ export const RemoteControlDialog: React.FC<RemoteControlDialogProps> = ({
                     {qrCodeSvg ? (
                       <div className="w-full h-full relative z-10" dangerouslySetInnerHTML={{ __html: qrCodeSvg }} />
                     ) : (
-                      <RefreshCw className="animate-spin text-slate-400" />
+                      <Loading size="md" />
                     )}
                   </div>
 

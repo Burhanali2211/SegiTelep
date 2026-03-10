@@ -26,29 +26,67 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-// --- Region Thumbnail Component ---
-const RegionThumbnail = memo<{ pages: ImagePage[]; segment: VisualSegment }>(({ pages, segment }) => {
-  const page = pages[segment.pageIndex];
-  if (!page) return <div className="w-12 h-12 rounded-lg bg-muted/50 shrink-0 animate-pulse" />;
+
+// --- Compact Time Adjuster ---
+const TimePillAdjuster = memo<{
+  value: number;
+  onAdjust: (delta: number) => void;
+  label: string;
+  className?: string;
+}>(({ value, onAdjust, label, className }) => {
+  const [isActive, setIsActive] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!isActive) return;
+    const onClickOutside = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setIsActive(false);
+      }
+    };
+    document.addEventListener('mousedown', onClickOutside);
+    return () => document.removeEventListener('mousedown', onClickOutside);
+  }, [isActive]);
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el || !isActive) return;
+
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const delta = e.deltaY < 0 ? 1 : -1;
+      onAdjust(delta);
+    };
+
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, [isActive, onAdjust]);
 
   return (
-    <div className="w-10 h-10 rounded-lg bg-muted/30 overflow-hidden shrink-0 border border-border/40 relative shadow-sm group-hover:border-primary/20 transition-colors">
-      <div
-        className="absolute inset-0 w-full h-full"
-        style={{
-          transform: `scale(${100 / segment.region.width}, ${100 / segment.region.height})`,
-          transformOrigin: `${segment.region.x}% ${segment.region.y}%`,
-        }}
-      >
-        <AssetThumbnail
-          assetId={page.assetId}
-          className="w-full h-full opacity-90 group-hover:opacity-100 transition-opacity"
-        />
-      </div>
+    <div
+      ref={containerRef}
+      onClick={(e) => {
+        e.stopPropagation();
+        setIsActive(true);
+      }}
+      className={cn(
+        "flex items-center transition-all select-none cursor-pointer rounded-sm px-1.5 py-1",
+        isActive
+          ? "bg-primary text-primary-foreground shadow-[0_0_12px_rgba(var(--primary),0.6)] border border-primary/20"
+          : "text-white/80 hover:text-white hover:bg-white/5",
+        className
+      )}
+    >
+      <span className={cn(
+        "font-black text-[12px] tabular-nums tracking-tight transition-colors",
+        isActive ? "text-white" : "text-white/90"
+      )}>
+        {formatTime(value)}
+      </span>
     </div>
   );
 });
-RegionThumbnail.displayName = 'RegionThumbnail';
 
 // --- Duration Adjuster Component ---
 const DurationAdjuster = memo<{
@@ -82,32 +120,32 @@ const DurationAdjuster = memo<{
   };
 
   return (
-    <div className={cn("flex flex-col gap-1", className)}>
+    <div className={cn("flex flex-col", className)}>
       <div
-        className="flex items-center justify-between bg-muted/20 rounded-xl border border-border/10 p-1 group/dur hover:border-primary/20 transition-all select-none"
+        className="flex items-center justify-between bg-muted/20 rounded-lg border border-border/5 p-0.5 group/dur hover:border-primary/20 transition-all select-none"
       >
         <Button
           variant="ghost"
           size="icon"
-          className="h-8 w-8 rounded-lg text-muted-foreground/60 hover:text-destructive hover:bg-destructive/10 transition-all"
+          className="h-6 w-6 rounded-md text-muted-foreground/60 hover:text-destructive hover:bg-destructive/10 transition-all"
           onClick={(e) => { e.stopPropagation(); onAdjust(-1); }}
         >
-          <ChevronLeft size={16} />
+          <ChevronLeft size={14} />
         </Button>
 
         <div
-          className="flex flex-col items-center px-2 min-w-[70px] cursor-text"
+          className="flex items-center gap-1.5 px-2 cursor-text h-6"
           onDoubleClick={(e) => {
             e.stopPropagation();
             setIsEditing(true);
             setTempValue(formatDuration(duration).replace('s', ''));
           }}
         >
-          <span className="text-[9px] uppercase font-bold text-muted-foreground/40 tracking-widest leading-none mb-1">Duration</span>
+          <span className="text-[8px] uppercase font-bold text-muted-foreground/30 tracking-tight leading-none">Dur</span>
           {isEditing ? (
             <input
               autoFocus
-              className="w-12 text-center bg-background/50 border-none outline-none text-sm font-mono font-black text-primary p-0 h-4"
+              className="w-8 text-center bg-transparent border-none outline-none text-[11px] font-mono font-black text-primary p-0 h-4"
               value={tempValue}
               onChange={(e) => setTempValue(e.target.value)}
               onKeyDown={handleKeyDown}
@@ -115,7 +153,7 @@ const DurationAdjuster = memo<{
               onClick={(e) => e.stopPropagation()}
             />
           ) : (
-            <div className="text-sm font-mono font-black text-primary tabular-nums">
+            <div className="text-[11px] font-mono font-black text-primary tabular-nums">
               {formatDuration(duration)}
             </div>
           )}
@@ -124,18 +162,16 @@ const DurationAdjuster = memo<{
         <Button
           variant="ghost"
           size="icon"
-          className="h-8 w-8 rounded-lg text-muted-foreground/60 hover:text-primary hover:bg-primary/10 transition-all"
+          className="h-6 w-6 rounded-md text-muted-foreground/60 hover:text-primary hover:bg-primary/10 transition-all"
           onClick={(e) => { e.stopPropagation(); onAdjust(1); }}
         >
-          <ChevronRight size={16} />
+          <ChevronRight size={14} />
         </Button>
       </div>
     </div>
   );
 });
 DurationAdjuster.displayName = 'DurationAdjuster';
-
-
 
 // --- Segment Card Component ---
 const SegmentCard = memo<{
@@ -152,6 +188,10 @@ const SegmentCard = memo<{
   onDragStart: (e: React.DragEvent) => void;
   onDragOver: (e: React.DragEvent) => void;
   onDrop: (e: React.DragEvent) => void;
+  pageLabel?: string;
+  isOnCurrentPage?: boolean;
+  globalNum: number;
+  totalSegmentsCount: number;
 }>(({
   segment,
   pages,
@@ -165,7 +205,10 @@ const SegmentCard = memo<{
   onDragStart,
   onDragOver,
   onDrop,
-  saveState
+  saveState,
+  pageLabel,
+  isOnCurrentPage = true,
+  globalNum,
 }) => {
   const duration = segment.endTime - segment.startTime;
 
@@ -182,27 +225,6 @@ const SegmentCard = memo<{
     updateSegment(segment.id, { endTime: segment.startTime + newDuration });
   }, [segment.id, segment.startTime, segment.endTime, updateSegment, saveState]);
 
-  useEffect(() => {
-    const el = cardRef.current;
-    if (!el) return;
-
-    const onWheel = (e: WheelEvent) => {
-      // Only capture wheel if this specific segment is selected
-      if (isSelected) {
-        // Vertical wheel (deltaY) changes duration
-        if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
-          e.preventDefault();
-          e.stopPropagation();
-          const delta = e.deltaY < 0 ? 1 : -1;
-          handleDurationAdjust(delta);
-        }
-      }
-      // Otherwise, event bubbles up to TimelineStrip for horizontal scrolling
-    };
-
-    el.addEventListener('wheel', onWheel, { passive: false });
-    return () => el.removeEventListener('wheel', onWheel);
-  }, [isSelected, handleDurationAdjust]);
 
   return (
     <ContextMenu>
@@ -215,7 +237,7 @@ const SegmentCard = memo<{
           onDrop={onDrop}
           onClick={onSelect}
           className={cn(
-            'group relative flex flex-col gap-1 p-2 rounded-xl border min-w-[210px] w-[210px] shrink-0 cursor-pointer transition-all duration-300',
+            'group relative flex flex-col gap-1.5 p-1.5 rounded-lg border min-w-[200px] w-[200px] shrink-0 cursor-pointer transition-all duration-300',
             // Default State
             'bg-card hover:bg-muted/30 border-border/40 shadow-sm',
             // Selected State
@@ -224,23 +246,57 @@ const SegmentCard = memo<{
             isPlaying && 'ring-2 ring-green-500/20 border-green-500/50 bg-green-500/5',
             // Hidden State
             segment.isHidden && !isPlaying && !isSelected && 'opacity-60 grayscale bg-muted/20 border-border/20',
+            // Other-page dim
+            !isOnCurrentPage && !isSelected && !isPlaying && 'opacity-70',
             // Hover State (when not selected/playing/hidden)
             !isSelected && !isPlaying && !segment.isHidden && 'hover:border-primary/30 hover:shadow-md'
           )}
         >
           {/* Header */}
-          <div className="flex items-start gap-2">
-            <RegionThumbnail pages={pages} segment={segment} />
-
-            <div className="flex-1 min-w-0 flex flex-col justify-between h-10 py-0">
-              <div className="flex items-center justify-between gap-1">
-                <span className={cn(
-                  "text-[10px] font-bold truncate transition-colors",
-                  isPlaying ? "text-green-600 dark:text-green-400" : "text-foreground"
+          <div className="flex flex-col gap-1">
+            <div className="w-full flex items-center justify-between py-0 gap-2">
+              <div className="flex items-center gap-2 min-w-0 flex-1">
+                <div className={cn(
+                  "flex items-center justify-center w-7 h-7 rounded-full bg-white text-[12px] font-black shrink-0 transition-all duration-300 shadow-sm text-black",
+                  isPlaying && "ring-2 ring-destructive/40"
                 )}>
-                  {segment.label || 'Untitled'}
-                </span>
+                  {globalNum}
+                </div>
+                {typeof segment.label === 'string' && !segment.label.startsWith('Segment') && segment.label && (
+                  <span className={cn(
+                    "text-[10px] font-bold truncate transition-colors flex-1",
+                    isPlaying ? "text-green-600 dark:text-green-400" : "text-foreground"
+                  )}>
+                    {segment.label}
+                  </span>
+                )}
+              </div>
 
+              <div className="flex items-center gap-1 shrink-0">
+                {pageLabel && (
+                  <span className={cn(
+                    'text-[8px] font-bold px-1 py-0.5 rounded leading-none tracking-wide',
+                    isOnCurrentPage
+                      ? 'bg-primary/15 text-primary'
+                      : 'bg-muted-foreground/20 text-muted-foreground'
+                  )}>
+                    {pageLabel}
+                  </span>
+                )}
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className={cn(
+                    "w-6 h-6 rounded-md transition-all",
+                    isPlaying ? "text-green-600 bg-green-500/10 hover:bg-green-500/20" : "text-primary/60 hover:text-primary hover:bg-primary/10"
+                  )}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onPlay();
+                  }}
+                >
+                  {isPlaying ? <Pause size={12} fill="currentColor" /> : <Play size={12} fill="currentColor" className="ml-0.5" />}
+                </Button>
                 <Button
                   variant="ghost"
                   size="icon"
@@ -250,39 +306,44 @@ const SegmentCard = memo<{
                   )}
                   onClick={(e) => {
                     e.stopPropagation();
+                    saveState();
                     toggleSegmentVisibility(segment.id);
                   }}
                 >
                   {segment.isHidden ? <EyeOff size={14} /> : <Eye size={14} />}
                 </Button>
               </div>
+            </div>
 
-              <div className="flex items-center gap-1">
-                <Button
-                  variant={isPlaying ? "default" : "secondary"}
-                  size="sm"
-                  className={cn(
-                    "h-4.5 px-1.5 py-0 text-[8px] font-bold rounded-md transition-all",
-                    isPlaying ? "bg-green-500 hover:bg-green-600 text-white" : "text-muted-foreground bg-muted hover:text-foreground"
-                  )}
-                  onClick={(e) => { e.stopPropagation(); onPlay(); }}
-                >
-                  {isPlaying ? (
-                    <>
-                      <Pause size={8} className="mr-1 fill-current" /> Pause
-                    </>
-                  ) : (
-                    <>
-                      <Play size={8} className="mr-1 fill-current" /> Play
-                    </>
-                  )}
-                </Button>
-              </div>
+            <div className="flex items-center justify-between mt-1 px-1 mb-1 gap-1">
+              <TimePillAdjuster
+                value={segment.startTime}
+                label="Start"
+                onAdjust={(delta) => {
+                  saveState();
+                  const newStart = Math.max(0, segment.startTime + delta);
+                  if (newStart < segment.endTime) {
+                    updateSegment(segment.id, { startTime: newStart });
+                  }
+                }}
+              />
+              <span className="opacity-30 text-[9px] font-normal">to</span>
+              <TimePillAdjuster
+                value={segment.endTime}
+                label="End"
+                onAdjust={(delta) => {
+                  saveState();
+                  const newEnd = segment.endTime + delta;
+                  if (newEnd > segment.startTime) {
+                    updateSegment(segment.id, { endTime: newEnd });
+                  }
+                }}
+              />
             </div>
           </div>
 
           {/* Smart Timing Controls */}
-          <div className="flex flex-col gap-2 pt-2 border-t border-border/30">
+          <div className="flex flex-col pt-1.5 border-t border-border/20">
             <DurationAdjuster
               duration={duration}
               onAdjust={handleDurationAdjust}
@@ -331,6 +392,8 @@ interface TimelineStripProps {
 export const TimelineStrip = memo<TimelineStripProps>(({ className }) => {
   const currentPage = useVisualEditorState((s) => s.getCurrentPage());
   const pages = useVisualEditorState((s) => s.pages);
+  const currentPageIndex = useVisualEditorState((s) => s.currentPageIndex);
+  const setCurrentPage = useVisualEditorState((s) => s.setCurrentPage);
   const selectedSegmentIds = useVisualEditorState((s) => s.selectedSegmentIds);
 
   const updateSegment = useVisualEditorState((s) => s.updateSegment);
@@ -348,7 +411,15 @@ export const TimelineStrip = memo<TimelineStripProps>(({ className }) => {
 
   const [draggedId, setDraggedId] = useState<string | null>(null);
 
-  const segments = React.useMemo(() => currentPage?.segments || [], [currentPage?.segments]);
+  // Show ALL segments across ALL pages so user sees full project layout.
+  // Segments are sorted globally by startTime.
+  const segments = React.useMemo(() => {
+    return pages
+      .flatMap((page, pageIdx) =>
+        page.segments.map(s => ({ ...s, _pageIdx: pageIdx }))
+      )
+      .sort((a, b) => a.startTime - b.startTime);
+  }, [pages]);
   const stripRef = useRef<HTMLDivElement>(null);
 
   // Horizontal scroll on wheel
@@ -413,7 +484,7 @@ export const TimelineStrip = memo<TimelineStripProps>(({ className }) => {
   if (segments.length === 0) {
     return (
       <div className={cn('bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-t border-border p-8 text-center text-muted-foreground text-sm', className)}>
-        {!currentPage
+        {pages.length === 0
           ? "Add an image or PDF from the sidebar to start creating regions."
           : "No segments yet. Create one by dragging on the canvas."
         }
@@ -437,9 +508,11 @@ export const TimelineStrip = memo<TimelineStripProps>(({ className }) => {
       >
         {/* Flex Content - Forced to width of content to enable scrolling */}
         <div className="flex items-center p-2 gap-2 w-max min-w-full">
-          {segments.map((segment) => {
+          {segments.map((segment, index) => {
             const isSelected = selectedSegmentIds.has(segment.id);
             const isDragged = draggedId === segment.id;
+            const segPageIdx = (segment as typeof segment & { _pageIdx: number })._pageIdx;
+            const isOnCurrentPage = segPageIdx === currentPageIndex;
 
             return (
               <SegmentCard
@@ -447,7 +520,13 @@ export const TimelineStrip = memo<TimelineStripProps>(({ className }) => {
                 segment={segment}
                 pages={pages}
                 isSelected={isSelected}
+                globalNum={index + 1}
+                totalSegmentsCount={segments.length}
                 onSelect={(e) => {
+                  // Navigate to the page this segment lives on
+                  if (segPageIdx !== currentPageIndex) {
+                    setCurrentPage(segPageIdx);
+                  }
                   if (e.ctrlKey || e.metaKey) {
                     selectSegment(segment.id, 'toggle');
                   } else if (e.shiftKey) {
@@ -465,6 +544,8 @@ export const TimelineStrip = memo<TimelineStripProps>(({ className }) => {
                 onDragStart={(e) => handleDragStart(e, segment.id)}
                 onDragOver={(e) => handleDragOver(e, segment.id)}
                 onDrop={(e) => handleDrop(e, segment.id)}
+                pageLabel={pages.length > 1 ? `P${segPageIdx + 1}` : undefined}
+                isOnCurrentPage={isOnCurrentPage}
               />
             );
           })}
@@ -477,5 +558,3 @@ export const TimelineStrip = memo<TimelineStripProps>(({ className }) => {
 });
 
 TimelineStrip.displayName = 'TimelineStrip';
-
-

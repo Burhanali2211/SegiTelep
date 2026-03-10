@@ -8,6 +8,7 @@ import { AudioResolver } from '@/core/storage/AudioResolver';
 import { stopAllExcept, registerStopCallback } from '@/utils/audioPlaybackCoordinator';
 import { getCountdownSettings, CountdownSettings } from '@/utils/countdownUtils';
 import { usePlayerIndicatorStore } from '@/store/playerIndicatorStore';
+import { getRenderEngine } from '@/core/engine/RenderEngine';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import {
@@ -93,34 +94,60 @@ export const FullscreenPlayer = memo<FullscreenPlayerProps>(({ onClose }) => {
   useEffect(() => {
     let isMounted = true;
     const resolveAll = async () => {
+      const { getAbsolutePath, convertPathToSrc, isTauriApp } = await import('@/core/storage/NativeStorage');
       const newUrls: Record<string, string> = {};
+
       await Promise.all(pages.map(async (page) => {
+        // 1. Try IDB first
         if (page.assetId) {
           const url = await AssetManager.getAssetUrl(page.assetId);
-          if (url) newUrls[page.id] = url;
-        } else if (page.data) {
-          if (page.data.startsWith('data:') || page.data.startsWith('blob:')) {
+          if (url) {
+            newUrls[page.id] = url;
+            return;
+          }
+        }
+
+        // 2. Fall back to data field
+        if (page.data) {
+          if (page.data.startsWith('data:') || page.data.startsWith('blob:') || page.data.startsWith('asset://')) {
             newUrls[page.id] = page.data;
+          } else if (isTauriApp()) {
+            // Relative path — must get absolute before converting to asset://
+            try {
+              const fullPath = await getAbsolutePath(page.data);
+              newUrls[page.id] = convertPathToSrc(fullPath);
+            } catch {
+              newUrls[page.id] = convertPathToSrc(page.data);
+            }
           } else {
-            const { convertPathToSrc } = await import('@/core/storage/NativeStorage');
-            newUrls[page.id] = convertPathToSrc(page.data);
+            newUrls[page.id] = page.data;
           }
         }
       }));
+
       if (isMounted) setResolvedUrls(newUrls);
     };
     resolveAll();
 
-    // Resolve audio URL
+    // Resolve audio URL — try id first (IDB/AudioStorage), then data path
     if (audioFile) {
-      AudioResolver.resolve(audioFile.id, audioFile.id).then(url => {
-        if (isMounted && url) setResolvedAudioUrl(url);
-        else if (isMounted && audioFile.data) setResolvedAudioUrl(audioFile.data);
-      });
+      const tryResolveAudio = async () => {
+        // AudioResolver.resolve handles IDB, AudioStorage, and native paths
+        const url = await AudioResolver.resolve(audioFile.id || audioFile.data, audioFile.id);
+        if (isMounted && url) {
+          setResolvedAudioUrl(url);
+        } else if (isMounted && audioFile.data) {
+          // Last resort — audioFile.data might already be an asset:// URL from NativeProjectAdapter
+          const fallback = await AudioResolver.resolve(audioFile.data);
+          if (isMounted && fallback) setResolvedAudioUrl(fallback);
+        }
+      };
+      tryResolveAudio();
     }
 
     return () => { isMounted = false; };
   }, [pages, audioFile]);
+
 
   // Handle automatic fullscreen on mount (triggered by user gesture 'Go Live' click)
   useEffect(() => {
@@ -139,41 +166,63 @@ export const FullscreenPlayer = memo<FullscreenPlayerProps>(({ onClose }) => {
     }
   }, [initialFullscreenRequested]);
 
-  // Image cache for canvas
-  const imageCacheRef = useRef<Record<string, HTMLImageElement>>({});
+  // Preload all page images eagerly when resolvedUrls are available.
+  // This ensures no loading flash when the player transitions to a new page image.
+  useEffect(() => {
+    const urlValues = Object.values(resolvedUrls);
+    if (urlValues.length === 0) return;
+
+    const engine = getRenderEngine();
+    allSegments.forEach((seg) => {
+      const src = resolvedUrls[seg.pageId];
+      if (!src) return;
+      engine.preloadSegment({
+        id: seg.id,
+        type: 'image-region',
+        name: seg.label,
+        order: seg.order,
+        content: src,
+        pageNumber: seg.pageIndex + 1,
+        region: seg.region,
+        scrollSpeed: 100,
+        duration: seg.endTime - seg.startTime,
+        fontSize: 48,
+        fontFamily: 'Inter',
+        textColor: 'white',
+        lineHeight: 1.8,
+        mirror: false,
+      }).catch(() => { /* silent - preload errors are non-fatal */ });
+    });
+  }, [resolvedUrls, allSegments]);
 
   // Draw current segment on canvas
   const drawSegment = useCallback((segment: PlayableSegment | undefined) => {
     if (!canvasRef.current || !segment) return;
 
-    const engine = useVisualEditorState.getState().isLoading ? null : import('@/core/engine/RenderEngine').then(m => m.getRenderEngine());
-
     const src = resolvedUrls[segment.pageId];
     if (!src) return;
 
-    // Use the RenderEngine for high-performance rendering
-    import('@/core/engine/RenderEngine').then(m => {
-      const engine = m.getRenderEngine();
-      if (canvasRef.current) {
-        engine.attachCanvas(canvasRef.current);
-        engine.render({
-          id: segment.id,
-          type: 'image-region',
-          name: segment.label,
-          order: segment.order,
-          content: src,
-          pageNumber: segment.pageIndex + 1,
-          region: segment.region,
-          scrollSpeed: 100,
-          duration: segment.endTime - segment.startTime,
-          fontSize: 48,
-          fontFamily: 'Inter',
-          textColor: 'white',
-          lineHeight: 1.8,
-          mirror: false
-        }, 0, false);
-      }
-    });
+    // Use the statically imported RenderEngine for high-performance rendering
+    const engine = getRenderEngine();
+    if (canvasRef.current) {
+      engine.attachCanvas(canvasRef.current);
+      engine.render({
+        id: segment.id,
+        type: 'image-region',
+        name: segment.label,
+        order: segment.order,
+        content: src,
+        pageNumber: segment.pageIndex + 1,
+        region: segment.region,
+        scrollSpeed: 100,
+        duration: segment.endTime - segment.startTime,
+        fontSize: 48,
+        fontFamily: 'Inter',
+        textColor: 'white',
+        lineHeight: 1.8,
+        mirror: false
+      }, 0, false);
+    }
   }, [resolvedUrls]);
 
   // Draw first segment preview during countdown

@@ -1,6 +1,7 @@
 import React, { memo } from 'react';
 import { useAssetUrl } from '@/hooks/useAssetUrl';
-import { ImageIcon, Loader2 } from 'lucide-react';
+import { ImageIcon } from 'lucide-react';
+import { Loading } from '@/components/ui/loading';
 import { cn } from '@/lib/utils';
 
 interface AssetThumbnailProps {
@@ -15,7 +16,7 @@ export const AssetThumbnail = memo<AssetThumbnailProps>(({ assetId, data, classN
     return (
         <div className={cn('relative bg-muted flex items-center justify-center overflow-hidden', className)}>
             {isLoading ? (
-                <Loader2 className="w-3 h-3 animate-spin text-muted-foreground/50" />
+                <Loading size="xs" />
             ) : url ? (
                 <img src={url} alt="" className="w-full h-full object-cover" />
             ) : (

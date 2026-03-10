@@ -3,7 +3,6 @@ import { useVisualProjectSession } from '@/hooks/useVisualProjectSession';
 import { useTeleprompterStore } from '@/store/teleprompterStore';
 import { useUndoRedo } from './useUndoRedo';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
-import { AppSidebar } from '@/components/Layout/AppSidebar';
 import { SidebarProvider, SidebarInset } from '@/components/ui/sidebar';
 import { ImageCanvas } from './ImageCanvas';
 import { TimelineStrip } from './TimelineStrip';
@@ -25,8 +24,9 @@ import { AppLogo } from '@/components/Layout/AppLogo';
 import { cn } from '@/lib/utils';
 import { exportVisualProject, importVisualProject } from '@/core/storage/VisualProjectStorage';
 import { toast } from 'sonner';
-import { Loader2 } from 'lucide-react';
+import { Loading } from '@/components/ui/loading';
 import { AudioManagerDialog } from '@/components/Teleprompter/AudioManager/AudioManagerDialog';
+import { stopAllExcept } from '@/utils/audioPlaybackCoordinator';
 
 interface VisualEditorProps {
   className?: string;
@@ -235,6 +235,10 @@ export const VisualEditor = memo<VisualEditorProps>(({
     : null;
 
   const handleGoLive = useCallback(async (id: string) => {
+    // 1. Stop any existing playback (editor audio or library previews)
+    stopAllExcept('fullscreen-player');
+    setPlaying(false);
+
     const success = await loadProject(id);
     if (success) {
       const state = useVisualEditorState.getState();
@@ -247,21 +251,10 @@ export const VisualEditor = memo<VisualEditorProps>(({
         setStartupMode('editor'); // Still open it so they can add segments
       }
     }
-  }, [loadProject, setStartupMode, setShowPlayer]);
+  }, [loadProject, setStartupMode, setShowPlayer, setPlaying]);
 
-  // Loading state
   if (isLoading) {
-    return (
-      <div className={cn('flex flex-col items-center justify-center h-full w-full bg-background', className)}>
-        <div className="flex flex-col items-center gap-4">
-          <AppLogo size="lg" className="animate-pulse" />
-          <div className="flex flex-col items-center gap-2">
-            <Loader2 className="w-6 h-6 animate-spin text-primary" />
-            <p className="text-sm text-muted-foreground font-medium">Initializing workspace...</p>
-          </div>
-        </div>
-      </div>
-    );
+    return <Loading variant="fullscreen" text="Initializing workspace..." size="lg" />;
   }
 
   // Welcome Dashboard - show when startup mode is 'welcome'

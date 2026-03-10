@@ -16,6 +16,7 @@ import {
     dataUrlToBytes,
     getExtensionFromMimeType,
 } from '@/core/storage/NativeStorage';
+import { AudioResolver } from '@/core/storage/AudioResolver';
 import SQLite from '@tauri-apps/plugin-sql';
 import { v4 as uuidv4 } from 'uuid';
 import { join } from '@tauri-apps/api/path'; // Note: In newer Tauri, path joining might be different or require specific handling
@@ -168,22 +169,31 @@ export class NativeProjectAdapter implements IProjectAdapter {
 
         try {
             const metadata = await readJsonFile<any>(projectJsonPath);
+            const { convertPathToSrc, getAbsolutePath } = await import('@/core/storage/NativeStorage');
 
-            // Hydrate pages with data URLs for the UI
-            // Note: In strict Tauri mode, we might want to pass paths and let the UI use convertFileSrc
-            // But for compatibility with existing components that might expect data URLs or direct paths:
-
+            // Convert raw relative paths in pages to tauri asset:// URLs
             const pages = await Promise.all(metadata.pages.map(async (page: any) => {
-                // Resolve data path to something usable if needed
-                // If it is a path, we leave it as a path. The UI hook 'useAssetUrl' handles conversion.
+                if (
+                    page.data &&
+                    !page.data.startsWith('data:') &&
+                    !page.data.startsWith('blob:') &&
+                    !page.data.startsWith('asset://')
+                ) {
+                    // Raw relative path like "global_assets/hash.jpg" 
+                    // Must resolve to absolute first so convertFileSrc works correctly
+                    const fullPath = await getAbsolutePath(page.data);
+                    return { ...page, data: convertPathToSrc(fullPath) };
+                }
                 return page;
             }));
 
-            // Audio file data is also assumed to be a path or a data URL
+            // Resolve audio using universal AudioResolver
             let audioFile = metadata.audioFile;
-            if (audioFile && audioFile.data && !audioFile.data.startsWith('data:') && !audioFile.data.startsWith('blob:')) {
-                const { convertPathToSrc } = await import('@/core/storage/NativeStorage');
-                audioFile = { ...audioFile, data: convertPathToSrc(audioFile.data) };
+            if (audioFile && audioFile.data) {
+                const resolvedUrl = await AudioResolver.resolve(audioFile.data, audioFile.id);
+                if (resolvedUrl) {
+                    audioFile = { ...audioFile, data: resolvedUrl };
+                }
             }
 
             return {

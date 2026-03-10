@@ -2,7 +2,7 @@ import React, { memo, useEffect, useState, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
-import { Skeleton } from '@/components/ui/skeleton';
+import { Loading } from '@/components/ui/loading';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Plus, FolderOpen, FileImage, Sparkles, Zap, Shield, Download, Grid, List as ListIcon } from 'lucide-react';
@@ -277,10 +277,8 @@ export const WelcomeDashboard = memo<WelcomeDashboardProps>(({
           {/* Fixed ScrollArea with proper corners and Z-index */}
           <div className="relative rounded-2xl border border-white/5 bg-black/40 backdrop-blur-xl shadow-2xl overflow-hidden">
             {isLoading ? (
-              <div className="p-6 space-y-4">
-                {[1, 2, 3].map((i) => (
-                  <Skeleton key={i} className="h-24 w-full rounded-lg" />
-                ))}
+              <div className="p-12 text-center">
+                <Loading size="lg" text="Loading recent projects..." />
               </div>
             ) : filteredProjects.length === 0 ? (
               <div className="p-12 text-center">

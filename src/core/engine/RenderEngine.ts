@@ -13,6 +13,7 @@ if (typeof window !== 'undefined' && typeof pdfjsLib.GlobalWorkerOptions !== 'un
 const PADDING = 100;
 const PDF_RENDER_SCALE = 2;
 const MAX_CACHE_SIZE = 50; // Prevent memory leaks
+const MAX_PDF_CACHE_SIZE = 5; // Prevent PDF memory leaks
 const VIRTUAL_SCROLL_BUFFER = 2; // Render 2x viewport height
 
 export interface RenderConfig {
@@ -212,7 +213,11 @@ export class RenderEngine {
   private loadImage(src: string): Promise<HTMLImageElement> {
     // Return cached image
     if (this.cachedImages.has(src)) {
-      return Promise.resolve(this.cachedImages.get(src)!);
+      // LRU: move to end
+      const img = this.cachedImages.get(src)!;
+      this.cachedImages.delete(src);
+      this.cachedImages.set(src, img);
+      return Promise.resolve(img);
     }
 
     // Return existing loading promise
@@ -253,7 +258,11 @@ export class RenderEngine {
 
     // Return cached page
     if (this.cachedImages.has(key)) {
-      return this.cachedImages.get(key)!;
+      // LRU for images: move to end
+      const img = this.cachedImages.get(key)!;
+      this.cachedImages.delete(key);
+      this.cachedImages.set(key, img);
+      return Promise.resolve(img);
     }
 
     // Return existing loading promise
@@ -297,6 +306,11 @@ export class RenderEngine {
             useWorkerFetch: false,
           }).promise;
 
+          this.enforcePdfCacheSize();
+          this.cachedPdfDocs.set(dataUrl, pdf);
+        } else {
+          // LRU logic for pdfs: move to end
+          this.cachedPdfDocs.delete(dataUrl);
           this.cachedPdfDocs.set(dataUrl, pdf);
         }
 
@@ -352,11 +366,25 @@ export class RenderEngine {
 
   private enforceMaxCacheSize(): void {
     if (this.cachedImages.size >= MAX_CACHE_SIZE) {
-      // Remove oldest 10 entries (simple FIFO)
+      // Remove oldest 10 entries (LRU/FIFO)
       const keysToRemove = Array.from(this.cachedImages.keys()).slice(0, 10);
       keysToRemove.forEach(key => {
         this.cachedImages.delete(key);
         this.loadingStates.delete(key);
+      });
+    }
+  }
+
+  private enforcePdfCacheSize(): void {
+    if (this.cachedPdfDocs.size >= MAX_PDF_CACHE_SIZE) {
+      // Remove oldest entries (LRU/FIFO)
+      const keysToRemove = Array.from(this.cachedPdfDocs.keys()).slice(0, 2);
+      keysToRemove.forEach(key => {
+        const pdf = this.cachedPdfDocs.get(key);
+        if (pdf) {
+          try { pdf.destroy(); } catch (e) { }
+        }
+        this.cachedPdfDocs.delete(key);
       });
     }
   }

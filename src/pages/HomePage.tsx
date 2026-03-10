@@ -10,11 +10,11 @@ import {
   Building2,
   Briefcase,
   ChevronRight,
-  Loader2,
   Sparkles,
   Clock,
   Check
 } from 'lucide-react';
+import { Loading } from '@/components/ui/loading';
 import { AppLogo } from '@/components/Layout/AppLogo';
 import { cn } from '@/lib/utils';
 import { readJsonFile, writeJsonFile, isTauriApp } from '@/core/storage/NativeStorage';
@@ -155,16 +155,8 @@ export const HomePage = memo<HomePageProps>(({ onOpenVisualEditor, className }) 
     return messages[Math.floor(Math.random() * messages.length)];
   };
 
-  // Loading state with branded experience
   if (step === 'loading') {
-    return (
-      <div className="min-h-screen w-full flex flex-col items-center justify-center bg-gradient-to-br from-background via-background to-primary/5">
-        <div className="relative">
-          <AppLogo size="xl" />
-          <Loader2 className="h-6 w-6 animate-spin text-primary absolute -bottom-8 left-1/2 -translate-x-1/2" />
-        </div>
-      </div>
-    );
+    return <Loading variant="fullscreen" text="Opening SegiTelep..." size="xl" />;
   }
 
   // Onboarding with progressive disclosure and psychological hooks
@@ -398,10 +390,7 @@ export const HomePage = memo<HomePageProps>(({ onOpenVisualEditor, className }) 
                       className="flex-1 h-12 text-base font-semibold group relative overflow-hidden"
                     >
                       {isSubmitting ? (
-                        <>
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          Setting up...
-                        </>
+                        <Loading size="sm" text="Setting up..." variant="inline" className="text-primary-foreground" />
                       ) : (
                         <>
                           <span className="relative z-10 flex items-center">

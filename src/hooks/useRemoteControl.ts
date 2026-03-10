@@ -4,6 +4,7 @@ import { useVisualEditorState } from '@/components/Teleprompter/VisualEditor/use
 import { RemoteCommand } from '@/types/remote.types';
 import { listen } from '@tauri-apps/api/event';
 import { invoke } from '@tauri-apps/api/core';
+import { toast } from 'sonner';
 
 export const useRemoteControl = () => {
   const setPlaying = useVisualEditorState((s) => s.setPlaying);
@@ -247,8 +248,27 @@ export const useRemoteControl = () => {
 
     setup().catch(console.error);
 
+    // Listen for file transfers
+    let unlistenFile: any;
+    listen('remote-file-received', (event: any) => {
+      const payload = event.payload;
+      console.log('📂 Remote File Received:', payload);
+
+      toast.success(`Received from Mobile: ${payload.name}`, {
+        description: 'File saved to your Downloads folder.',
+        duration: 8000,
+        action: {
+          label: 'Open Folder',
+          onClick: () => {
+            invoke('show_in_folder', { file_path: payload.path }).catch(console.error);
+          }
+        }
+      });
+    }).then(u => unlistenFile = u);
+
     return () => {
       unlistenFns.forEach(fn => fn());
+      if (unlistenFile) unlistenFile();
     };
   }, [isTauri, handleRemoteCommand, remoteEnabled]);
 

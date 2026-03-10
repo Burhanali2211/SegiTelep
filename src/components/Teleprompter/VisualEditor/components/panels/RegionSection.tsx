@@ -1,5 +1,18 @@
-import React, { memo } from 'react';
-import { Layers3, PenTool, Play, Eye, EyeOff, Clock, ChevronUp, ChevronDown, Copy, Trash2 } from 'lucide-react';
+import React, { memo, useState, useEffect, useRef } from 'react';
+import {
+  Layers3,
+  PenTool,
+  Play,
+  Pause,
+  Eye,
+  EyeOff,
+  Clock,
+  ChevronUp,
+  ChevronDown,
+  Copy,
+  Trash2,
+  MoreVertical,
+} from 'lucide-react';
 import { formatTime } from '../../utils/formatTime';
 import { cn } from '@/lib/utils';
 import type { VisualSegment, ImagePage } from '../../types/visualEditor.types';
@@ -10,7 +23,6 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger,
 } from '@/components/ui/context-menu';
-import { AssetThumbnail } from '../AssetThumbnail';
 import { useVisualEditorState } from '../../useVisualEditorState';
 
 interface RegionSectionProps {
@@ -20,32 +32,71 @@ interface RegionSectionProps {
   onSegmentClick: (e: React.MouseEvent, segment: VisualSegment, pageIndex: number) => void;
   onPlaySegment: (segment: VisualSegment) => void;
   onToggleVisibility: (id: string) => void;
+  updateSegment: (id: string, updates: Partial<VisualSegment>) => void;
+  saveState: () => void;
   onMoveUp?: (id: string) => void;
   onMoveDown?: (id: string) => void;
   onDuplicate?: (id: string) => void;
   onDelete?: (id: string) => void;
 }
 
+// --- Compact Time Adjuster ---
+const TimePillAdjuster = memo<{
+  value: number;
+  onAdjust: (delta: number) => void;
+  label: string;
+  className?: string;
+}>(({ value, onAdjust, label, className }) => {
+  const [isActive, setIsActive] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
 
+  useEffect(() => {
+    if (!isActive) return;
+    const onClickOutside = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setIsActive(false);
+      }
+    };
+    document.addEventListener('mousedown', onClickOutside);
+    return () => document.removeEventListener('mousedown', onClickOutside);
+  }, [isActive]);
 
-import { Region } from '@/types/teleprompter.types';
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el || !isActive) return;
 
-const RegionThumbnail = memo<{ assetId?: string; data?: string; region: Region }>(({ assetId, data, region }) => {
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const delta = e.deltaY < 0 ? 1 : -1;
+      onAdjust(delta);
+    };
+
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, [isActive, onAdjust]);
+
   return (
-    <div className="w-8 h-8 rounded bg-muted/20 overflow-hidden shrink-0 border border-border/30 relative">
-      <div
-        className="absolute inset-0 w-full h-full"
-        style={{
-          transform: `scale(${100 / region.width}, ${100 / region.height})`,
-          transformOrigin: `${region.x}% ${region.y}%`,
-        }}
-      >
-        <AssetThumbnail
-          assetId={assetId}
-          data={data}
-          className="w-full h-full"
-        />
-      </div>
+    <div
+      ref={containerRef}
+      onClick={(e) => {
+        e.stopPropagation();
+        setIsActive(true);
+      }}
+      className={cn(
+        "flex items-center transition-all select-none cursor-pointer rounded-sm px-1.5 py-0.5",
+        isActive
+          ? "bg-primary text-primary-foreground shadow-[0_0_12px_rgba(var(--primary),0.6)] border border-primary/20"
+          : "text-white/80 hover:text-white hover:bg-white/5",
+        className
+      )}
+    >
+      <span className={cn(
+        "font-black text-[12px] tabular-nums tracking-tight transition-colors",
+        isActive ? "text-white" : "text-white/90"
+      )}>
+        {formatTime(value)}
+      </span>
     </div>
   );
 });
@@ -58,12 +109,12 @@ interface RegionListItemProps {
   isSelected: boolean;
   canMoveUp: boolean;
   canMoveDown: boolean;
-  assetId?: string;
-  data?: string;
   pageCount: number;
   onSegmentClick: (e: React.MouseEvent, segment: VisualSegment, pageIndex: number) => void;
   onPlaySegment: (segment: VisualSegment) => void;
   onToggleVisibility: (id: string) => void;
+  updateSegment: (id: string, updates: Partial<VisualSegment>) => void;
+  saveState: () => void;
   onMoveUp?: (id: string) => void;
   onMoveDown?: (id: string) => void;
   onDuplicate?: (id: string) => void;
@@ -78,18 +129,17 @@ const RegionListItem = memo<RegionListItemProps>(({
   isSelected,
   canMoveUp,
   canMoveDown,
-  assetId,
-  data,
   pageCount,
   onSegmentClick,
   onPlaySegment,
   onToggleVisibility,
+  updateSegment,
+  saveState,
   onMoveUp,
   onMoveDown,
   onDuplicate,
   onDelete
 }) => {
-  // Decentralized playback state selection - only re-renders when this specific segment starts/stops playing
   const isPlaying = useVisualEditorState(s =>
     s.isPlaying && s.playbackTime >= segment.startTime && s.playbackTime < segment.endTime
   );
@@ -106,7 +156,7 @@ const RegionListItem = memo<RegionListItemProps>(({
           onDoubleClick={() => onPlaySegment(segment)}
           onKeyDown={(e) => e.key === 'Enter' && onSegmentClick(e as unknown as React.MouseEvent, segment, pageIndex)}
           className={cn(
-            'w-full flex items-center gap-1.5 px-2 py-1.5 rounded-lg transition-all duration-150 text-left group cursor-pointer relative pr-16',
+            'w-full flex items-center gap-1.5 px-2 py-1 rounded-md transition-all duration-150 text-left group cursor-pointer relative pr-16',
             isPlaying && 'bg-destructive/15 ring-1 ring-destructive/30',
             isSelected && !isPlaying && 'bg-primary/15 ring-1 ring-primary/30',
             !isSelected && !isPlaying && 'hover:bg-muted/50',
@@ -114,70 +164,95 @@ const RegionListItem = memo<RegionListItemProps>(({
           )}
           style={{ contain: 'layout paint' }}
         >
-          <div className="flex items-center gap-2">
-            <div
-              className={cn(
-                'flex items-center justify-center w-6 h-6 rounded-md text-[10px] font-bold shrink-0',
-                isPlaying ? 'bg-destructive text-destructive-foreground' : isSelected ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'
-              )}
-            >
-              {globalNum}
-            </div>
-            <RegionThumbnail
-              assetId={assetId}
-              data={data}
-              region={segment.region}
-            />
+          <div className={cn(
+            "flex items-center justify-center w-7 h-7 rounded-full bg-white text-[12px] font-black shrink-0 transition-all duration-300 shadow-sm text-black",
+            isPlaying && "ring-2 ring-destructive/40"
+          )}>
+            {globalNum}
           </div>
           <div className="flex-1 min-w-0 overflow-hidden">
             <div className="flex items-center gap-1.5 min-w-0">
-              {segment.color && <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: segment.color }} />}
-              <span className={cn('text-[11px] font-medium truncate', segment.isHidden && 'opacity-50')}>{typeof segment.label === 'string' ? segment.label : ''}</span>
+              {typeof segment.label === 'string' && !segment.label.startsWith('Segment') && segment.label && (
+                <span className={cn('text-[11px] font-bold truncate text-foreground/90', segment.isHidden && 'opacity-50')}>
+                  {segment.label}
+                </span>
+              )}
               {segment.isHidden && <EyeOff size={10} className="text-muted-foreground shrink-0" />}
               {!isCurrentPage && pageCount > 1 && <span className="text-[9px] text-muted-foreground shrink-0">(P{pageIndex + 1})</span>}
             </div>
-            <div className="flex items-center gap-1.5 text-[10px] font-bold text-primary/70 tabular-nums whitespace-nowrap bg-primary/5 px-1.5 py-0.5 rounded-md border border-primary/10">
-              <Clock size={10} className="shrink-0 opacity-60" />
-              {(segment.endTime - segment.startTime).toFixed(1)}s
+            <div className="flex items-center justify-between mt-1 gap-1">
+              <TimePillAdjuster
+                value={segment.startTime}
+                label="Start"
+                onAdjust={(delta) => {
+                  saveState();
+                  const newStart = Math.max(0, segment.startTime + delta);
+                  if (newStart < segment.endTime) {
+                    updateSegment(segment.id, { startTime: newStart });
+                  }
+                }}
+              />
+              <span className="opacity-30 text-[9px] font-normal">to</span>
+              <TimePillAdjuster
+                value={segment.endTime}
+                label="End"
+                onAdjust={(delta) => {
+                  saveState();
+                  const newEnd = segment.endTime + delta;
+                  if (newEnd > segment.startTime) {
+                    updateSegment(segment.id, { endTime: newEnd });
+                  }
+                }}
+              />
             </div>
           </div>
-          <div className="absolute right-1.5 top-1/2 -translate-y-1/2 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity bg-background/80 rounded px-0.5">
+          <div className="absolute right-1.5 top-1/2 -translate-y-1/2 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity bg-background/90 backdrop-blur-sm rounded-md p-0.5 border shadow-sm">
+            <button
+              onClick={(e) => { e.stopPropagation(); onPlaySegment(segment); }}
+              className={cn(
+                "w-6 h-6 rounded flex items-center justify-center transition-colors",
+                isPlaying ? "text-destructive hover:bg-destructive/10" : "text-primary hover:bg-primary/10"
+              )}
+            >
+              {isPlaying ? <Pause size={12} fill="currentColor" /> : <Play size={12} fill="currentColor" className="ml-0.5" />}
+            </button>
+            <button
+              onClick={(e) => { e.stopPropagation(); saveState(); onToggleVisibility(segment.id); }}
+              className="w-6 h-6 rounded flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
+            >
+              {segment.isHidden ? <EyeOff size={12} /> : <Eye size={12} />}
+            </button>
             {onMoveUp && (
-              <button onClick={(e) => { e.stopPropagation(); onMoveUp(segment.id); }} disabled={!canMoveUp} className="w-5 h-5 rounded flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors disabled:opacity-30 disabled:pointer-events-none" title="Move up">
-                <ChevronUp size={10} />
+              <button onClick={(e) => { e.stopPropagation(); saveState(); onMoveUp(segment.id); }} disabled={!canMoveUp} className="w-6 h-6 rounded flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors disabled:opacity-20" title="Move up">
+                <ChevronUp size={12} />
               </button>
             )}
             {onMoveDown && (
-              <button onClick={(e) => { e.stopPropagation(); onMoveDown(segment.id); }} disabled={!canMoveDown} className="w-5 h-5 rounded flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors disabled:opacity-30 disabled:pointer-events-none" title="Move down">
-                <ChevronDown size={10} />
+              <button onClick={(e) => { e.stopPropagation(); saveState(); onMoveDown(segment.id); }} disabled={!canMoveDown} className="w-6 h-6 rounded flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors disabled:opacity-20" title="Move down">
+                <ChevronDown size={12} />
               </button>
             )}
-            <button onClick={(e) => { e.stopPropagation(); onPlaySegment(segment); }} className="w-5 h-5 rounded flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors">
-              <Play size={10} />
-            </button>
-            <button onClick={(e) => { e.stopPropagation(); onToggleVisibility(segment.id); }} className="w-5 h-5 rounded flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors">
-              {segment.isHidden ? <EyeOff size={10} /> : <Eye size={10} />}
-            </button>
           </div>
         </div>
       </ContextMenuTrigger>
       <ContextMenuContent className="w-48">
         <ContextMenuItem onClick={() => onPlaySegment(segment)}>
-          <Play size={14} className="mr-2" /> Play
+          {isPlaying ? <Pause size={14} className="mr-2" /> : <Play size={14} className="mr-2" />}
+          {isPlaying ? 'Pause' : 'Play'}
         </ContextMenuItem>
         {onDuplicate && (
-          <ContextMenuItem onClick={() => onDuplicate(segment.id)}>
+          <ContextMenuItem onClick={() => { saveState(); onDuplicate(segment.id); }}>
             <Copy size={14} className="mr-2" /> Duplicate
           </ContextMenuItem>
         )}
-        <ContextMenuItem onClick={() => onToggleVisibility(segment.id)}>
+        <ContextMenuItem onClick={() => { saveState(); onToggleVisibility(segment.id); }}>
           {segment.isHidden ? <Eye size={14} className="mr-2" /> : <EyeOff size={14} className="mr-2" />}
           {segment.isHidden ? 'Show' : 'Hide'}
         </ContextMenuItem>
         {onDelete && (
           <>
             <ContextMenuSeparator />
-            <ContextMenuItem className="text-destructive focus:text-destructive" onClick={() => onDelete(segment.id)}>
+            <ContextMenuItem className="text-destructive focus:text-destructive" onClick={() => { saveState(); onDelete(segment.id); }}>
               <Trash2 size={14} className="mr-2" /> Delete
             </ContextMenuItem>
           </>
@@ -194,6 +269,8 @@ export const RegionSection = memo<RegionSectionProps>(({
   onSegmentClick,
   onPlaySegment,
   onToggleVisibility,
+  updateSegment,
+  saveState,
   onMoveUp,
   onMoveDown,
   onDuplicate,
@@ -259,12 +336,12 @@ export const RegionSection = memo<RegionSectionProps>(({
                       isSelected={selectedSegmentIds.has(segment.id)}
                       canMoveUp={localIndex > 0}
                       canMoveDown={localIndex < segmentsInPage.length - 1}
-                      assetId={page.assetId}
-                      data={page.data}
                       pageCount={pages.length}
                       onSegmentClick={onSegmentClick}
                       onPlaySegment={onPlaySegment}
                       onToggleVisibility={onToggleVisibility}
+                      updateSegment={updateSegment}
+                      saveState={saveState}
                       onMoveUp={onMoveUp}
                       onMoveDown={onMoveDown}
                       onDuplicate={onDuplicate}

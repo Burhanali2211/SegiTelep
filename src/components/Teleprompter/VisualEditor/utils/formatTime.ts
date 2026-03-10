@@ -1,8 +1,7 @@
 export const formatTime = (seconds: number): string => {
   const mins = Math.floor(seconds / 60);
   const secs = Math.floor(seconds % 60);
-  const centis = Math.round((seconds % 1) * 100);
-  return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}.${centis.toString().padStart(2, '0')}`;
+  return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
 };
 
 export const parseTime = (timeStr: string): number => {

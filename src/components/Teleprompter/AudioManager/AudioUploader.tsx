@@ -1,6 +1,7 @@
 import React, { memo, useCallback, useRef } from 'react';
 import { Button } from '@/components/ui/button';
-import { Upload, Loader2 } from 'lucide-react';
+import { Upload } from 'lucide-react';
+import { Loading } from '@/components/ui/loading';
 import { isTauriApp } from '@/core/storage/NativeStorage';
 
 interface AudioUploaderProps {
@@ -43,7 +44,7 @@ export const AudioUploader = memo<AudioUploaderProps>(({
         className="gap-2"
       >
         {isLoading ? (
-          <Loader2 size={16} className="animate-spin" />
+          <Loading size="sm" />
         ) : (
           <Upload size={16} />
         )}

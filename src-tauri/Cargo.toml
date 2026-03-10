@@ -41,7 +41,7 @@ futures-util = "0.3"
 tokio-tungstenite = "0.24"  # Updated from 0.21
 
 # HTTP server
-axum = "0.7"
+axum = { version = "0.7", features = ["multipart"] }
 tower = "0.4"
 tower-http = { version = "0.5", features = ["cors"] }
 

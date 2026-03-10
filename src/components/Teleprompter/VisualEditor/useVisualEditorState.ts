@@ -183,17 +183,34 @@ const initialState = {
 
 // Helper to recalculate all timings based on page and segment order
 const conformTimeline = (pages: ImagePage[], defaultDuration: number): ImagePage[] => {
+  // 1. Flatten all segments with their page reference
+  const all = pages.flatMap((p, pIdx) => p.segments.map(s => ({ ...s, pIdx })));
+
+  // 2. Sort GLOBALLY by startTime to respect chronological creation order across pages
+  // We use order as a secondary key for stability within the same start time
+  all.sort((a, b) => (a.startTime - b.startTime) || (a.order - b.order));
+
+  // 3. Re-calculate strictly contiguous times
   let currentTime = 0;
-  return pages.map(page => {
-    const segments = [...page.segments].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-    const processedSegments = segments.map(s => {
-      const duration = s.endTime - s.startTime > 0 ? s.endTime - s.startTime : defaultDuration;
-      const startTime = currentTime;
-      const endTime = currentTime + duration;
-      currentTime = endTime;
-      return { ...s, startTime, endTime };
-    });
-    return { ...page, segments: processedSegments };
+  const conformed = all.map(s => {
+    const duration = Math.max(0.1, s.endTime - s.startTime > 0 ? s.endTime - s.startTime : defaultDuration);
+    const start = currentTime;
+    const end = currentTime + duration;
+    currentTime = end;
+    return { ...s, startTime: start, endTime: end };
+  });
+
+  // 4. Group back into pages and update internal page order
+  return pages.map((page, i) => {
+    const pageSegments = conformed
+      .filter(s => s.pIdx === i)
+      .sort((a, b) => a.startTime - b.startTime)
+      .map((s, idx) => {
+        const { pIdx, ...rest } = s as any;
+        return { ...rest, order: idx } as VisualSegment;
+      });
+
+    return { ...page, segments: pageSegments };
   });
 };
 
@@ -438,7 +455,8 @@ export const useVisualEditorState = create<VisualEditorState>((set, get) => ({
         return { ...page, segments };
       });
 
-      const conformedPages = chainTimesMode ? conformTimeline(newPages, state.defaultDuration) : newPages;
+      const isTimeChange = updates.startTime !== undefined || updates.endTime !== undefined || updates.order !== undefined;
+      const conformedPages = (chainTimesMode && isTimeChange) ? conformTimeline(newPages, state.defaultDuration) : newPages;
       return { pages: conformedPages, isDirty: true };
     });
   },
@@ -491,6 +509,8 @@ export const useVisualEditorState = create<VisualEditorState>((set, get) => ({
       }
       if (!source) return state;
 
+      const totalGlobalSegments = state.pages.reduce((acc, p) => acc + p.segments.length, 0);
+      const newLabel = `Segment ${totalGlobalSegments + 1}`;
       const duration = source.endTime - source.startTime;
       const newId = uuidv4();
 
@@ -508,7 +528,7 @@ export const useVisualEditorState = create<VisualEditorState>((set, get) => ({
           const duplicate: VisualSegment = {
             ...source!,
             id: newId,
-            label: `${source!.label} (copy)`,
+            label: newLabel,
             startTime: source!.endTime,
             endTime: source!.endTime + duration,
             order: updatedSegments.length,
@@ -539,7 +559,16 @@ export const useVisualEditorState = create<VisualEditorState>((set, get) => ({
         if (idx <= 0) return page;
 
         const segments = [...page.segments];
-        [segments[idx - 1], segments[idx]] = [segments[idx], segments[idx - 1]];
+        const s1 = segments[idx - 1];
+        const s2 = segments[idx];
+
+        if (state.chainTimesMode) {
+          const tmp = s1.startTime;
+          s1.startTime = s2.startTime;
+          s2.startTime = tmp;
+        }
+
+        [segments[idx - 1], segments[idx]] = [s2, s1];
         return {
           ...page,
           segments: segments.map((s, i) => ({ ...s, order: i })),
@@ -557,7 +586,16 @@ export const useVisualEditorState = create<VisualEditorState>((set, get) => ({
         if (idx < 0 || idx >= page.segments.length - 1) return page;
 
         const segments = [...page.segments];
-        [segments[idx], segments[idx + 1]] = [segments[idx + 1], segments[idx]];
+        const s1 = segments[idx];
+        const s2 = segments[idx + 1];
+
+        if (state.chainTimesMode) {
+          const tmp = s1.startTime;
+          s1.startTime = s2.startTime;
+          s2.startTime = tmp;
+        }
+
+        [segments[idx], segments[idx + 1]] = [s2, s1];
         return {
           ...page,
           segments: segments.map((s, i) => ({ ...s, order: i })),
@@ -579,6 +617,11 @@ export const useVisualEditorState = create<VisualEditorState>((set, get) => ({
 
         const [moved] = segments.splice(idx, 1);
         segments.splice(newIndex, 0, moved);
+
+        if (state.chainTimesMode) {
+          const targetStart = segments[newIndex === 0 ? 1 : newIndex - 1].startTime;
+          moved.startTime = newIndex === 0 ? targetStart - 0.001 : targetStart + 0.001;
+        }
 
         return {
           ...page,
@@ -745,6 +788,7 @@ export const useVisualEditorState = create<VisualEditorState>((set, get) => ({
           s.id === id ? { ...s, isHidden: !s.isHidden } : s
         ),
       })),
+      isDirty: true,
     }));
   },
 
@@ -754,6 +798,7 @@ export const useVisualEditorState = create<VisualEditorState>((set, get) => ({
         ...page,
         segments: page.segments.map(s => ({ ...s, isHidden: false })),
       })),
+      isDirty: true,
     }));
   },
 

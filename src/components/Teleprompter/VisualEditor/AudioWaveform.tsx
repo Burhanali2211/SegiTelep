@@ -90,7 +90,8 @@ export const AudioWaveform = memo<AudioWaveformProps>(({ className, onOpenAudioL
   const isPlaying = useVisualEditorState((s) => s.isPlaying);
   const showPlayer = useVisualEditorState((s) => s.showPlayer);
   const playbackSpeed = useVisualEditorState((s) => s.playbackSpeed);
-  const currentPage = useVisualEditorState((s) => s.getCurrentPage());
+  const currentPageIndex = useVisualEditorState((s) => s.currentPageIndex);
+  const pages = useVisualEditorState((s) => s.pages);
 
   const setAudioFile = useVisualEditorState((s) => s.setAudioFile);
   const setPlaybackTime = useVisualEditorState((s) => s.setPlaybackTime);
@@ -100,7 +101,7 @@ export const AudioWaveform = memo<AudioWaveformProps>(({ className, onOpenAudioL
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Generate waveform data - optimized with caching
+  // Generate waveform data
   useEffect(() => {
     if (!audioFile?.id || !audioFile.data) {
       setWaveformData([]);
@@ -108,7 +109,6 @@ export const AudioWaveform = memo<AudioWaveformProps>(({ className, onOpenAudioL
       return;
     }
 
-    // Check cache first
     const cached = getCachedWaveform(audioFile.id);
     if (cached) {
       setWaveformData(cached);
@@ -122,7 +122,7 @@ export const AudioWaveform = memo<AudioWaveformProps>(({ className, onOpenAudioL
     const decodeAndExtractWaveform = async () => {
       let audioContext: AudioContext | null = null;
       try {
-        const res = await fetch(audioFile.data, { signal: controller.signal });
+        const res = await fetch(audioFile!.data, { signal: controller.signal });
         const arrayBuffer = await res.arrayBuffer();
         if (cancelled) return;
 
@@ -138,18 +138,18 @@ export const AudioWaveform = memo<AudioWaveformProps>(({ className, onOpenAudioL
         for (let i = 0; i < samples; i++) {
           let sum = 0;
           const start = i * blockSize;
-          for (let j = 0; j < blockSize; j += 4) { // Sample every 4th for speed
+          for (let j = 0; j < blockSize; j += 4) {
             sum += Math.abs(rawData[start + j]);
           }
           filteredData.push(sum / (blockSize / 4));
         }
 
         const maxVal = Math.max(...filteredData) || 0.001;
-        const normalized = filteredData.map(v => Math.pow(v / maxVal, 0.8)); // Add slight compression for visibility
+        const normalized = filteredData.map(v => Math.pow(v / maxVal, 0.8));
 
         if (!cancelled) {
           setWaveformData(normalized);
-          setCachedWaveform(audioFile.id, normalized);
+          setCachedWaveform(audioFile!.id, normalized);
           setIsAudioReady(true);
         }
       } catch (err) {
@@ -195,7 +195,7 @@ export const AudioWaveform = memo<AudioWaveformProps>(({ className, onOpenAudioL
     };
   }, [audioFile?.data, setPlaying, setPlaybackTime]);
 
-  // Resize canvas observer - get width from container
+  // Resize canvas observer
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
@@ -206,7 +206,6 @@ export const AudioWaveform = memo<AudioWaveformProps>(({ className, onOpenAudioL
     };
 
     updateWidth();
-    requestAnimationFrame(updateWidth);
     const observer = new ResizeObserver((entries) => {
       for (const entry of entries) {
         const w = entry.contentRect.width;
@@ -216,23 +215,22 @@ export const AudioWaveform = memo<AudioWaveformProps>(({ className, onOpenAudioL
 
     observer.observe(container);
     return () => observer.disconnect();
-  }, [audioFile]);
+  }, []);
 
-  // Draw waveform visualization (optimized)
+  // Draw waveform visualization
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d', { alpha: true });
     if (!ctx) return;
 
-    const w = canvasWidth || containerRef.current?.offsetWidth || 0;
+    const w = canvasWidth || 0;
     if (w <= 0) return;
 
     const height = WAVEFORM_HEIGHT;
     const duration = audioFile?.duration || 1;
     const dpr = window.devicePixelRatio || 1;
 
-    // Redraw function called on demand
     const draw = (currentTime: number) => {
       if (canvas.width !== w * dpr) {
         canvas.width = w * dpr;
@@ -246,38 +244,51 @@ export const AudioWaveform = memo<AudioWaveformProps>(({ className, onOpenAudioL
       ctx.clearRect(0, 0, w, height);
 
       const primary = getCanvasColor('--primary');
-      const primaryLow = getCanvasColor('--primary', 0.15);
       const mutedFg30 = getCanvasColor('--muted-foreground', 0.25);
       const destructive = '#ef4444';
       const progress = Math.min(currentTime / duration, 1);
 
-      // 1. Draw Segments with premium styling
+      // 1. Draw Segments
       const selectedIds = useVisualEditorState.getState().selectedSegmentIds;
-      const segments = currentPage?.segments || [];
+      const allSegments = pages.flatMap(p => p.segments);
 
-      segments.forEach(segment => {
+      allSegments.forEach((segment) => {
         if (segment.isHidden) return;
         const isSelected = selectedIds.has(segment.id);
+        const isActive = currentTime >= segment.startTime && currentTime < segment.endTime;
+
         const startX = (segment.startTime / duration) * w;
         const endX = (segment.endTime / duration) * w;
         const segWidth = Math.max(2, endX - startX);
 
-        // Segment Background
-        ctx.fillStyle = isSelected ? getCanvasColor('--primary', 0.08) : getCanvasColor('--primary', 0.03);
-        ctx.fillRect(startX, 0, segWidth, height);
+        if (isActive) {
+          ctx.fillStyle = 'rgba(59, 130, 246, 0.15)';
+          ctx.fillRect(startX, 0, segWidth, height);
 
-        // Top/Bottom Accent Bars
-        ctx.fillStyle = isSelected ? primary : getCanvasColor('--primary', 0.4);
-        ctx.fillRect(startX, 0, segWidth, 2);
-        ctx.fillRect(startX, height - 2, segWidth, 2);
+          const grad = ctx.createLinearGradient(0, 0, 0, 4);
+          grad.addColorStop(0, 'rgba(59, 130, 246, 1)');
+          grad.addColorStop(1, 'rgba(59, 130, 246, 0)');
+          ctx.fillStyle = grad;
+          ctx.fillRect(startX, 0, segWidth, 4);
 
-        // Side Borders
-        ctx.fillStyle = isSelected ? primary : getCanvasColor('--primary', 0.2);
+          ctx.fillStyle = '#3b82f6';
+        } else if (isSelected) {
+          ctx.fillStyle = getCanvasColor('--primary', 0.1);
+          ctx.fillRect(startX, 0, segWidth, height);
+          ctx.fillStyle = primary;
+        } else {
+          ctx.fillStyle = getCanvasColor('--muted-foreground', 0.3);
+        }
+
+        ctx.globalAlpha = isActive ? 1.0 : isSelected ? 0.8 : 0.3;
         ctx.fillRect(startX, 0, 1.5, height);
         ctx.fillRect(endX - 1.5, 0, 1.5, height);
+        ctx.fillRect(startX, 0, segWidth, 1.5);
+        ctx.fillRect(startX, height - 1.5, segWidth, 1.5);
+        ctx.globalAlpha = 1.0;
       });
 
-      // 2. Draw Waveform with rounded bars
+      // 2. Draw Waveform
       if (waveformData.length > 0) {
         const barWidth = w / waveformData.length;
         const barGap = 2;
@@ -289,12 +300,24 @@ export const AudioWaveform = memo<AudioWaveformProps>(({ className, onOpenAudioL
           const yTop = (height - barHeight) / 2;
           const barProgress = i / waveformData.length;
           const isPlayed = barProgress < progress;
+          const barTime = barProgress * duration;
 
-          // Check if this bar is inside a segment
-          const barTime = (barProgress) * duration;
-          const isInSegment = segments.some(s => !s.isHidden && barTime >= s.startTime && barTime <= s.endTime);
+          const segmentAtTime = allSegments.find(s => !s.isHidden && barTime >= s.startTime && barTime <= s.endTime);
+          const isActiveBar = segmentAtTime && currentTime >= segmentAtTime.startTime && currentTime < segmentAtTime.endTime;
 
-          ctx.fillStyle = isPlayed ? primary : (isInSegment ? primaryLow : mutedFg30);
+          if (isPlayed) {
+            ctx.fillStyle = primary;
+            ctx.globalAlpha = 1.0;
+          } else if (isActiveBar) {
+            ctx.fillStyle = '#3b82f6';
+            ctx.globalAlpha = 1.0;
+          } else if (segmentAtTime) {
+            ctx.fillStyle = primary;
+            ctx.globalAlpha = 0.3;
+          } else {
+            ctx.fillStyle = mutedFg30;
+            ctx.globalAlpha = 0.5;
+          }
 
           if (ctx.roundRect) {
             ctx.beginPath();
@@ -303,30 +326,21 @@ export const AudioWaveform = memo<AudioWaveformProps>(({ className, onOpenAudioL
           } else {
             ctx.fillRect(x, yTop, actualBarWidth, barHeight);
           }
+          ctx.globalAlpha = 1.0;
         });
-      } else {
-        // Fallback line
-        ctx.fillStyle = getCanvasColor('--muted-foreground', 0.1);
-        ctx.fillRect(0, height / 2 - 1, w, 2);
-        ctx.fillStyle = primary;
-        ctx.fillRect(0, height / 2 - 1, w * progress, 2);
       }
 
-      // 3. Draw Playhead (Indicator)
+      // 3. Draw Playhead
       const playheadX = progress * w;
-
-      // Glow effect for playhead
       const glow = ctx.createRadialGradient(playheadX, height / 2, 0, playheadX, height / 2, 10);
       glow.addColorStop(0, 'rgba(239, 68, 68, 0.2)');
       glow.addColorStop(1, 'rgba(239, 68, 68, 0)');
       ctx.fillStyle = glow;
       ctx.fillRect(playheadX - 10, 0, 20, height);
 
-      // Line
       ctx.fillStyle = destructive;
       ctx.fillRect(playheadX - 1, 0, 2, height);
 
-      // Precise Cap
       ctx.beginPath();
       ctx.moveTo(playheadX - 4, 0);
       ctx.lineTo(playheadX + 4, 0);
@@ -336,7 +350,6 @@ export const AudioWaveform = memo<AudioWaveformProps>(({ className, onOpenAudioL
       ctx.restore();
     };
 
-    // Listen for high-frequency ticks
     const handleTick = (e: CustomEvent<{ time: number }>) => {
       draw(e.detail.time);
     };
@@ -344,82 +357,57 @@ export const AudioWaveform = memo<AudioWaveformProps>(({ className, onOpenAudioL
     draw(playbackTime);
     window.addEventListener('playback-tick' as any, handleTick);
     return () => window.removeEventListener('playback-tick' as any, handleTick);
-  }, [waveformData, canvasWidth, playbackTime, audioFile?.duration, currentPage?.segments]);
+  }, [waveformData, canvasWidth, playbackTime, audioFile?.duration, pages]);
 
-  // Register stop callback so others can stop us when they start
   useEffect(() => {
     return registerStopCallback('visual-editor', () => {
-      if (audioRef.current) {
-        audioRef.current.pause();
-      }
+      if (audioRef.current) audioRef.current.pause();
       setPlaying(false);
     });
   }, [setPlaying]);
 
-  // Handle playback state changes
   useEffect(() => {
     const audio = audioRef.current;
-    if (!audio || !isAudioReady) return;
-    // FullscreenPlayer has its own audio - don't play here when it's open
-    if (showPlayer) return;
+    if (!audio || !isAudioReady || showPlayer) return;
 
     audio.playbackRate = playbackSpeed;
     audio.muted = isMuted;
 
     if (isPlaying) {
       stopAllExcept('visual-editor');
-      // Sync audio time if significantly out of sync
       if (Math.abs(audio.currentTime - playbackTime) > 0.1) {
         audio.currentTime = playbackTime;
       }
+      audio.play().catch(() => setPlaying(false));
 
-      audio.play().catch((e) => {
-        console.error('Playback failed:', e);
-        setPlaying(false);
-      });
-
-      // Animation loop for time updates
       let lastStoreUpdate = 0;
       const updateTime = () => {
-        const audio = audioRef.current;
         if (audio && !audio.paused && !isSeekingRef.current) {
           const now = performance.now();
           const currentTime = audio.currentTime;
 
-          // Emit high-frequency tick for UI components - sanitize data for cross-context safety
-          const tickEvent = new CustomEvent('playback-tick', {
-            detail: JSON.parse(JSON.stringify({ time: currentTime }))
-          });
-          window.dispatchEvent(tickEvent);
+          window.dispatchEvent(new CustomEvent('playback-tick', {
+            detail: { time: currentTime }
+          }));
 
-          // Throttle Zustand store updates (10fps for data binding)
           if (now - lastStoreUpdate > 100) {
             setPlaybackTime(currentTime);
             lastStoreUpdate = now;
           }
         }
-        if (isPlaying) {
-          animationRef.current = requestAnimationFrame(updateTime);
-        }
+        if (isPlaying) animationRef.current = requestAnimationFrame(updateTime);
       };
       animationRef.current = requestAnimationFrame(updateTime);
     } else {
       audio.pause();
-      if (animationRef.current) {
-        cancelAnimationFrame(animationRef.current);
-        animationRef.current = null;
-      }
+      if (animationRef.current) cancelAnimationFrame(animationRef.current);
     }
 
     return () => {
-      if (animationRef.current) {
-        cancelAnimationFrame(animationRef.current);
-        animationRef.current = null;
-      }
+      if (animationRef.current) cancelAnimationFrame(animationRef.current);
     };
   }, [isPlaying, playbackSpeed, isMuted, isAudioReady, showPlayer, setPlaying, setPlaybackTime, playbackTime]);
 
-  // Seek on canvas click
   const handleCanvasClick = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     const duration = audioFile?.duration;
     if (!duration) return;
@@ -433,32 +421,26 @@ export const AudioWaveform = memo<AudioWaveformProps>(({ className, onOpenAudioL
 
     isSeekingRef.current = true;
     setPlaybackTime(newTime);
+    if (audioRef.current) audioRef.current.currentTime = newTime;
 
-    if (audioRef.current) {
-      audioRef.current.currentTime = newTime;
-    }
-
-    // Check if clicked on a segment
-    const segments = currentPage?.segments || [];
-    const clickedSegment = segments.find(seg => {
+    const allSegments = pages.flatMap(p => p.segments);
+    const clickedSegment = allSegments.find(seg => {
       const startX = (seg.startTime / duration) * rect.width;
       const endX = (seg.endTime / duration) * rect.width;
       return x >= startX && x <= endX;
     });
 
     if (clickedSegment) {
+      if (clickedSegment.pageIndex !== currentPageIndex) {
+        useVisualEditorState.getState().setCurrentPage(clickedSegment.pageIndex);
+      }
       selectSegment(clickedSegment.id, 'single');
     }
 
-    setTimeout(() => {
-      isSeekingRef.current = false;
-    }, 50);
-  }, [audioFile?.duration, currentPage?.segments, setPlaybackTime, selectSegment]);
+    setTimeout(() => { isSeekingRef.current = false; }, 50);
+  }, [audioFile?.duration, pages, currentPageIndex, setPlaybackTime, selectSegment]);
 
-  // File upload handler
-  const handleUploadAudio = useCallback(() => {
-    fileInputRef.current?.click();
-  }, []);
+  const handleUploadAudio = useCallback(() => fileInputRef.current?.click(), []);
 
   const handleFileChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -467,39 +449,19 @@ export const AudioWaveform = memo<AudioWaveformProps>(({ className, onOpenAudioL
     try {
       const probeUrl = URL.createObjectURL(file);
       const audio = new Audio(probeUrl);
-
-      await new Promise((resolve, reject) => {
-        audio.onloadedmetadata = resolve;
-        audio.onerror = reject;
-        setTimeout(resolve, 5000); // Progress even if probe fails
-      });
+      await new Promise(r => { audio.onloadedmetadata = r; setTimeout(r, 5000); });
 
       const audioId = `audio_${Date.now()}`;
-      const audioFileMetadata = {
-        id: audioId,
-        name: file.name,
-        data: '', // Will be resolved
-        duration: isFinite(audio.duration) ? audio.duration : 0,
-        size: file.size,
-        type: file.type || 'audio/mpeg',
-        createdAt: Date.now()
-      };
+      const meta = { id: audioId, name: file.name, data: '', duration: isFinite(audio.duration) ? audio.duration : 0 };
 
-      // Save using the optimized binary pipeline
-      await saveAudioFile(audioFileMetadata, file);
-
-      // Resolve the usable local URL
+      await saveAudioFile({ ...meta, size: file.size, type: file.type, createdAt: Date.now() }, file);
       const finalUrl = await AudioResolver.resolve(audioId, audioId);
 
-      setAudioFile({
-        ...audioFileMetadata,
-        data: finalUrl || ''
-      });
+      setAudioFile({ ...meta, data: finalUrl || '' });
       setPlaybackTime(0);
       URL.revokeObjectURL(probeUrl);
       toast.success(`Audio loaded: ${file.name}`);
     } catch (err) {
-      console.error('Failed to load audio:', err);
       toast.error('Could not process audio file');
     } finally {
       e.target.value = '';
@@ -507,179 +469,57 @@ export const AudioWaveform = memo<AudioWaveformProps>(({ className, onOpenAudioL
   }, [setAudioFile, setPlaybackTime]);
 
   const handleRemoveAudio = useCallback(() => {
-    if (audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current.src = '';
-      audioRef.current = null;
-    }
+    if (audioRef.current) { audioRef.current.pause(); audioRef.current.src = ''; }
     setAudioFile(null);
     setPlaybackTime(0);
     setPlaying(false);
     setIsAudioReady(false);
   }, [setAudioFile, setPlaybackTime, setPlaying]);
 
-  const handleTogglePlay = useCallback(() => {
-    if (!isAudioReady) return;
-    if (!isPlaying) {
-      stopAllExcept('visual-editor');
-    }
-    setPlaying(!isPlaying);
-  }, [isPlaying, isAudioReady, setPlaying]);
-
-  const handleSeek = useCallback((delta: number) => {
-    const duration = audioFile?.duration || 0;
-    const newTime = Math.max(0, Math.min(playbackTime + delta, duration));
-
-    isSeekingRef.current = true;
-    setPlaybackTime(newTime);
-
-    if (audioRef.current) {
-      audioRef.current.currentTime = newTime;
-    }
-
-    setTimeout(() => {
-      isSeekingRef.current = false;
-    }, 50);
-  }, [playbackTime, audioFile?.duration, setPlaybackTime]);
-
-  const cycleSpeed = useCallback(() => {
-    const speeds = [0.5, 0.75, 1, 1.25, 1.5, 2];
-    const currentIndex = speeds.indexOf(playbackSpeed);
-    const nextIndex = (currentIndex + 1) % speeds.length;
-    setPlaybackSpeed(speeds[nextIndex]);
-  }, [playbackSpeed, setPlaybackSpeed]);
-
-  const toggleMute = useCallback(() => {
-    setIsMuted(!isMuted);
-    if (audioRef.current) {
-      audioRef.current.muted = !isMuted;
-    }
-  }, [isMuted]);
-
   return (
     <div className={cn('flex items-center gap-4 px-4 py-1.5 bg-background/80 backdrop-blur-md border-t border-border/50 shrink-0 min-h-[48px] max-h-[48px] overflow-hidden shadow-[0_-4px_12px_-8px_rgba(0,0,0,0.1)]', className)}>
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept="audio/*"
-        className="hidden"
-        onChange={handleFileChange}
-      />
-
+      <input ref={fileInputRef} type="file" accept="audio/*" className="hidden" onChange={handleFileChange} />
       {!audioFile ? (
-        <div className="flex items-center gap-1.5">
-          <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={handleUploadAudio}>
-            <Upload size={12} className="mr-1.5" />
-            Load Audio
-          </Button>
-        </div>
+        <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={handleUploadAudio}>
+          <Upload size={12} className="mr-1.5" /> Load Audio
+        </Button>
       ) : (
         <>
-          {/* Playback controls */}
           <div className="flex items-center gap-0.5">
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button variant="ghost" size="icon" className="h-7 w-7 hover:bg-primary/10 transition-colors" onClick={() => handleSeek(-5)}>
-                  <SkipBack size={13} />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="top">Back 5s</TooltipContent>
-            </Tooltip>
-
-            <Button
-              variant="default"
-              size="icon"
-              className={cn(
-                "h-8 w-8 rounded-full shadow-lg transition-all active:scale-95",
-                isPlaying ? "bg-primary hover:bg-primary/90" : "bg-primary hover:bg-primary/90"
-              )}
-              onClick={handleTogglePlay}
-              disabled={!isAudioReady}
-            >
+            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => {
+              const newTime = Math.max(0, playbackTime - 5);
+              setPlaybackTime(newTime);
+              if (audioRef.current) audioRef.current.currentTime = newTime;
+            }}><SkipBack size={13} /></Button>
+            <Button variant="default" size="icon" className="h-8 w-8 rounded-full" onClick={() => setPlaying(!isPlaying)} disabled={!isAudioReady}>
               {isPlaying ? <Pause size={16} fill="currentColor" /> : <Play size={16} fill="currentColor" className="ml-0.5" />}
             </Button>
-
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button variant="ghost" size="icon" className="h-7 w-7 hover:bg-primary/10 transition-colors" onClick={() => handleSeek(5)}>
-                  <SkipForward size={13} />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="top">Forward 5s</TooltipContent>
-            </Tooltip>
+            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => {
+              const newTime = Math.min(audioFile.duration, playbackTime + 5);
+              setPlaybackTime(newTime);
+              if (audioRef.current) audioRef.current.currentTime = newTime;
+            }}><SkipForward size={13} /></Button>
           </div>
-
-          {/* Time display */}
           <div className="flex items-center bg-muted/20 px-2.5 py-1 rounded-full border border-border/10 shrink-0 text-[11px]">
             <div className="font-mono font-bold tabular-nums text-primary">
               <PlaybackTimeDisplay initialTime={playbackTime} />
             </div>
-            <span className="font-mono text-muted-foreground/40 mx-1">
-              /
-            </span>
-            <span className="font-mono text-muted-foreground tabular-nums">
-              {formatTime(audioFile.duration)}
-            </span>
+            <span className="font-mono text-muted-foreground/40 mx-1">/</span>
+            <span className="font-mono text-muted-foreground tabular-nums">{formatTime(audioFile.duration)}</span>
           </div>
-
-          {/* Waveform visualization - fixed height container */}
-          <div
-            ref={containerRef}
-            className="flex-1 min-w-[120px] h-8 shrink min-h-0 overflow-hidden flex items-center bg-muted/10 rounded-lg relative border border-border/5"
-          >
-            <canvas
-              ref={canvasRef}
-              onClick={handleCanvasClick}
-              className="cursor-pointer w-full h-8 block"
-              style={{ height: WAVEFORM_HEIGHT, minHeight: WAVEFORM_HEIGHT }}
-            />
+          <div ref={containerRef} className="flex-1 min-w-[120px] h-8 shrink min-h-0 overflow-hidden flex items-center bg-muted/10 rounded-lg relative border border-border/5">
+            <canvas ref={canvasRef} onClick={handleCanvasClick} className="cursor-pointer w-full h-8 block" />
           </div>
-
-          {/* Mute button */}
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7 hover:bg-muted/50 rounded-full"
-                onClick={toggleMute}
-              >
-                {isMuted ? <VolumeX size={13} /> : <Volume2 size={13} />}
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="top">{isMuted ? 'Unmute' : 'Mute'}</TooltipContent>
-          </Tooltip>
-
-          {/* Speed control */}
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-7 px-2 text-[10px] font-mono font-bold gap-1 blur-none hover:bg-muted/50 rounded-full"
-                onClick={cycleSpeed}
-              >
-                <Gauge size={11} className="text-primary" />
-                {playbackSpeed}x
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="top">Playback speed</TooltipContent>
-          </Tooltip>
-
-          {/* Remove audio */}
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-6 w-6 text-muted-foreground hover:text-destructive"
-                onClick={handleRemoveAudio}
-              >
-                <X size={11} />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="top">Remove audio</TooltipContent>
-          </Tooltip>
+          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setIsMuted(!isMuted)}>
+            {isMuted ? <VolumeX size={13} /> : <Volume2 size={13} />}
+          </Button>
+          <Button variant="ghost" size="sm" className="h-7 px-2 text-[10px] font-mono font-bold" onClick={() => {
+            const speeds = [0.5, 0.75, 1, 1.25, 1.5, 2];
+            setPlaybackSpeed(speeds[(speeds.indexOf(playbackSpeed) + 1) % speeds.length]);
+          }}><Gauge size={11} className="mr-1" />{playbackSpeed}x</Button>
+          <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-destructive" onClick={handleRemoveAudio}>
+            <X size={11} />
+          </Button>
         </>
       )}
     </div>

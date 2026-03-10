@@ -209,8 +209,13 @@ export const ImageCanvas = memo<ImageCanvasProps>(({ className }) => {
     if (!imageEl) return { x: 0, y: 0 };
 
     const rect = imageEl.getBoundingClientRect();
-    const x = ((e.clientX - rect.left) / rect.width) * 100;
-    const y = ((e.clientY - rect.top) / rect.height) * 100;
+
+    // Ensure we don't divide by zero
+    const rectWidth = Math.max(1, rect.width);
+    const rectHeight = Math.max(1, rect.height);
+
+    const x = ((e.clientX - rect.left) / rectWidth) * 100;
+    const y = ((e.clientY - rect.top) / rectHeight) * 100;
 
     return {
       x: Math.max(0, Math.min(100, x)),
@@ -311,38 +316,80 @@ export const ImageCanvas = memo<ImageCanvasProps>(({ className }) => {
 
     const coords = getPercentCoords(e);
     const aspectRatio = getAspectRatioValue();
-    let width = Math.abs(coords.x - drawStart.x);
-    let height = Math.abs(coords.y - drawStart.y);
+
+    // Raw dimensions and directions
+    const rawDx = coords.x - drawStart.x;
+    const rawDy = coords.y - drawStart.y;
+    let width = Math.abs(rawDx);
+    let height = Math.abs(rawDy);
 
     // Apply aspect ratio constraint
     if (aspectRatio && imageRef.current) {
-      // Convert to actual pixel proportions considering image dimensions
-      const imageAspect = imageRef.current.width / imageRef.current.height;
-      const adjustedRatio = aspectRatio / imageAspect;
+      const imageAspect = imageRef.current.naturalWidth / imageRef.current.naturalHeight;
+      const targetRatioInPercent = aspectRatio / imageAspect;
 
-      // Constrain height based on width
-      const constrainedHeight = width / adjustedRatio;
+      // Decide which dimension should drive based on which one is "further" from the ratio
+      const currentRatio = width / (height || 0.001);
 
-      // Use the dimension that gives smallest area (user controls size by dragging)
-      if (constrainedHeight <= Math.abs(coords.y - drawStart.y) * 1.5) {
-        height = constrainedHeight;
+      if (currentRatio > targetRatioInPercent) {
+        // Dragger is more horizontal than the target ratio -> width drives height
+        height = width / targetRatioInPercent;
       } else {
-        // Constrain width based on height
-        width = height * adjustedRatio;
+        // Dragger is more vertical than the target ratio -> height drives width
+        width = height * targetRatioInPercent;
       }
+
+      // Clamp dimensions to ensure they fit in the 0-100 range from the START point
+      if (rawDx >= 0) {
+        width = Math.min(width, 100 - drawStart.x);
+      } else {
+        width = Math.min(width, drawStart.x);
+      }
+
+      if (rawDy >= 0) {
+        height = Math.min(height, 100 - drawStart.y);
+      } else {
+        height = Math.min(height, drawStart.y);
+      }
+
+      // Re-apply ratio after clamping individual dimensions to maintain integrity
+      if (width / height > targetRatioInPercent) {
+        height = width / targetRatioInPercent;
+      } else {
+        width = height * targetRatioInPercent;
+      }
+
+      // Final boundary check for the pair
+      const maxX = rawDx >= 0 ? 100 - drawStart.x : drawStart.x;
+      const maxY = rawDy >= 0 ? 100 - drawStart.y : drawStart.y;
+
+      if (width > maxX) {
+        width = maxX;
+        height = width / targetRatioInPercent;
+      }
+      if (height > maxY) {
+        height = maxY;
+        width = height * targetRatioInPercent;
+      }
+    } else {
+      // Free drawing - simple clamping
+      if (rawDx >= 0) width = Math.min(width, 100 - drawStart.x);
+      else width = Math.min(width, drawStart.x);
+
+      if (rawDy >= 0) height = Math.min(height, 100 - drawStart.y);
+      else height = Math.min(height, drawStart.y);
     }
 
-    // Calculate position (handle negative drag directions)
-    const x = coords.x < drawStart.x ? drawStart.x - width : drawStart.x;
-    const y = coords.y < drawStart.y ? drawStart.y - height : drawStart.y;
+    // Calculate top-left based on drag direction
+    const x = rawDx < 0 ? drawStart.x - width : drawStart.x;
+    const y = rawDy < 0 ? drawStart.y - height : drawStart.y;
 
-    // Clamp to image bounds
-    const clampedX = Math.max(0, Math.min(100 - width, x));
-    const clampedY = Math.max(0, Math.min(100 - height, y));
-    const clampedWidth = Math.min(width, 100 - clampedX);
-    const clampedHeight = Math.min(height, 100 - clampedY);
-
-    setCurrentDraw({ x: clampedX, y: clampedY, width: clampedWidth, height: clampedHeight });
+    setCurrentDraw({
+      x: Math.max(0, Math.min(100 - width, x)),
+      y: Math.max(0, Math.min(100 - height, y)),
+      width,
+      height
+    });
   }, [isDrawing, drawStart, isPanning, panStart, getPercentCoords, setPan, getAspectRatioValue]);
 
   const handlePointerUp = useCallback((e: React.PointerEvent) => {

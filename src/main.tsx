@@ -6,7 +6,9 @@ import "./index.css";
 // Production-safe global error handlers
 if (typeof window !== 'undefined') {
   window.addEventListener('error', (event) => {
-    console.error('Global error:', event.error);
+    // Safe logging for Firefox Xray boundaries
+    const errorMsg = event.error?.message || event.message || "Unknown global error";
+    console.error('Global error:', errorMsg);
   });
 
   window.addEventListener('unhandledrejection', (event) => {

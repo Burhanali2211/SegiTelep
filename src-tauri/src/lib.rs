@@ -37,14 +37,39 @@ async fn start_remote_server(
     }
 
     let local_ip = if let Ok(ips) = local_ip_address::list_afinet_netifas() {
-        ips.iter()
-            .find(|(_, ip)| {
+        // High priority: Physical Wi-Fi/Ethernet (usually 192.168.x.x or 10.x.x.x)
+        // Low priority: Virtual adapters (vEthernet, WSL, etc. often 172.x.x.x)
+        
+        let mut filtered_ips: Vec<_> = ips.iter()
+            .filter(|(name, ip)| {
+                let name_lower = name.to_lowercase();
+                let is_virtual = name_lower.contains("vethernet") || 
+                                 name_lower.contains("wsl") || 
+                                 name_lower.contains("virtual") || 
+                                 name_lower.contains("hyper-v");
+                
                 let ip_str = ip.to_string();
-                (ip_str.starts_with("192.168.") || ip_str.starts_with("10.") || ip_str.starts_with("172.")) 
-                && !ip_str.starts_with("127.")
+                let is_valid_local = (ip_str.starts_with("192.168.") || ip_str.starts_with("10.") || ip_str.starts_with("172.")) 
+                                     && !ip_str.starts_with("127.");
+                
+                is_valid_local && !is_virtual
             })
-            .map(|(_, ip)| *ip)
-            .unwrap_or_else(|| local_ip_address::local_ip().unwrap_or(std::net::IpAddr::V4(std::net::Ipv4Addr::new(127, 0, 0, 1))))
+            .collect();
+
+        // If we found multiple, prefer 192.168.x.x as it's most common for home Wi-Fi
+        filtered_ips.sort_by_key(|(_, ip)| {
+            let s = ip.to_string();
+            if s.starts_with("192.168.") { 0 }
+            else if s.starts_with("10.") { 1 }
+            else { 2 }
+        });
+
+        filtered_ips.first()
+            .map(|(_, ip)| (*ip).clone())
+            .unwrap_or_else(|| {
+                // Fallback to basic local_ip if filtering was too aggressive
+                local_ip_address::local_ip().unwrap_or(std::net::IpAddr::V4(std::net::Ipv4Addr::new(127, 0, 0, 1)))
+            })
     } else {
         local_ip_address::local_ip().unwrap_or(std::net::IpAddr::V4(std::net::Ipv4Addr::new(127, 0, 0, 1)))
     };
@@ -75,7 +100,7 @@ async fn start_remote_server(
         }
     });
 
-    log::info!("🚀 Remote control servers started on port {}", port);
+    log::info!("🚀 Remote control servers started on {}", connection_url);
 
     server_state.is_running = true;
     server_state.port = port;

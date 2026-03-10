@@ -25,8 +25,8 @@ import {
   X,
   Check,
   FileUp,
-  Loader2,
 } from 'lucide-react';
+import { Loading } from '@/components/ui/loading';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { Grid } from 'react-window';
@@ -366,10 +366,7 @@ export const PDFPageSelector = memo<PDFPageSelectorProps>(({
                 </div>
 
                 {isLoading && (
-                  <div className="absolute inset-0 bg-background/90 flex flex-col items-center justify-center gap-4 z-30">
-                    <Loader2 size={32} className="text-primary animate-spin" />
-                    <span className="text-xs font-bold uppercase tracking-widest text-primary">Loading PDF...</span>
-                  </div>
+                  <Loading variant="overlay" size="lg" text="Loading PDF..." />
                 )}
               </div>
               <input ref={fileInputRef} type="file" accept="application/pdf" className="hidden" onChange={(e) => e.target.files?.[0] && handleFileSelect(e.target.files[0])} />
@@ -475,10 +472,7 @@ export const PDFPageSelector = memo<PDFPageSelectorProps>(({
               className="h-11 px-8 rounded-md bg-primary hover:bg-primary/90 text-white font-bold uppercase tracking-widest text-xs min-w-[180px]"
             >
               {isImporting ? (
-                <div className="flex items-center gap-2">
-                  <Loader2 size={16} className="animate-spin" />
-                  <span>Importing...</span>
-                </div>
+                <Loading size="sm" text="Importing..." variant="inline" className="text-primary-foreground" />
               ) : (
                 <div className="flex items-center gap-2">
                   <Download size={16} />

@@ -23,6 +23,7 @@ import {
   Settings as SettingsIcon,
   CreditCard
 } from 'lucide-react';
+import { Loading } from '@/components/ui/loading';
 import { useUserStore } from '@/store/userStore';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
@@ -159,7 +160,7 @@ const SaveStatusIndicator = memo<{
   if (status === 'saving') {
     return (
       <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-blue-500/10 border border-blue-500/20">
-        <Loader2 size={11} className="animate-spin text-blue-600 dark:text-blue-400" />
+        <Loading size="xs" variant="spinner" className="text-blue-600 dark:text-blue-400" />
         <span className="text-[10px] text-blue-700 dark:text-blue-400 font-semibold">Saving...</span>
       </div>
     );

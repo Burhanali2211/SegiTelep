@@ -8,17 +8,14 @@ import { toast } from "sonner";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import { SidebarProvider } from "@/components/ui/sidebar";
-const Index = React.lazy(() => import("./pages/Index"));
-const ExternalPlayer = React.lazy(() => import("./components/Teleprompter/ExternalPlayer").then(m => ({ default: m.ExternalPlayer })));
-const NotFound = React.lazy(() => import("./pages/NotFound"));
+const Index = React.lazy(() => import("@/pages/Index"));
+const ExternalPlayer = React.lazy(() => import("@/components/Teleprompter/ExternalPlayer").then(m => ({ default: m.ExternalPlayer })));
+const NotFound = React.lazy(() => import("@/pages/NotFound"));
+
+import { Loading } from "@/components/ui/loading";
 
 const LoadingFallback = () => (
-  <div className="flex items-center justify-center min-h-screen bg-background">
-    <div className="flex flex-col items-center gap-4">
-      <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin" />
-      <p className="text-muted-foreground animate-pulse font-medium tracking-wide">SegiTelep Pro is initializing...</p>
-    </div>
-  </div>
+  <Loading variant="fullscreen" text="SegiTelep Pro is initializing..." size="xl" />
 );
 
 const queryClient = new QueryClient();
@@ -34,7 +31,13 @@ const AppContent = () => {
     };
 
     const handleError = (event: ErrorEvent) => {
-      console.error("❌ Global error:", event.error);
+      // Safe logging of event error to avoid cross-origin / Xray issues in Firefox
+      try {
+        const errorMsg = event.error?.message || event.message || "Unknown dynamic module error";
+        console.error("❌ Global error:", errorMsg);
+      } catch (e) {
+        console.error("❌ Global error (fallback):", String(event));
+      }
       event.preventDefault();
     };
 

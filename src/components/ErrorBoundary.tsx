@@ -27,12 +27,14 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   }
 
   componentDidCatch(error: unknown, errorInfo: React.ErrorInfo) {
-    console.error('Error caught by boundary:', error, errorInfo);
-    // #region agent log
+    // Extract message for safe logging to avoid XrayWrapper errors in Firefox
     const msg = error instanceof Error ? error.message : String(error);
-    const stack = error instanceof Error ? error.stack : undefined;
-    // fetch('http://127.0.0.1:7242/ingest/784514f5-0201-4165-905e-642cc13d7946',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'ErrorBoundary.tsx:componentDidCatch',message:'ErrorBoundary caught',data:{errorMsg:msg,componentStack:errorInfo.componentStack?.slice(0,500),isTauri:typeof window!=='undefined'&&'__TAURI__'in window},timestamp:Date.now(),hypothesisId:'A,B,C,D,E'})}).catch(()=>{});
-    // #endregion
+    console.error('Error caught by boundary:', msg, errorInfo.componentStack);
+
+    // Additional log
+    if (error instanceof Error && error.stack) {
+      console.debug('Error Stack:', error.stack);
+    }
   }
 
   getSafeErrorMessage(): string {
